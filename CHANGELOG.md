@@ -1,3 +1,10 @@
+## [1.0.18](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.17...v1.0.18) (2025-12-10)
+
+
+### Bug Fixes
+
+* streamline pre-commit hook entries and update README instructions ([2c57733](https://github.com/n24q02m/better-notion-mcp/commit/2c577339ab849a5c8e8f5db73edd29a6672cc9e7))
+
 ## [1.0.17](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.16...v1.0.17) (2025-12-10)
 
 
