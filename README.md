@@ -100,8 +100,13 @@ This project uses **mise** for tool version management. If you don't have mise i
 ```bash
 git clone https://github.com/n24q02m/better-notion-mcp
 cd better-notion-mcp
-mise install # Install Node.js 22 and pnpm from .mise.toml
-pre-commit install
+
+mise install
+
+uv venv
+uv pip install pre-commit
+uv run pre-commit install
+
 pnpm install
 pnpm build
 ```
