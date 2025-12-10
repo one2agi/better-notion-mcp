@@ -13,37 +13,14 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-please:
-    name: Release Please
+  release:
+    name: Release
     runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.version }}
-
-    steps:
-      - name: Release Please
-        id: release
-        uses: googleapis/release-please-action@v4
-        with:
-          config-file: release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-      - name: Auto-merge Release PR
-        if: ${{ steps.release.outputs.pr }}
-        run: gh pr merge ${{ steps.release.outputs.pr }} --auto --squash
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  publish-npm:
-    name: Publish to npm
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
-    runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -61,15 +38,16 @@ jobs:
       - name: Build project
         run: pnpm build
 
-      - name: Publish to npm
-        run: pnpm publish --no-git-checks --access public
+      - name: Release
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm release
 
   publish-docker:
     name: Publish Docker Images
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
+    needs: release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
 
     steps:
@@ -103,10 +81,10 @@ jobs:
             n24q02m/better-notion-mcp
             ghcr.io/${{ github.repository }}
           tags: |
-            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.version }}
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.version }}
-            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.version }}
-            type=raw,value=latest
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             org.opencontainers.image.title=Better Notion MCP
             org.opencontainers.image.description=Composite MCP Server for Notion - Human-Like Workflows for AI Agents
