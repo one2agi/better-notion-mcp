@@ -1,11 +1,18 @@
 {
   "branches": ["main"],
+  "repositoryUrl": "https://github.com/n24q02m/better-notion-mcp.git",
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
     "@semantic-release/changelog",
     "@semantic-release/npm",
-    "@semantic-release/github",
+    [
+      "@semantic-release/github",
+      {
+        "failTitle": false,
+        "failComment": false
+      }
+    ],
     [
       "@semantic-release/git",
       {
