@@ -1,3 +1,13 @@
+## [1.0.16](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.15...v1.0.16) (2025-12-10)
+
+
+### Bug Fixes
+
+* add publishConfig for public access ([b704cda](https://github.com/n24q02m/better-notion-mcp/commit/b704cda20f6b441c56d2bf9dc2162bf56fabef4e))
+* add release script ([3a1da3b](https://github.com/n24q02m/better-notion-mcp/commit/3a1da3bbe266ba0493a84504bf5cc816ae4deabc))
+* remove redundant npm auth setup step in release workflow ([42752bd](https://github.com/n24q02m/better-notion-mcp/commit/42752bddef6b15ba9db38f76c3aa76d0578cfb62))
+* streamline JSON formatting in biome.json and package.json for consistency ([3ea9266](https://github.com/n24q02m/better-notion-mcp/commit/3ea926644c7b3bccb8abe60a4c1b255ce0c96eb3))
+
 ## [1.0.15](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.14...v1.0.15) (2025-12-09)
 
 
