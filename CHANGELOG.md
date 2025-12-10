@@ -1,3 +1,10 @@
+## [1.0.17](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.16...v1.0.17) (2025-12-10)
+
+
+### Bug Fixes
+
+* update Mise configuration and installation instructions in README ([7af1d2b](https://github.com/n24q02m/better-notion-mcp/commit/7af1d2b7443af7549dcac914c173026f28080d7e))
+
 ## [1.0.16](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.15...v1.0.16) (2025-12-10)
 
 
