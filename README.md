@@ -101,15 +101,16 @@ This project uses **mise** for tool version management. If you don't have mise i
 git clone https://github.com/n24q02m/better-notion-mcp
 cd better-notion-mcp
 
+mise trust
 mise install
+
+pnpm install
+pnpm build
 
 uv venv
 uv pip install pre-commit
 uv run pre-commit install
 uv run pre-commit run --all-file
-
-pnpm install
-pnpm build
 ```
 
 **Prerequisites:** mise or Node.js 22+ and pnpm.
