@@ -1,3 +1,10 @@
+## [1.0.19](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.18...v1.0.19) (2025-12-11)
+
+
+### Bug Fixes
+
+* update installation instructions in README and streamline package.json formatting ([ba8575a](https://github.com/n24q02m/better-notion-mcp/commit/ba8575a38806690d761b7c1f7090441b285c84f0))
+
 ## [1.0.18](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.17...v1.0.18) (2025-12-10)
 
 
