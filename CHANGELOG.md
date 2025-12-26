@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.19...v1.1.0) (2025-12-26)
+
+
+### Features
+
+* streamline project setup by introducing a `mise run setup` task and updating documentation ([4aa3166](https://github.com/n24q02m/better-notion-mcp/commit/4aa31660bd2896330c86a6b81e8d21e38c65dc8b))
+
 ## [1.0.19](https://github.com/n24q02m/better-notion-mcp/compare/v1.0.18...v1.0.19) (2025-12-11)
 
 
