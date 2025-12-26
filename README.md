@@ -77,6 +77,27 @@ Get your Notion token: <https://www.notion.so/my-integrations> → Create integr
 
 ---
 
+## Token Optimization (v2)
+
+**~77% token reduction** via tiered descriptions:
+
+| Tier | Purpose | Token Cost |
+|------|---------|------------|
+| **Tier 1** | Compressed descriptions (always loaded) | ~340 tokens |
+| **Tier 2** | Full docs via `help` tool (on-demand) | ~1,500 tokens |
+| **Tier 3** | MCP Resources (for supported clients) | Same as Tier 2 |
+
+**Usage:**
+```json
+{"name": "help", "tool_name": "pages"}
+```
+
+**Client Compatibility:**
+- Claude Desktop, VS Code Copilot: Full support (Tier 1 + 2 + 3)
+- Cursor, Windsurf: Via `help` tool (Tier 1 + 2)
+
+---
+
 ## Limitations
 
 **Supported Block Types (Markdown Conversion):**

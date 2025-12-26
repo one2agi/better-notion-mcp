@@ -3,8 +3,16 @@
  * Consolidated registration for maximum coverage with minimal tools
  */
 
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js'
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema
+} from '@modelcontextprotocol/sdk/types.js'
 import { Client } from '@notionhq/client'
 
 // Import mega tools
@@ -17,29 +25,33 @@ import { users } from './composite/users.js'
 import { workspace } from './composite/workspace.js'
 import { aiReadableMessage, NotionMCPError } from './helpers/errors.js'
 
+// Get docs directory path
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+const DOCS_DIR = join(__dirname, '..', 'docs')
+
+/**
+ * Documentation resources for full tool details
+ */
+const RESOURCES = [
+  { uri: 'notion://docs/pages', name: 'Pages Tool Docs', file: 'pages.md' },
+  { uri: 'notion://docs/databases', name: 'Databases Tool Docs', file: 'databases.md' },
+  { uri: 'notion://docs/blocks', name: 'Blocks Tool Docs', file: 'blocks.md' },
+  { uri: 'notion://docs/users', name: 'Users Tool Docs', file: 'users.md' },
+  { uri: 'notion://docs/workspace', name: 'Workspace Tool Docs', file: 'workspace.md' },
+  { uri: 'notion://docs/comments', name: 'Comments Tool Docs', file: 'comments.md' },
+  { uri: 'notion://docs/content_convert', name: 'Content Convert Tool Docs', file: 'content_convert.md' }
+]
+
 /**
  * 7 Mega Tools covering 75% of Official Notion API
+ * Compressed descriptions for token optimization (~77% reduction)
  */
 const TOOLS = [
   {
     name: 'pages',
-    description: `Complete page lifecycle management. Handles creation, reading, updating, archiving, and duplication.
-
-**IMPORTANT:** Integration tokens cannot create workspace-level pages. Always provide parent_id (page or database ID).
-
-Actions: create, get, update, archive, restore, duplicate.
-
-Maps to: POST/GET/PATCH /v1/pages + /v1/blocks/{id}/children
-
-Examples:
-- Create page: {action: "create", title: "Meeting Notes", parent_id: "xxx", content: "# Agenda\n- Item 1\n- Item 2"}
-- Create in database: {action: "create", title: "Task", parent_id: "db-id", properties: {Status: "Todo", Priority: "High"}}
-- Get with content: {action: "get", page_id: "xxx"} → Returns markdown content
-- Update content: {action: "update", page_id: "xxx", append_content: "\n## New Section"}
-- Update metadata: {action: "update", page_id: "xxx", icon: "", cover: "https://..."}
-- Archive: {action: "archive", page_ids: ["xxx", "yyy"]}
-- Restore: {action: "restore", page_id: "xxx"}
-- Duplicate: {action: "duplicate", page_id: "xxx"}`,
+    description:
+      'Page lifecycle: create, get, update, archive, restore, duplicate. Requires parent_id for create. Returns markdown content for get.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -65,31 +77,8 @@ Examples:
   },
   {
     name: 'databases',
-    description: `Complete database & data source operations (Notion API 2025-09-03).
-
-**ARCHITECTURE NOTE:**
-Notion databases now support multiple data sources. A database is a container that holds one or more data sources. Each data source has its own schema (properties) and rows (pages).
-
-**WORKFLOW:**
-1. Create database → Creates database container + initial data source
-2. Get database → Retrieves data_source_id for querying
-3. Query/Create/Update pages → Use data_source_id (auto-fetched from database_id)
-
-Actions: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database.
-
-Maps to: /v1/databases + /v1/data_sources + /v1/pages
-
-Examples:
-- Create DB+datasource: {action: "create", parent_id: "xxx", title: "Tasks", properties: {Status: {select: {options: [{name: "Todo"}, {name: "Done"}]}}}}
-- Get schema: {action: "get", database_id: "xxx"} → Returns data_source info
-- Query data: {action: "query", database_id: "xxx", filters: {property: "Status", select: {equals: "Done"}}}
-- Smart search: {action: "query", database_id: "xxx", search: "project"}
-- Create rows: {action: "create_page", database_id: "xxx", pages: [{properties: {Name: "Task 1", Status: "Todo"}}]}
-- Update rows: {action: "update_page", page_id: "yyy", page_properties: {Status: "Done"}}
-- Delete rows: {action: "delete_page", page_ids: ["yyy", "zzz"]}
-- Add 2nd datasource: {action: "create_data_source", database_id: "xxx", title: "Archive", properties: {...}}
-- Update datasource schema: {action: "update_data_source", data_source_id: "yyy", properties: {NewField: {checkbox: {}}}}
-- Move database: {action: "update_database", database_id: "xxx", parent_id: "new-page-id"}`,
+    description:
+      'Database operations: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database. Databases contain data sources with schema and rows.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -131,21 +120,8 @@ Examples:
   },
   {
     name: 'blocks',
-    description: `Fine-grained content manipulation at block level. Use for precise edits within pages.
-
-**When to use:** Editing specific paragraphs, headings, or sections. For full page content, use pages tool.
-**Block ID:** Page IDs are also valid block IDs (page is the root block).
-
-Actions: get, children, append, update, delete.
-
-Maps to: GET/PATCH/DELETE /v1/blocks/{id} + /v1/blocks/{id}/children
-
-Examples:
-- Get block info: {action: "get", block_id: "xxx"}
-- Read content: {action: "children", block_id: "xxx"} → Returns markdown of child blocks
-- Add content: {action: "append", block_id: "page-id", content: "## New Section\nParagraph text"}
-- Edit paragraph: {action: "update", block_id: "block-id", content: "Updated text"}
-- Remove block: {action: "delete", block_id: "block-id"}`,
+    description:
+      'Block-level content: get, children, append, update, delete. Page IDs are valid block IDs. Use for precise edits.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -162,19 +138,7 @@ Examples:
   },
   {
     name: 'users',
-    description: `User information retrieval. Get bot info, list users, or extract users from workspace.
-
-**PERMISSION NOTE:** list action may fail if integration lacks user read permissions. Use from_workspace as fallback - it extracts user IDs from accessible pages' metadata.
-
-Actions: list, get, me, from_workspace.
-
-Maps to: GET /v1/users + GET /v1/users/{id} + GET /v1/users/me
-
-Examples:
-- Get bot details: {action: "me"} → Integration info
-- List all users: {action: "list"} → Requires user:read permission
-- Get specific user: {action: "get", user_id: "xxx"}
-- Bypass permissions: {action: "from_workspace"} → Extracts users from page metadata (created_by, last_edited_by)`,
+    description: 'User info: list, get, me, from_workspace. Use from_workspace if list fails due to permissions.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -190,19 +154,8 @@ Examples:
   },
   {
     name: 'workspace',
-    description: `Workspace-level operations: get integration info and search across pages/data sources.
-
-**Search:** Searches page/database titles. In API 2025-09-03, use filter object "data_source" to find databases. Returns only accessible content (shared with integration).
-
-Actions: info, search.
-
-Maps to: GET /v1/users/me + POST /v1/search
-
-Examples:
-- Get workspace info: {action: "info"} → Bot owner, workspace details
-- Search pages: {action: "search", query: "meeting notes", filter: {object: "page"}, limit: 10}
-- Search databases: {action: "search", query: "tasks", filter: {object: "data_source"}}
-- Sort results: {action: "search", query: "project", sort: {direction: "ascending", timestamp: "last_edited_time"}}`,
+    description:
+      'Workspace: info, search. Search returns pages/databases shared with integration. Use filter.object for type.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -232,18 +185,7 @@ Examples:
   },
   {
     name: 'comments',
-    description: `Page discussion management. List comments on pages and add new comments or replies.
-
-**Threading:** Use page_id for new discussion. Use discussion_id (from list response) to reply to existing thread.
-
-Actions: list, create.
-
-Maps to: GET /v1/comments + POST /v1/comments
-
-Examples:
-- List page comments: {action: "list", page_id: "xxx"}
-- Start discussion: {action: "create", page_id: "xxx", content: "Great work on this page!"}
-- Reply to thread: {action: "create", discussion_id: "thread-id", content: "I agree with your points"}`,
+    description: 'Comments: list, create. Use page_id for new discussion, discussion_id for replies.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -257,18 +199,7 @@ Examples:
   },
   {
     name: 'content_convert',
-    description: `Format conversion utility. Convert between human-readable Markdown and Notion's block format.
-
-**Use cases:**
-- Preview Notion blocks as Markdown before appending
-- Test block structure from Markdown input
-- Debug block formatting issues
-
-**Note:** Most operations (pages, blocks) handle Markdown automatically. Use this for advanced preview/validation.
-
-Examples:
-- Parse Markdown: {direction: "markdown-to-blocks", content: "# Heading\nParagraph text\n- List item"}
-- Read blocks: {direction: "blocks-to-markdown", content: [{"type": "paragraph", "paragraph": {...}}]}`,
+    description: 'Convert: markdown-to-blocks, blocks-to-markdown. Most tools handle markdown automatically.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -280,6 +211,21 @@ Examples:
         content: { description: 'Content to convert (string or array/JSON string)' }
       },
       required: ['direction', 'content']
+    }
+  },
+  {
+    name: 'help',
+    description: 'Get full documentation for a tool. Use when compressed descriptions are insufficient.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool_name: {
+          type: 'string',
+          enum: ['pages', 'databases', 'blocks', 'users', 'workspace', 'comments', 'content_convert'],
+          description: 'Tool to get documentation for'
+        }
+      },
+      required: ['tool_name']
     }
   }
 ]
@@ -296,6 +242,33 @@ export function registerTools(server: Server, notionToken: string) {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS
   }))
+
+  // Resources handlers for full documentation
+  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: RESOURCES.map((r) => ({
+      uri: r.uri,
+      name: r.name,
+      mimeType: 'text/markdown'
+    }))
+  }))
+
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const { uri } = request.params
+    const resource = RESOURCES.find((r) => r.uri === uri)
+
+    if (!resource) {
+      throw new NotionMCPError(
+        `Resource not found: ${uri}`,
+        'RESOURCE_NOT_FOUND',
+        `Available: ${RESOURCES.map((r) => r.uri).join(', ')}`
+      )
+    }
+
+    const content = readFileSync(join(DOCS_DIR, resource.file), 'utf-8')
+    return {
+      contents: [{ uri, mimeType: 'text/markdown', text: content }]
+    }
+  })
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params
@@ -337,6 +310,17 @@ export function registerTools(server: Server, notionToken: string) {
         case 'content_convert':
           result = await contentConvert(args as any)
           break
+        case 'help': {
+          const toolName = (args as { tool_name: string }).tool_name
+          const docFile = `${toolName}.md`
+          try {
+            const content = readFileSync(join(DOCS_DIR, docFile), 'utf-8')
+            result = { tool: toolName, documentation: content }
+          } catch {
+            throw new NotionMCPError(`Documentation not found for: ${toolName}`, 'DOC_NOT_FOUND', 'Check tool_name')
+          }
+          break
+        }
         default:
           throw new NotionMCPError(
             `Unknown tool: ${name}`,

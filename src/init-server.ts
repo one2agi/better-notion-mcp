@@ -25,7 +25,8 @@ export async function initServer() {
     },
     {
       capabilities: {
-        tools: {}
+        tools: {},
+        resources: {}
       }
     }
   )
