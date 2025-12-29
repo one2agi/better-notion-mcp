@@ -25,10 +25,14 @@ import { users } from './composite/users.js'
 import { workspace } from './composite/workspace.js'
 import { aiReadableMessage, NotionMCPError } from './helpers/errors.js'
 
-// Get docs directory path
+// Get docs directory path - works for both bundled CLI and unbundled code
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const DOCS_DIR = join(__dirname, '..', 'docs')
+// For bundled CLI: __dirname = /bin/, docs at /build/src/docs/
+// For unbundled: __dirname = /build/src/tools/, docs at /build/src/docs/
+const DOCS_DIR = __dirname.endsWith('bin')
+  ? join(__dirname, '..', 'build', 'src', 'docs')
+  : join(__dirname, '..', 'docs')
 
 /**
  * Documentation resources for full tool details
