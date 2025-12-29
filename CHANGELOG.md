@@ -1,3 +1,10 @@
+## [2.0.1](https://github.com/n24q02m/better-notion-mcp/compare/v2.0.0...v2.0.1) (2025-12-29)
+
+
+### Bug Fixes
+
+* correct DOCS_DIR path for bundled CLI ([17e2800](https://github.com/n24q02m/better-notion-mcp/commit/17e2800e8533273a20bef87d687d3ada2c3f49a9))
+
 # [2.0.0](https://github.com/n24q02m/better-notion-mcp/compare/v1.1.0...v2.0.0) (2025-12-26)
 
 
