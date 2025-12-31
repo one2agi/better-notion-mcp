@@ -1,3 +1,10 @@
+# [2.1.0-beta.3](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.2...v2.1.0-beta.3) (2025-12-31)
+
+
+### Performance Improvements
+
+* use native ARM64 runner for multi-arch Docker build ([49b440a](https://github.com/n24q02m/better-notion-mcp/commit/49b440a8a76f88206e9c59aab12b83fb514e9a38))
+
 # [2.1.0-beta.2](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.1...v2.1.0-beta.2) (2025-12-30)
 
 
