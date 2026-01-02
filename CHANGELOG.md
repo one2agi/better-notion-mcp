@@ -1,14 +1,59 @@
-# [2.1.0](https://github.com/n24q02m/better-notion-mcp/compare/v2.0.1...v2.1.0) (2025-12-31)
+# [2.1.0-beta.6](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.5...v2.1.0-beta.6) (2026-01-02)
 
 
 ### Bug Fixes
 
-* remove redundant line in setup tasks and clean up keywords formatting ([f176b09](https://github.com/n24q02m/better-notion-mcp/commit/f176b09432b46c4f7a3262ffcb2cfeb3ca6f916c))
+* add --clear flag to uv venv command in mise setup ([0d0e09a](https://github.com/n24q02m/better-notion-mcp/commit/0d0e09ac19acfc4caffca7b01f5fafd06a1b274a))
+* **cd:** auto-resolve merge conflicts in semantic-release managed files ([8a7ed7c](https://github.com/n24q02m/better-notion-mcp/commit/8a7ed7cc5b6deb31033eedd8475ef723bcff88ff))
+
+# [2.1.0-beta.6](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.5...v2.1.0-beta.6) (2026-01-01)
 
 
-### Features
+### Bug Fixes
 
-* add CI and CD workflows for automated deployment and testing ([57ed3ac](https://github.com/n24q02m/better-notion-mcp/commit/57ed3ac8a4dea8482249aee7c5b56fb232f09b02))
+* add --clear flag to uv venv command in mise setup ([0d0e09a](https://github.com/n24q02m/better-notion-mcp/commit/0d0e09ac19acfc4caffca7b01f5fafd06a1b274a))
+
+# [2.1.0-beta.6](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.5...v2.1.0-beta.6) (2026-01-01)
+
+
+### Bug Fixes
+
+* add --clear flag to uv venv command in mise setup ([0d0e09a](https://github.com/n24q02m/better-notion-mcp/commit/0d0e09ac19acfc4caffca7b01f5fafd06a1b274a))
+
+# [2.1.0-beta.6](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.5...v2.1.0-beta.6) (2026-01-01)
+
+
+### Bug Fixes
+
+* add --clear flag to uv venv command in mise setup ([0d0e09a](https://github.com/n24q02m/better-notion-mcp/commit/0d0e09ac19acfc4caffca7b01f5fafd06a1b274a))
+
+# [2.1.0-beta.6](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.5...v2.1.0-beta.6) (2026-01-01)
+
+
+### Bug Fixes
+
+* add --clear flag to uv venv command in mise setup ([0d0e09a](https://github.com/n24q02m/better-notion-mcp/commit/0d0e09ac19acfc4caffca7b01f5fafd06a1b274a))
+
+# [2.1.0-beta.5](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.4...v2.1.0-beta.5) (2025-12-31)
+
+
+### Bug Fixes
+
+* Migrate pre-commit setup to use uv for environment and package management. ([c98ebe0](https://github.com/n24q02m/better-notion-mcp/commit/c98ebe09732ed2742d0e4d819c6efb8f6e71b985))
+
+# [2.1.0-beta.4](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.3...v2.1.0-beta.4) (2025-12-31)
+
+
+### Bug Fixes
+
+* format keywords and files arrays in package.json ([fc221a6](https://github.com/n24q02m/better-notion-mcp/commit/fc221a629244ad11925cf0c49ab01f9c2cbe7bfd))
+
+# [2.1.0-beta.3](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.2...v2.1.0-beta.3) (2025-12-31)
+
+
+### Performance Improvements
+
+* use native ARM64 runner for multi-arch Docker build ([49b440a](https://github.com/n24q02m/better-notion-mcp/commit/49b440a8a76f88206e9c59aab12b83fb514e9a38))
 
 # [2.1.0-beta.2](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0-beta.1...v2.1.0-beta.2) (2025-12-30)
 
