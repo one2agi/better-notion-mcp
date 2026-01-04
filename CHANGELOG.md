@@ -1,4 +1,4 @@
-## [2.3.7](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.6...v2.3.7) (2026-01-04)
+## [2.3.7-beta.1](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.6...v2.3.7-beta.1) (2026-01-04)
 
 
 ### Bug Fixes
