@@ -11,7 +11,9 @@ on:
         options:
           - 'promote-to-stable'
 
-concurrency: ${{ github.workflow }}-${{ github.ref }}
+concurrency:
+  group: cd-${{ github.repository }}
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -33,41 +35,19 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Merge dev to main
+      - name: Check CI/CD status on dev branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin
-          git checkout main
+          chmod +x .github/scripts/check-ci-cd-status.sh
+          ./.github/scripts/check-ci-cd-status.sh --branch=dev
 
-          # Attempt merge, allowing conflicts
-          git merge origin/dev --no-ff -m "chore: promote dev to main" || true
-
-          # Auto-resolve conflicts in semantic-release managed files
-          # These files will be overwritten by semantic-release anyway
-          for file in CHANGELOG.md package.json; do
-            if git diff --name-only --diff-filter=U | grep -q "^${file}$"; then
-              echo "Auto-resolving conflict in $file (accepting dev version)"
-              git checkout --theirs "$file"
-              git add "$file"
-            fi
-          done
-
-          # Check if there are remaining conflicts
-          if git diff --name-only --diff-filter=U | grep -q .; then
-            echo "Error: Unresolved conflicts in files not managed by semantic-release"
-            git diff --name-only --diff-filter=U
-            exit 1
-          fi
-
-          # Complete the merge if we resolved conflicts
-          if git diff --cached --quiet; then
-            echo "Merge completed without conflicts"
-          else
-            git commit --no-edit
-          fi
-
-          git push origin main
+      - name: Merge dev to main
+        env:
+          AUTO_RESOLVE_FILES: "CHANGELOG.md,package.json"
+        run: |
+          chmod +x .github/scripts/merge-with-auto-resolve.sh
+          ./.github/scripts/merge-with-auto-resolve.sh --source=dev --target=main --files="$AUTO_RESOLVE_FILES"
 
   # Job: Release (on push to dev or main)
   release:
