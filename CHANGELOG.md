@@ -1,3 +1,17 @@
+# [2.3.0](https://github.com/n24q02m/better-notion-mcp/compare/v2.2.0...v2.3.0) (2026-01-04)
+
+
+### Bug Fixes
+
+* **cd:** add auto-delete conflicting tags step ([3f7f7f9](https://github.com/n24q02m/better-notion-mcp/commit/3f7f7f9e443856b66d1536ee59188926a8e7cb88))
+* **cd:** add GH_PAT to release checkout for tag deletion ([1b53fa0](https://github.com/n24q02m/better-notion-mcp/commit/1b53fa0adbf624486a3a2cc50e4f110fce828b8a))
+* **release:** re-enable npm publish for full workflow verification ([65044ea](https://github.com/n24q02m/better-notion-mcp/commit/65044ea2fc0db4341eae88521816cf9355f82a91))
+
+
+### Features
+
+* **release:** disable npm publish to create new stable version ([375c244](https://github.com/n24q02m/better-notion-mcp/commit/375c244f716600d7b9ad33bd056bc3f19dbea549))
+
 # [2.2.0](https://github.com/n24q02m/better-notion-mcp/compare/v2.1.0...v2.2.0) (2026-01-04)
 
 
