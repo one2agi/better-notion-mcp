@@ -1,3 +1,10 @@
+## [2.3.7-beta.2](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.7-beta.1...v2.3.7-beta.2) (2026-01-04)
+
+
+### Bug Fixes
+
+* **cd:** add auto-format step after semantic-release to prevent CI failures ([288dfaf](https://github.com/n24q02m/better-notion-mcp/commit/288dfaf1387b879f08130d5d7e625b51ea04fe59))
+
 ## [2.3.7-beta.1](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.6...v2.3.7-beta.1) (2026-01-04)
 
 
