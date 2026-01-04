@@ -1,4 +1,32 @@
-## [2.3.1-beta.1](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.0...v2.3.1-beta.1) (2026-01-04)
+## [2.3.5](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.4...v2.3.5) (2026-01-04)
+
+
+### Bug Fixes
+
+* **cd:** prevent repo.git pollution in digests dir ([694f03c](https://github.com/n24q02m/better-notion-mcp/commit/694f03ca1593549c3fe0f42f4f5846de4875d65f))
+
+## [2.3.4](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.3...v2.3.4) (2026-01-04)
+
+
+### Bug Fixes
+
+* **cd:** use dynamic docker username and validate digests ([63e3d68](https://github.com/n24q02m/better-notion-mcp/commit/63e3d68e6a2bd7f76eb7ee3743ae2b35e2ab6d2b))
+
+## [2.3.3](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.2...v2.3.3) (2026-01-04)
+
+
+### Bug Fixes
+
+* **cd:** enable debug for docker manifest creation ([672cba6](https://github.com/n24q02m/better-notion-mcp/commit/672cba6eeca33f15a0f7cf04e43463d7641212a2))
+
+## [2.3.2](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.1...v2.3.2) (2026-01-04)
+
+
+### Bug Fixes
+
+* **cd:** add validation and debug for docker manifest creation ([a82da71](https://github.com/n24q02m/better-notion-mcp/commit/a82da718a54f323b3e24091232f7190cd8601227))
+
+## [2.3.1](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.0...v2.3.1) (2026-01-04)
 
 
 ### Bug Fixes
