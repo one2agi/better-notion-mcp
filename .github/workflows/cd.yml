@@ -197,9 +197,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Inspect digests
+        run: |
+          ls -R ${{ runner.temp }}/digests
+          echo "Digests content:"
+          cat ${{ runner.temp }}/digests/* || true
+
       - name: Create and push manifest (stable)
         if: github.ref == 'refs/heads/main'
         working-directory: ${{ runner.temp }}/digests
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           # Get latest git tag for version
           git clone --depth=1 --bare https://github.com/${{ github.repository }}.git repo.git
@@ -207,13 +215,25 @@ jobs:
           MAJOR_MINOR=$(echo "$VERSION" | cut -d. -f1,2)
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
 
+          # Prepare sources
+          SOURCES_DOCKERHUB=""
+          SOURCES_GHCR=""
+
+          for digest in *; do
+            SOURCES_DOCKERHUB="$SOURCES_DOCKERHUB ${DOCKERHUB_USERNAME}/better-notion-mcp@sha256:$digest"
+            SOURCES_GHCR="$SOURCES_GHCR ghcr.io/${{ github.repository }}@sha256:$digest"
+          done
+
+          echo "Sources DockerHub: $SOURCES_DOCKERHUB"
+          echo "Sources GHCR: $SOURCES_GHCR"
+
           # Create manifests for Docker Hub
           docker buildx imagetools create \
-            -t n24q02m/better-notion-mcp:latest \
-            ${VERSION:+-t n24q02m/better-notion-mcp:$VERSION} \
-            ${MAJOR_MINOR:+-t n24q02m/better-notion-mcp:$MAJOR_MINOR} \
-            ${MAJOR:+-t n24q02m/better-notion-mcp:$MAJOR} \
-            $(printf "n24q02m/better-notion-mcp@sha256:%s " *)
+            -t ${DOCKERHUB_USERNAME}/better-notion-mcp:latest \
+            ${VERSION:+-t ${DOCKERHUB_USERNAME}/better-notion-mcp:$VERSION} \
+            ${MAJOR_MINOR:+-t ${DOCKERHUB_USERNAME}/better-notion-mcp:$MAJOR_MINOR} \
+            ${MAJOR:+-t ${DOCKERHUB_USERNAME}/better-notion-mcp:$MAJOR} \
+            $SOURCES_DOCKERHUB
 
           # Create manifests for GHCR
           docker buildx imagetools create \
@@ -221,25 +241,36 @@ jobs:
             ${VERSION:+-t ghcr.io/${{ github.repository }}:$VERSION} \
             ${MAJOR_MINOR:+-t ghcr.io/${{ github.repository }}:$MAJOR_MINOR} \
             ${MAJOR:+-t ghcr.io/${{ github.repository }}:$MAJOR} \
-            $(printf "ghcr.io/${{ github.repository }}@sha256:%s " *)
+            $SOURCES_GHCR
 
       - name: Create and push manifest (beta)
         if: github.ref == 'refs/heads/dev'
         working-directory: ${{ runner.temp }}/digests
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
 
+          # Prepare sources
+          SOURCES_DOCKERHUB=""
+          SOURCES_GHCR=""
+
+          for digest in *; do
+            SOURCES_DOCKERHUB="$SOURCES_DOCKERHUB ${DOCKERHUB_USERNAME}/better-notion-mcp@sha256:$digest"
+            SOURCES_GHCR="$SOURCES_GHCR ghcr.io/${{ github.repository }}@sha256:$digest"
+          done
+
           # Create manifests for Docker Hub
           docker buildx imagetools create \
-            -t n24q02m/better-notion-mcp:beta \
-            -t n24q02m/better-notion-mcp:beta-$SHORT_SHA \
-            $(printf "n24q02m/better-notion-mcp@sha256:%s " *)
+            -t ${DOCKERHUB_USERNAME}/better-notion-mcp:beta \
+            -t ${DOCKERHUB_USERNAME}/better-notion-mcp:beta-$SHORT_SHA \
+            $SOURCES_DOCKERHUB
 
           # Create manifests for GHCR
           docker buildx imagetools create \
             -t ghcr.io/${{ github.repository }}:beta \
             -t ghcr.io/${{ github.repository }}:beta-$SHORT_SHA \
-            $(printf "ghcr.io/${{ github.repository }}@sha256:%s " *)
+            $SOURCES_GHCR
 
       - name: Checkout code
         if: github.ref == 'refs/heads/main'
