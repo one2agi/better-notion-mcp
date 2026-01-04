@@ -1,3 +1,10 @@
+## [2.3.6-beta.1](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.5...v2.3.6-beta.1) (2026-01-04)
+
+
+### Bug Fixes
+
+* **ci:** merge main and fix formatting ([6512fdd](https://github.com/n24q02m/better-notion-mcp/commit/6512fdd8f3dcaea0cd8b78e1295950596c941020))
+
 ## [2.3.5](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.4...v2.3.5) (2026-01-04)
 
 
