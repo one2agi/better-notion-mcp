@@ -35,36 +35,42 @@ jobs:
 
       - name: Merge dev to main
         run: |
+          set +e  # Disable exit on error to handle merge conflicts gracefully
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin
           git checkout main
+          git pull origin main
 
-          # Attempt merge, allowing conflicts
-          git merge origin/dev --no-ff -m "chore: promote dev to main" || true
+          # Attempt merge, conflicts are expected
+          git merge origin/dev --no-ff -m "chore: promote dev to main"
+          MERGE_RESULT=$?
 
-          # Auto-resolve conflicts in semantic-release managed files
-          # These files will be overwritten by semantic-release anyway
-          for file in CHANGELOG.md package.json; do
-            if git diff --name-only --diff-filter=U | grep -q "^${file}$"; then
-              echo "Auto-resolving conflict in $file (accepting dev version)"
-              git checkout --theirs "$file"
-              git add "$file"
+          if [ $MERGE_RESULT -ne 0 ]; then
+            echo "Merge had conflicts, attempting auto-resolution..."
+
+            # Auto-resolve conflicts in semantic-release managed files
+            for file in CHANGELOG.md package.json; do
+              if git diff --name-only --diff-filter=U | grep -q "^${file}$"; then
+                echo "Auto-resolving conflict in $file (accepting dev version)"
+                git checkout --theirs "$file"
+                git add "$file"
+              fi
+            done
+
+            # Check if there are remaining conflicts
+            if git diff --name-only --diff-filter=U | grep -q .; then
+              echo "Error: Unresolved conflicts in files not managed by semantic-release"
+              git diff --name-only --diff-filter=U
+              exit 1
             fi
-          done
 
-          # Check if there are remaining conflicts
-          if git diff --name-only --diff-filter=U | grep -q .; then
-            echo "Error: Unresolved conflicts in files not managed by semantic-release"
-            git diff --name-only --diff-filter=U
-            exit 1
-          fi
-
-          # Complete the merge if we resolved conflicts
-          if git diff --cached --quiet; then
-            echo "Merge completed without conflicts"
-          else
+            # Complete the merge
             git commit --no-edit
+            echo "Conflicts resolved and merge completed"
+          else
+            echo "Merge completed without conflicts"
           fi
 
           git push origin main
