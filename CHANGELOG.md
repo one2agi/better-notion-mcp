@@ -1,3 +1,10 @@
+## [2.3.7-beta.5](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.7-beta.4...v2.3.7-beta.5) (2026-01-05)
+
+
+### Bug Fixes
+
+* verify ci/cd workflow changes ([6802e00](https://github.com/n24q02m/better-notion-mcp/commit/6802e00c56b9da132f90ccc23cb6739e69b2617b))
+
 ## [2.3.7-beta.4](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.7-beta.3...v2.3.7-beta.4) (2026-01-04)
 
 
