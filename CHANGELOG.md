@@ -1,3 +1,10 @@
+## [2.3.7-beta.6](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.7-beta.5...v2.3.7-beta.6) (2026-01-05)
+
+
+### Bug Fixes
+
+* add cd.yml to auto-resolve files for promote ([d7ae193](https://github.com/n24q02m/better-notion-mcp/commit/d7ae1938020533dd22f127198a92c11260088a22))
+
 ## [2.3.7-beta.5](https://github.com/n24q02m/better-notion-mcp/compare/v2.3.7-beta.4...v2.3.7-beta.5) (2026-01-05)
 
 
