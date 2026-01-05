@@ -49,7 +49,7 @@ jobs:
 
       - name: Merge dev to main
         env:
-          AUTO_RESOLVE_FILES: "CHANGELOG.md,package.json"
+          AUTO_RESOLVE_FILES: "CHANGELOG.md,package.json,.github/workflows/cd.yml"
         run: |
           chmod +x .github/scripts/merge-with-auto-resolve.sh
           ./.github/scripts/merge-with-auto-resolve.sh --source=dev --target=main --files="$AUTO_RESOLVE_FILES"
