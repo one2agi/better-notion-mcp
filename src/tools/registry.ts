@@ -420,6 +420,15 @@ export function registerTools(server: Server, notionToken: string) {
           break
         case 'help': {
           const toolName = (args as { tool_name: string }).tool_name
+          // Security: validate tool_name against allowlist to prevent path traversal
+          const validToolNames = TOOLS.filter((t) => t.name !== 'help').map((t) => t.name)
+          if (!validToolNames.includes(toolName)) {
+            throw new NotionMCPError(
+              `Invalid tool name: ${toolName}`,
+              'VALIDATION_ERROR',
+              `Valid tools: ${validToolNames.join(', ')}`
+            )
+          }
           const docFile = `${toolName}.md`
           try {
             const content = readFileSync(join(DOCS_DIR, docFile), 'utf-8')

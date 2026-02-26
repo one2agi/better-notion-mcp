@@ -3,6 +3,9 @@
  * Auto-handles paginated Notion API responses
  */
 
+/** Safety limit to prevent infinite loops if API always returns has_more: true */
+const MAX_PAGES_SAFETY = 1000
+
 export interface PaginatedResponse<T> {
   results: T[]
   next_cursor: string | null
@@ -10,7 +13,7 @@ export interface PaginatedResponse<T> {
 }
 
 export interface PaginationOptions {
-  maxPages?: number // Max pages to fetch (0 = unlimited)
+  maxPages?: number // Max pages to fetch (0 = unlimited, capped by MAX_PAGES_SAFETY)
   pageSize?: number // Items per page (default: 100)
 }
 
@@ -22,6 +25,7 @@ export async function autoPaginate<T>(
   options: PaginationOptions = {}
 ): Promise<T[]> {
   const { maxPages = 0, pageSize = 100 } = options
+  const effectiveMax = maxPages > 0 ? Math.min(maxPages, MAX_PAGES_SAFETY) : MAX_PAGES_SAFETY
   const allResults: T[] = []
   let cursor: string | null = null
   let pageCount = 0
@@ -32,42 +36,13 @@ export async function autoPaginate<T>(
     cursor = response.next_cursor
     pageCount++
 
-    // Stop if max pages reached
-    if (maxPages > 0 && pageCount >= maxPages) {
+    // Stop if max pages reached (user-specified or safety limit)
+    if (pageCount >= effectiveMax) {
       break
     }
   } while (cursor !== null)
 
   return allResults
-}
-
-/**
- * Fetch single page with cursor
- */
-export async function fetchPage<T>(
-  fetchFn: (cursor?: string, pageSize?: number) => Promise<PaginatedResponse<T>>,
-  cursor?: string,
-  pageSize: number = 100
-): Promise<PaginatedResponse<T>> {
-  return await fetchFn(cursor, pageSize)
-}
-
-/**
- * Create cursor handler for manual pagination
- */
-export function createCursorHandler() {
-  let currentCursor: string | null = null
-
-  return {
-    getCursor: () => currentCursor,
-    setCursor: (cursor: string | null) => {
-      currentCursor = cursor
-    },
-    reset: () => {
-      currentCursor = null
-    },
-    hasMore: () => currentCursor !== null
-  }
 }
 
 /**

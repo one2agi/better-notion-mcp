@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { autoPaginate, batchItems, createCursorHandler, fetchPage, processBatches } from './pagination'
+import { autoPaginate, batchItems, processBatches } from './pagination'
 
 describe('autoPaginate', () => {
   it('should return results from a single page', async () => {
@@ -87,63 +87,6 @@ describe('autoPaginate', () => {
     await autoPaginate(fetchFn, { pageSize: 50 })
 
     expect(fetchFn).toHaveBeenCalledWith(undefined, 50)
-  })
-})
-
-describe('fetchPage', () => {
-  it('should delegate to fetchFn and return the response', async () => {
-    const response = { results: [1, 2], next_cursor: 'abc', has_more: true }
-    const fetchFn = vi.fn().mockResolvedValueOnce(response)
-
-    const result = await fetchPage(fetchFn)
-
-    expect(result).toEqual(response)
-    expect(fetchFn).toHaveBeenCalledWith(undefined, 100)
-  })
-
-  it('should pass cursor and pageSize to fetchFn', async () => {
-    const response = { results: [3], next_cursor: null, has_more: false }
-    const fetchFn = vi.fn().mockResolvedValueOnce(response)
-
-    const result = await fetchPage(fetchFn, 'my-cursor', 25)
-
-    expect(result).toEqual(response)
-    expect(fetchFn).toHaveBeenCalledWith('my-cursor', 25)
-  })
-})
-
-describe('createCursorHandler', () => {
-  it('should have null cursor and hasMore false initially', () => {
-    const handler = createCursorHandler()
-
-    expect(handler.getCursor()).toBeNull()
-    expect(handler.hasMore()).toBe(false)
-  })
-
-  it('should return the cursor after setCursor', () => {
-    const handler = createCursorHandler()
-
-    handler.setCursor('page-2')
-
-    expect(handler.getCursor()).toBe('page-2')
-  })
-
-  it('should return hasMore true when cursor is set', () => {
-    const handler = createCursorHandler()
-
-    handler.setCursor('next')
-
-    expect(handler.hasMore()).toBe(true)
-  })
-
-  it('should clear cursor on reset', () => {
-    const handler = createCursorHandler()
-    handler.setCursor('some-cursor')
-
-    handler.reset()
-
-    expect(handler.getCursor()).toBeNull()
-    expect(handler.hasMore()).toBe(false)
   })
 })
 

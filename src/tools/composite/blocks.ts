@@ -95,17 +95,31 @@ export async function blocks(notion: Client, input: BlocksInput): Promise<any> {
             'heading_3',
             'bulleted_list_item',
             'numbered_list_item',
-            'quote'
+            'quote',
+            'to_do',
+            'code'
           ].includes(blockType)
         ) {
-          updatePayload[blockType] = {
-            rich_text: (newContent as any)[blockType]?.rich_text || []
+          if (blockType === 'to_do') {
+            updatePayload.to_do = {
+              rich_text: (newContent as any).to_do?.rich_text || [],
+              checked: (newContent as any).to_do?.checked ?? block.to_do?.checked ?? false
+            }
+          } else if (blockType === 'code') {
+            updatePayload.code = {
+              rich_text: (newContent as any).code?.rich_text || [],
+              language: (newContent as any).code?.language || block.code?.language || 'plain text'
+            }
+          } else {
+            updatePayload[blockType] = {
+              rich_text: (newContent as any)[blockType]?.rich_text || []
+            }
           }
         } else {
           throw new NotionMCPError(
             `Block type '${blockType}' cannot be updated`,
             'VALIDATION_ERROR',
-            'Only text blocks can be updated'
+            'Only text-based blocks (paragraph, headings, lists, quote, to_do, code) can be updated'
           )
         }
 
