@@ -5,7 +5,6 @@ import { contentConvert } from './content'
 // We do not mock dependencies because we cannot reliably mock ESM imports in this environment without vitest runner.
 
 describe('contentConvert', () => {
-
   describe('markdown-to-blocks', () => {
     it('should convert markdown string to blocks', async () => {
       const input = 'Hello'
@@ -33,17 +32,28 @@ describe('contentConvert', () => {
 
   describe('blocks-to-markdown', () => {
     it('should convert blocks array to markdown string', async () => {
-      const inputBlocks = [{
-        object: 'block',
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{
-            type: 'text',
-            text: { content: 'Hello' },
-            annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: 'default' }
-          }]
+      const inputBlocks = [
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                type: 'text',
+                text: { content: 'Hello' },
+                annotations: {
+                  bold: false,
+                  italic: false,
+                  strikethrough: false,
+                  underline: false,
+                  code: false,
+                  color: 'default'
+                }
+              }
+            ]
+          }
         }
-      }]
+      ]
 
       const result = await contentConvert({
         direction: 'blocks-to-markdown',
@@ -56,17 +66,28 @@ describe('contentConvert', () => {
     })
 
     it('should parse JSON string and convert to markdown', async () => {
-      const inputBlocks = [{
-        object: 'block',
-        type: 'paragraph',
-        paragraph: {
-          rich_text: [{
-            type: 'text',
-            text: { content: 'Parsed JSON' },
-            annotations: { bold: false, italic: false, strikethrough: false, underline: false, code: false, color: 'default' }
-          }]
+      const inputBlocks = [
+        {
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [
+              {
+                type: 'text',
+                text: { content: 'Parsed JSON' },
+                annotations: {
+                  bold: false,
+                  italic: false,
+                  strikethrough: false,
+                  underline: false,
+                  code: false,
+                  color: 'default'
+                }
+              }
+            ]
+          }
         }
-      }]
+      ]
       const jsonContent = JSON.stringify(inputBlocks)
 
       const result = await contentConvert({
