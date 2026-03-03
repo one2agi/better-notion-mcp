@@ -336,9 +336,15 @@ async function queryDatabase(notion: Client, input: DatabasesInput): Promise<Que
       data_source_id: dataSourceId
     })
 
-    const textProps = Object.entries(dataSource.properties || {})
-      .filter(([_, prop]: [string, any]) => ['title', 'rich_text'].includes(prop.type))
-      .map(([name]) => name)
+    const textProps = []
+    if (dataSource.properties) {
+      for (const name of Object.keys(dataSource.properties)) {
+        const prop = (dataSource.properties as any)[name]
+        if (['title', 'rich_text'].includes(prop.type)) {
+          textProps.push(name)
+        }
+      }
+    }
 
     if (textProps.length > 0) {
       filter = {
