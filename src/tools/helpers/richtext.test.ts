@@ -402,3 +402,14 @@ describe('truncate', () => {
     expect(result[0].text.content).toBe('a...')
   })
 })
+
+it('should handle maxLength smaller than ellipsis length', () => {
+  const items = [RichText.text('abcdef')]
+  const result1 = RichText.truncate(items, 1)
+  expect(result1[0].text.content).toBe('a')
+  expect(result1[0].text.content.length).toBe(1)
+
+  const result2 = RichText.truncate(items, 2)
+  expect(result2[0].text.content).toBe('ab')
+  expect(result2[0].text.content.length).toBe(2)
+})

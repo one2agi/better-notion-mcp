@@ -188,6 +188,10 @@ export function truncate(richText: RichTextItem[], maxLength: number): RichTextI
     return richText
   }
 
+  if (maxLength < 3) {
+    return [text(plainText.slice(0, maxLength))]
+  }
+
   const truncated = `${plainText.slice(0, maxLength - 3)}...`
   return [text(truncated)]
 }
