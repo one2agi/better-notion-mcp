@@ -8,6 +8,10 @@ import type { Client } from '@notionhq/client'
 import { NotionMCPError, withErrorHandling } from '../helpers/errors.js'
 import { autoPaginate } from '../helpers/pagination.js'
 
+// Maximum file size per request (10MB) to prevent OOM
+const MAX_FILE_SIZE_MB = 10
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
 export interface FileUploadsInput {
   action: 'create' | 'send' | 'complete' | 'retrieve' | 'list'
 
@@ -118,6 +122,16 @@ async function sendFileUpload(notion: Client, input: FileUploadsInput): Promise<
       'file_content is required for send action',
       'VALIDATION_ERROR',
       'Provide base64-encoded file content'
+    )
+  }
+
+  // Check file size before processing to prevent OOM
+  const approximateSize = (input.file_content.length * 3) / 4
+  if (approximateSize > MAX_FILE_SIZE_BYTES) {
+    throw new NotionMCPError(
+      `File content exceeds maximum size of ${MAX_FILE_SIZE_MB}MB per request.`,
+      'VALIDATION_ERROR',
+      "Split the file into smaller parts and use the 'part_number' parameter for multi-part upload."
     )
   }
 
