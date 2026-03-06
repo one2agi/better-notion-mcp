@@ -8,7 +8,7 @@
     "ai-agent",
     "composite-tools"
   ],
-  "version": "2.11.0",
+  "version": "2.12.0",
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.2.21",
