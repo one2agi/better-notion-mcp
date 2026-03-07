@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { MockClient } = vi.hoisted(() => ({
-  MockClient: vi.fn()
-}))
-
 // Mock all composite tools
 vi.mock('./composite/pages.js', () => ({ pages: vi.fn() }))
 vi.mock('./composite/databases.js', () => ({ databases: vi.fn() }))
@@ -17,11 +13,6 @@ vi.mock('./composite/file-uploads.js', () => ({ fileUploads: vi.fn() }))
 // Mock node:fs
 vi.mock('node:fs', () => ({
   readFileSync: vi.fn().mockReturnValue('# Mock documentation content')
-}))
-
-// Mock @notionhq/client
-vi.mock('@notionhq/client', () => ({
-  Client: MockClient
 }))
 
 import { readFileSync } from 'node:fs'
@@ -80,11 +71,13 @@ function createMockServer() {
 
 describe('registerTools', () => {
   let server: ReturnType<typeof createMockServer>
+  const mockNotionClient = {} as any
+  const mockClientFactory = vi.fn(() => mockNotionClient)
 
   beforeEach(() => {
     vi.clearAllMocks()
     server = createMockServer()
-    registerTools(server as any, 'test-notion-token')
+    registerTools(server as any, mockClientFactory)
   })
 
   describe('registration', () => {
@@ -92,11 +85,8 @@ describe('registerTools', () => {
       expect(server.setRequestHandler).toHaveBeenCalledTimes(4)
     })
 
-    it('should create Notion client with correct config', () => {
-      expect(MockClient).toHaveBeenCalledWith({
-        auth: 'test-notion-token',
-        notionVersion: '2025-09-03'
-      })
+    it('should not call client factory at registration time', () => {
+      expect(mockClientFactory).not.toHaveBeenCalled()
     })
   })
 

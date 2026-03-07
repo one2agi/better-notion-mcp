@@ -13,7 +13,7 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema
 } from '@modelcontextprotocol/sdk/types.js'
-import { Client } from '@notionhq/client'
+import type { Client } from '@notionhq/client'
 
 // Import mega tools
 import { blocks } from './composite/blocks.js'
@@ -345,12 +345,10 @@ const TOOLS = [
 
 /**
  * Register all tools with MCP server
+ * @param notionClientFactory - Returns a Notion Client.
+ *   Called per tool invocation to support both singleton (stdio) and per-request (HTTP) patterns.
  */
-export function registerTools(server: Server, notionToken: string) {
-  const notion = new Client({
-    auth: notionToken,
-    notionVersion: '2025-09-03' // Use latest API version with data_sources support
-  })
+export function registerTools(server: Server, notionClientFactory: () => Client) {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS
@@ -400,6 +398,7 @@ export function registerTools(server: Server, notionToken: string) {
 
     try {
       let result
+      const notion = notionClientFactory()
 
       switch (name) {
         case 'pages':
