@@ -44,6 +44,8 @@ RUN ln -s /usr/local/lib/node_modules/@n24q02m/better-notion-mcp/bin/cli.mjs /us
 
 # Set default environment variables
 ENV NODE_ENV=production
+# TRANSPORT_MODE: "stdio" (default) or "http" (remote + OAuth)
+EXPOSE 8080
 
 # Run as non-root user for security
 USER node

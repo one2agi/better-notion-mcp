@@ -8,7 +8,7 @@ Better Notion MCP acts as a proxy between MCP clients (Claude, Cursor, etc.) and
 
 ## OAuth Mode (Remote Server)
 
-When using the remote server at `notion-mcp.n24q02m.com`:
+When using the remote server at `better-notion-mcp.n24q02m.com`:
 
 - **Authentication**: Uses Notion OAuth 2.0. Your Notion access token is used only for the duration of each request and is never stored on disk.
 - **No database**: The server is stateless. No user data, tokens, or session information is persisted between requests.

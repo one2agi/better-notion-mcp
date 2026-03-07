@@ -220,6 +220,62 @@ jobs:
           short-description: ${{ github.event.repository.description }}
 
   # ============================================================================
+  # Deploy to Google Cloud Run
+  # ============================================================================
+  deploy-gcloud-run:
+    name: Deploy to Cloud Run
+    needs: [release, merge-docker]
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@58077d3c7e43986b6b15fba718e8ea69e387dfcc # v2
+        with:
+          egress-policy: audit
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@77e7a554d41e2ee56fc945c52dfd3f33d12def9a # v2
+
+      - name: Push image to Artifact Registry
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          GCP_REGION: ${{ secrets.GCP_REGION }}
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          AR_IMAGE="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT_ID}/better-notion-mcp/server"
+          gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+          docker pull "ghcr.io/${{ github.repository }}:${VERSION}"
+          docker tag "ghcr.io/${{ github.repository }}:${VERSION}" "${AR_IMAGE}:${VERSION}"
+          docker push "${AR_IMAGE}:${VERSION}"
+
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@e72a01bee26bb03b0d8b8c39bb2ec41d0ab0e8c7 # v2
+        with:
+          service: ${{ needs.release.outputs.is_prerelease == 'true' && 'better-notion-mcp-staging' || 'better-notion-mcp' }}
+          region: ${{ secrets.GCP_REGION }}
+          image: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/better-notion-mcp/server:${{ needs.release.outputs.version }}
+
+      - name: Healthcheck
+        run: |
+          if [ "${{ needs.release.outputs.is_prerelease }}" = "true" ]; then
+            URL="https://better-notion-mcp-staging.n24q02m.com"
+          else
+            URL="https://better-notion-mcp.n24q02m.com"
+          fi
+          sleep 15
+          curl -sf "${URL}/health" | python3 -m json.tool
+
+  # ============================================================================
   # Publish to MCP Registry
   # ============================================================================
   publish-mcp-registry:
