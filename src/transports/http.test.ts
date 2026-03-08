@@ -131,7 +131,13 @@ describe('startHttp', () => {
     expect(app.get).toHaveBeenCalledWith('/health', expect.any(Function))
 
     // MCP endpoints registered (POST with rateLimit + jsonParser + authMiddleware, GET/DELETE with rateLimit + authMiddleware)
-    expect(app.post).toHaveBeenCalledWith('/mcp', expect.anything(), expect.anything(), expect.anything(), expect.any(Function))
+    expect(app.post).toHaveBeenCalledWith(
+      '/mcp',
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+      expect.any(Function)
+    )
     expect(app.get).toHaveBeenCalledWith('/mcp', expect.anything(), expect.anything(), expect.any(Function))
     expect(app.delete).toHaveBeenCalledWith('/mcp', expect.anything(), expect.anything(), expect.any(Function))
 
