@@ -266,12 +266,11 @@ jobs:
           image: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/better-notion-mcp/server:${{ needs.release.outputs.version }}
 
       - name: Healthcheck
+        env:
+          GCP_REGION: ${{ secrets.GCP_REGION }}
         run: |
-          if [ "${{ needs.release.outputs.is_prerelease }}" = "true" ]; then
-            URL="https://better-notion-mcp-staging.n24q02m.com"
-          else
-            URL="https://better-notion-mcp.n24q02m.com"
-          fi
+          SERVICE=${{ needs.release.outputs.is_prerelease == 'true' && 'better-notion-mcp-staging' || 'better-notion-mcp' }}
+          URL=$(gcloud run services describe "$SERVICE" --region="$GCP_REGION" --format='value(status.url)')
           sleep 15
           curl -sf "${URL}/health" | python3 -m json.tool
 
