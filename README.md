@@ -41,7 +41,7 @@ Connect directly via URL with OAuth authentication. Your MCP client handles the 
 {
   "mcpServers": {
     "better-notion": {
-      "type": "streamable-http",
+      "type": "http",
       "url": "https://better-notion-mcp.n24q02m.com/mcp"
     }
   }

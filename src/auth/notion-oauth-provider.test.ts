@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NotionOAuthConfig } from './notion-oauth-provider.js'
 import { createNotionOAuthProvider } from './notion-oauth-provider.js'
 
@@ -27,6 +27,14 @@ vi.mock('@notionhq/client', () => ({
 }))
 
 describe('createNotionOAuthProvider', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('should return provider and relay stores', () => {
     const result = createNotionOAuthProvider(TEST_CONFIG)
     expect(result.provider).toBeDefined()
@@ -48,10 +56,12 @@ describe('createNotionOAuthProvider', () => {
   })
 
   describe('verifyAccessToken', () => {
-    it('should return AuthInfo for a valid Notion token', async () => {
-      const { provider } = createNotionOAuthProvider(TEST_CONFIG)
-      const result = await provider.verifyAccessToken('valid-token')
+    it('should return AuthInfo via opaque token lookup', async () => {
+      const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
+      authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
+      const tokens = await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
 
+      const result = await provider.verifyAccessToken(tokens.access_token)
       expect(result.token).toBe('valid-token')
       expect(result.clientId).toBe(TEST_CONFIG.notionClientId)
       expect(result.scopes).toEqual(['notion:read', 'notion:write'])
@@ -59,9 +69,76 @@ describe('createNotionOAuthProvider', () => {
       expect(result.extra).toEqual({ userId: 'user-123', userName: 'Test User' })
     })
 
-    it('should throw InvalidTokenError for an invalid Notion token', async () => {
+    it('should resolve external tokens via grace period fallback and bind them', async () => {
+      const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
+
+      authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
+      await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
+
+      // Within grace period — should resolve and bind
+      const result = await provider.verifyAccessToken('sk-ant-oat01-some-random-token')
+      expect(result.token).toBe('valid-token')
+
+      // Same token should work again (bound)
+      const result2 = await provider.verifyAccessToken('sk-ant-oat01-some-random-token')
+      expect(result2.token).toBe('valid-token')
+    })
+
+    it('should reject unknown tokens after grace period expires', async () => {
+      const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
+
+      authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
+      await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
+
+      // Advance past the 2-minute grace period
+      vi.advanceTimersByTime(3 * 60 * 1000)
+
+      // New unknown token should be rejected
+      await expect(provider.verifyAccessToken('sk-ant-attacker-token')).rejects.toThrow('No Notion token found')
+    })
+
+    it('should still accept bound tokens after grace period', async () => {
+      const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
+
+      authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
+      await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
+
+      // Bind during grace period
+      await provider.verifyAccessToken('sk-ant-legit-token')
+
+      // Advance past grace period
+      vi.advanceTimersByTime(3 * 60 * 1000)
+
+      // Bound token still works
+      const result = await provider.verifyAccessToken('sk-ant-legit-token')
+      expect(result.token).toBe('valid-token')
+    })
+
+    it('should use verification cache on subsequent calls', async () => {
+      const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
+      authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
+      const tokens = await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
+
+      // First call hits Notion API
+      const r1 = await provider.verifyAccessToken(tokens.access_token)
+      expect(r1.token).toBe('valid-token')
+
+      // Second call should use cache (no Notion API call)
+      const r2 = await provider.verifyAccessToken(tokens.access_token)
+      expect(r2.token).toBe('valid-token')
+    })
+
+    it('should throw when no Notion token is stored', async () => {
       const { provider } = createNotionOAuthProvider(TEST_CONFIG)
-      await expect(provider.verifyAccessToken('invalid-token')).rejects.toThrow('Invalid or expired Notion token')
+      await expect(provider.verifyAccessToken('sk-ant-unknown')).rejects.toThrow('No Notion token found')
+    })
+
+    it('should throw for invalid Notion token', async () => {
+      const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
+      authCodes.set('code-1', { notionAccessToken: 'expired-notion-token', createdAt: Date.now() })
+      await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
+
+      await expect(provider.verifyAccessToken('any-bearer-token')).rejects.toThrow('Invalid or expired Notion token')
     })
   })
 
@@ -96,10 +173,9 @@ describe('createNotionOAuthProvider', () => {
   })
 
   describe('exchangeAuthorizationCode', () => {
-    it('should return stored token for a valid auth code', async () => {
+    it('should issue opaque token and store Notion token server-side', async () => {
       const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
 
-      // Simulate a stored auth code
       authCodes.set('test-code', {
         notionAccessToken: 'notion-token-123',
         createdAt: Date.now()
@@ -110,8 +186,11 @@ describe('createNotionOAuthProvider', () => {
         'test-code'
       )
 
-      expect(result.access_token).toBe('notion-token-123')
+      // Should return opaque token, NOT the Notion token
+      expect(result.access_token).not.toBe('notion-token-123')
+      expect(result.access_token).toHaveLength(96) // 48 bytes hex
       expect(result.token_type).toBe('bearer')
+      expect(result.expires_in).toBe(86400)
       // Code should be consumed (deleted)
       expect(authCodes.has('test-code')).toBe(false)
     })
