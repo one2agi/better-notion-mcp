@@ -9,7 +9,7 @@ const NOTION_TOKEN_URL = 'https://api.notion.com/v1/oauth/token'
 const AUTH_CODE_TTL = 10 * 60 * 1000 // 10 minutes
 const PENDING_AUTH_TTL = 10 * 60 * 1000 // 10 minutes
 const NOTION_TOKEN_TTL = 24 * 60 * 60 * 1000 // 24 hours
-const BIND_GRACE_PERIOD = 2 * 60 * 1000 // 2 minutes after OAuth to bind unknown tokens
+const PENDING_BIND_TTL = 2 * 60 * 1000 // 2 minutes to claim a pending bind after OAuth
 const VERIFY_CACHE_TTL = 5 * 60 * 1000 // 5 minutes cache for token verification
 
 export interface NotionOAuthConfig {
@@ -70,14 +70,14 @@ export function createNotionOAuthProvider(config: NotionOAuthConfig) {
 
   // Server-side Notion token store — keyed by our opaque access token
   const notionTokens = new Map<string, StoredNotionToken>()
-  // Fallback: keyed by client_id (for clients that use their own identity token)
-  const notionTokensByClient = new Map<string, StoredNotionToken>()
-  // Bound external tokens — maps bearer token → Notion token (after first successful resolution)
+  // Bound external tokens — maps bearer token → Notion token (one-shot bind per OAuth)
   const boundTokens = new Map<string, StoredNotionToken>()
   // Verification cache — avoids calling Notion API on every request
   const verifyCache = new Map<string, { expiresAt: number; userId: string; userName: string | null }>()
-  // Timestamp of last successful OAuth completion (for grace period)
-  let lastOAuthCompletionTime = 0
+  // Pending bind slots — one-shot: consumed on first use, keyed by client_id.
+  // When a client completes OAuth, a pending bind is created. The first unknown bearer token
+  // that claims it gets bound. This prevents cross-user token leaks on shared instances.
+  const pendingBinds = new Map<string, { notionToken: StoredNotionToken; expiresAt: number }>()
 
   /** Resolve a bearer token to a Notion access token */
   function resolveNotionToken(bearerToken: string): string | undefined {
@@ -92,19 +92,19 @@ export function createNotionOAuthProvider(config: NotionOAuthConfig) {
     const bound = boundTokens.get(bearerToken)
     if (bound) return bound.notionAccessToken
 
-    // 4. Grace period fallback — only within BIND_GRACE_PERIOD after OAuth completion.
-    // This allows MCP clients that use their own identity tokens to bind on first connect.
-    // After binding, only that specific token works (no open fallback).
-    if (Date.now() - lastOAuthCompletionTime > BIND_GRACE_PERIOD) return undefined
-
-    let latest: StoredNotionToken | undefined
-    for (const stored of notionTokensByClient.values()) {
-      if (!latest || stored.createdAt > latest.createdAt) latest = stored
-    }
-    if (latest) {
-      // Bind this token so future requests use direct lookup (step 3)
-      boundTokens.set(bearerToken, latest)
-      return latest.notionAccessToken
+    // 4. One-shot pending bind — claim the first available unexpired slot.
+    // This is consumed immediately (one token per OAuth flow) to prevent
+    // cross-user leaks. Only the first unknown token to arrive claims the bind.
+    const now = Date.now()
+    for (const [clientId, pending] of pendingBinds) {
+      if (now > pending.expiresAt) {
+        pendingBinds.delete(clientId)
+        continue
+      }
+      // Consume the pending bind — one-shot, no other token can claim this
+      pendingBinds.delete(clientId)
+      boundTokens.set(bearerToken, pending.notionToken)
+      return pending.notionToken.notionAccessToken
     }
     return undefined
   }
@@ -220,8 +220,14 @@ export function createNotionOAuthProvider(config: NotionOAuthConfig) {
     }
 
     notionTokens.set(opaqueToken, entry)
-    notionTokensByClient.set(client.client_id, entry)
-    lastOAuthCompletionTime = Date.now()
+
+    // Create a one-shot pending bind for clients that use their own identity tokens
+    // (e.g., Claude Code sends sk-ant-* instead of our opaque token).
+    // The first unknown bearer token to arrive within PENDING_BIND_TTL claims this bind.
+    pendingBinds.set(client.client_id, {
+      notionToken: entry,
+      expiresAt: Date.now() + PENDING_BIND_TTL
+    })
 
     return {
       access_token: opaqueToken,
@@ -259,7 +265,10 @@ export function createNotionOAuthProvider(config: NotionOAuthConfig) {
       createdAt: Date.now()
     }
     notionTokens.set(opaqueToken, entry)
-    notionTokensByClient.set(client.client_id, entry)
+    pendingBinds.set(client.client_id, {
+      notionToken: entry,
+      expiresAt: Date.now() + PENDING_BIND_TTL
+    })
 
     return {
       access_token: opaqueToken,
@@ -280,8 +289,8 @@ export function createNotionOAuthProvider(config: NotionOAuthConfig) {
     for (const [key, val] of notionTokens) {
       if (now - val.createdAt > NOTION_TOKEN_TTL) notionTokens.delete(key)
     }
-    for (const [key, val] of notionTokensByClient) {
-      if (now - val.createdAt > NOTION_TOKEN_TTL) notionTokensByClient.delete(key)
+    for (const [key, val] of pendingBinds) {
+      if (now > val.expiresAt) pendingBinds.delete(key)
     }
     for (const [key, val] of boundTokens) {
       if (now - val.createdAt > NOTION_TOKEN_TTL) boundTokens.delete(key)

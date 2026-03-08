@@ -69,47 +69,60 @@ describe('createNotionOAuthProvider', () => {
       expect(result.extra).toEqual({ userId: 'user-123', userName: 'Test User' })
     })
 
-    it('should resolve external tokens via grace period fallback and bind them', async () => {
+    it('should resolve external tokens via one-shot pending bind', async () => {
       const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
 
       authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
       await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
 
-      // Within grace period — should resolve and bind
-      const result = await provider.verifyAccessToken('sk-ant-oat01-some-random-token')
+      // First unknown token claims the pending bind
+      const result = await provider.verifyAccessToken('sk-ant-oat01-legit-client')
       expect(result.token).toBe('valid-token')
 
-      // Same token should work again (bound)
-      const result2 = await provider.verifyAccessToken('sk-ant-oat01-some-random-token')
+      // Same token works again (now bound)
+      const result2 = await provider.verifyAccessToken('sk-ant-oat01-legit-client')
       expect(result2.token).toBe('valid-token')
     })
 
-    it('should reject unknown tokens after grace period expires', async () => {
+    it('should reject a SECOND unknown token after bind is consumed (one-shot)', async () => {
       const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
 
       authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
       await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
 
-      // Advance past the 2-minute grace period
-      vi.advanceTimersByTime(3 * 60 * 1000)
+      // First token claims the bind
+      await provider.verifyAccessToken('sk-ant-oat01-legit-client')
 
-      // New unknown token should be rejected
+      // Second DIFFERENT token should be rejected — bind is consumed
       await expect(provider.verifyAccessToken('sk-ant-attacker-token')).rejects.toThrow('No Notion token found')
     })
 
-    it('should still accept bound tokens after grace period', async () => {
+    it('should reject unknown tokens after pending bind expires', async () => {
       const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
 
       authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
       await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
 
-      // Bind during grace period
-      await provider.verifyAccessToken('sk-ant-legit-token')
-
-      // Advance past grace period
+      // Advance past the 2-minute pending bind TTL
       vi.advanceTimersByTime(3 * 60 * 1000)
 
-      // Bound token still works
+      // Unknown token should be rejected — pending bind expired
+      await expect(provider.verifyAccessToken('sk-ant-late-token')).rejects.toThrow('No Notion token found')
+    })
+
+    it('should still accept bound tokens after pending bind expires', async () => {
+      const { provider, authCodes } = createNotionOAuthProvider(TEST_CONFIG)
+
+      authCodes.set('code-1', { notionAccessToken: 'valid-token', createdAt: Date.now() })
+      await provider.exchangeAuthorizationCode({ client_id: 'c1', client_secret: 's1' } as any, 'code-1')
+
+      // Bind during pending period
+      await provider.verifyAccessToken('sk-ant-legit-token')
+
+      // Advance past pending bind TTL
+      vi.advanceTimersByTime(3 * 60 * 1000)
+
+      // Already-bound token still works
       const result = await provider.verifyAccessToken('sk-ant-legit-token')
       expect(result.token).toBe('valid-token')
     })
