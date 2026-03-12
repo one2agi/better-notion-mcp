@@ -14,6 +14,10 @@
 [![semantic-release](https://img.shields.io/badge/semantic--release-e10079?logo=semantic-release&logoColor=white)](https://github.com/python-semantic-release/python-semantic-release)
 [![Renovate](https://img.shields.io/badge/renovate-enabled-1A1F6C?logo=renovatebot&logoColor=white)](https://developer.mend.io/)
 
+<a href="https://glama.ai/mcp/servers/n24q02m/better-notion-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/n24q02m/better-notion-mcp/badge" alt="Better Notion MCP server" />
+</a>
+
 ## Why "Better"?
 
 **9 composite tools** that consolidate Notion's 28+ REST API endpoints into action-based operations optimized for AI agents.
