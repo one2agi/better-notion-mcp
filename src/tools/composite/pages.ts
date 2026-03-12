@@ -535,11 +535,28 @@ async function duplicatePage(notion: Client, input: PagesInput): Promise<Duplica
         cover: originalPage.cover
       })
 
-      // Copy content
+      // Copy content — strip read-only fields that the create endpoint rejects
       if (originalBlocks.length > 0) {
+        const sanitizedBlocks = originalBlocks.map((block: any) => {
+          const {
+            id,
+            parent,
+            created_time,
+            last_edited_time,
+            created_by,
+            last_edited_by,
+            has_children,
+            archived,
+            in_trash,
+            request_id,
+            object,
+            ...rest
+          } = block
+          return rest
+        })
         await notion.blocks.children.append({
           block_id: duplicatedPage.id,
-          children: originalBlocks as any
+          children: sanitizedBlocks as any
         })
       }
 
