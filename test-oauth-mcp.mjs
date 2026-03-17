@@ -112,8 +112,9 @@ const authCode = await new Promise((resolve, reject) => {
       const error = url.searchParams.get('error')
 
       if (error) {
+        const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
         res.writeHead(200, { 'Content-Type': 'text/html' })
-        res.end(`<h2>Authorization Failed</h2><p>${error}: ${url.searchParams.get('error_description')}</p>`)
+        res.end(`<h2>Authorization Failed</h2><p>${esc(error)}: ${esc(url.searchParams.get('error_description'))}</p>`)
         clearTimeout(timeout)
         server.close()
         reject(new Error(`OAuth error: ${error}`))
