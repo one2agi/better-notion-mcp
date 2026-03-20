@@ -140,13 +140,26 @@ function handleNotionError(error: any): NotionMCPError {
         'Check the ID is correct. For databases: use the database container ID (from URL), not the data_source ID (from search). If you got this ID from workspace search, try databases/get first to resolve the correct ID.'
       )
 
-    case 'validation_error':
+    case 'validation_error': {
+      const bodyMessage: string = error.body?.message || ''
+      let suggestion = 'Check the API documentation for valid parameter formats'
+
+      // Detect common property format mistakes and provide specific guidance
+      if (bodyMessage.includes('rich_text') || bodyMessage.includes('title')) {
+        suggestion =
+          'Property format error. For database page properties, use simple values: {"Name": "text", "Status": "value", "Tags": ["a","b"], "Count": 42, "Done": true, "Due": "2025-01-15"}. The server auto-converts to Notion format.'
+      } else if (bodyMessage.includes('property')) {
+        suggestion =
+          'Property name or type mismatch. Use databases(action="get") to check the schema, then match property names exactly (case-sensitive).'
+      }
+
       return new NotionMCPError(
-        error.body?.message || 'Invalid request parameters',
+        bodyMessage || 'Invalid request parameters',
         'VALIDATION_ERROR',
-        'Check the API documentation for valid parameter formats',
+        suggestion,
         sanitizeValidationBody(error.body)
       )
+    }
 
     case 'rate_limited':
       return new NotionMCPError(

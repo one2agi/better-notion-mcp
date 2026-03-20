@@ -53,12 +53,18 @@ const RESOURCES = [
 /**
  * 9 Tools covering ~95% of Official Notion API
  * Compressed descriptions for token optimization (~77% reduction)
+ *
+ * Decision tree for LLMs:
+ * - `pages` = page CRUD (create/read/update/archive standalone pages or database rows)
+ * - `databases` = DB schema, query rows, bulk row CRUD
+ * - `blocks` = content *within* a page (paragraphs, headings, lists, tables)
+ * - `workspace` = search across workspace, get workspace info
  */
 const TOOLS = [
   {
     name: 'pages',
     description:
-      'Page lifecycle: create, get, get_property, update, move, archive, restore, duplicate. Requires parent_id for create. Returns markdown content for get. Images appear as ![caption](signed-url) — fetch the URL to view image content. Files appear as link blocks with signed download URLs (expire in 1h).',
+      'Page CRUD: create, get, get_property, update, move, archive, restore, duplicate. Use `pages` for individual page operations. Use `databases` instead for querying/bulk row operations. Requires parent_id for create. Returns markdown content for get. Images appear as ![caption](signed-url) — fetch the URL to view image content. Files appear as link blocks with signed download URLs (expire in 1h). Property format for database pages: simple values auto-convert — string for title/rich_text/select/status, number for number, boolean for checkbox, string[] for multi_select, ISO date string for date (e.g. "2025-01-15"), full URL for url. Example: properties: {"Name": "My Page", "Status": "In Progress", "Priority": "High", "Tags": ["tag1", "tag2"], "Due": "2025-06-01", "Count": 42, "Done": true}.',
     annotations: {
       title: 'Pages',
       readOnlyHint: false,
@@ -80,7 +86,11 @@ const TOOLS = [
         content: { type: 'string', description: 'Markdown content' },
         append_content: { type: 'string', description: 'Markdown to append' },
         parent_id: { type: 'string', description: 'Parent page or database ID' },
-        properties: { type: 'object', description: 'Page properties (for database pages)' },
+        properties: {
+          type: 'object',
+          description:
+            'Page properties (for database pages). Use simple values — auto-converted to Notion format. String: title/rich_text/select/status. Number: number. Boolean: checkbox. String[]: multi_select. ISO date string: date. Object with Notion structure: pass through as-is.'
+        },
         property_id: { type: 'string', description: 'Property ID (for get_property action)' },
         icon: {
           type: 'string',
@@ -100,7 +110,7 @@ const TOOLS = [
   {
     name: 'databases',
     description:
-      'Database operations: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database, list_templates. Accepts both database_id (from URL) and data_source_id (from workspace search) — auto-resolved. Databases contain data sources with schema and rows.',
+      'Database schema and bulk row operations: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database, list_templates. Use `databases` for DB schema/query/bulk ops. Use `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) — auto-resolved. Property schema types for create: title, rich_text, number, select, multi_select, date, checkbox, url, email, phone_number, status, relation, formula, rollup.',
     annotations: {
       title: 'Databases',
       readOnlyHint: false,
@@ -163,7 +173,7 @@ const TOOLS = [
   {
     name: 'blocks',
     description:
-      'Block-level content: get, children, append, update, delete. Page IDs are valid block IDs. update only works on text blocks (paragraph, headings, lists, quote, to_do, code). Supports tables, toggles, callouts, images, equations via markdown. Image/file blocks contain signed URLs (1h expiry) — to read image content, fetch the URL and view it; to read documents (PDF/DOCX), download via the URL.',
+      'Block-level content within pages: get, children, append, update, delete. Use `blocks` to read or modify content inside a page. Use `pages` instead for page metadata/properties. Page IDs are valid block IDs. update only works on text blocks (paragraph, headings, lists, quote, to_do, code). Content is markdown: supports tables, toggles, callouts, images, equations. Image/file blocks contain signed URLs (1h expiry) — to read image content, fetch the URL and view it; to read documents (PDF/DOCX), download via the URL.',
     annotations: {
       title: 'Blocks',
       readOnlyHint: false,
@@ -276,7 +286,7 @@ const TOOLS = [
   },
   {
     name: 'content_convert',
-    description: 'Convert: markdown-to-blocks, blocks-to-markdown. Most tools handle markdown automatically.',
+    description: 'Convert between markdown and Notion block JSON. Directions: markdown-to-blocks (input: markdown string), blocks-to-markdown (input: JSON array of Notion blocks or JSON string). Most tools (pages, blocks) handle markdown automatically — use this only for preview/validation. Supported markdown: headings, lists, to-do, code blocks, blockquotes, dividers, callouts (> [!NOTE]), toggles (<details>), tables, images, bookmarks, embeds, equations ($$), columns (:::columns), [toc], [breadcrumb]. Inline: **bold**, *italic*, `code`, ~~strike~~, [link](url).',
     annotations: {
       title: 'Content Convert',
       readOnlyHint: true,
