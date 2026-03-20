@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[better-notion-mcp] Notion API ready. Tools: pages, databases, blocks, comments, users, workspace, content_convert, file_uploads, help.'"
+          }
+        ]
+      }
+    ]
+  }
+}
