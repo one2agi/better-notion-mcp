@@ -1,36 +1,18 @@
 {
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "better-notion-mcp",
-  "display_name": "Better Notion MCP",
-  "description": "Comprehensive Notion API integration — 9 composite tools covering ~95% of Notion's API surface. Supports page CRUD, database schema/query, block content, comments, users, workspace search, content conversion, and file uploads.",
   "version": "2.19.2",
-  "author": {
+  "description": "Comprehensive Notion API integration — 9 composite tools covering ~95% of Notion API surface",
+  "owner": {
     "name": "n24q02m",
     "url": "https://github.com/n24q02m"
   },
-  "homepage": "https://github.com/n24q02m/better-notion-mcp",
-  "repository": "https://github.com/n24q02m/better-notion-mcp",
-  "license": "MIT",
-  "categories": ["productivity", "knowledge-management", "documentation"],
-  "keywords": ["notion", "knowledge-management", "documentation", "mcp", "claude-code", "ai-agent"],
-  "install": {
-    "command": "npx",
-    "args": ["-y", "@n24q02m/better-notion-mcp"],
-    "env": {
-      "NOTION_TOKEN": {
-        "description": "Notion integration token from https://www.notion.so/my-integrations",
-        "required": true
-      }
+  "plugins": [
+    {
+      "name": "better-notion-mcp",
+      "description": "Comprehensive Notion API integration — 9 composite tools covering ~95% of Notion API surface",
+      "source": "./",
+      "category": "productivity"
     }
-  },
-  "tools": [
-    "pages",
-    "databases",
-    "blocks",
-    "users",
-    "workspace",
-    "comments",
-    "content_convert",
-    "file_uploads",
-    "help"
   ]
 }

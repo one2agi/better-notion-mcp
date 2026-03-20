@@ -13,11 +13,7 @@
   "mcpServers": {
     "better-notion-mcp": {
       "command": "npx",
-      "args": ["-y", "@n24q02m/better-notion-mcp"],
-      "env": {
-        "NOTION_TOKEN": ""
-      }
+      "args": ["-y", "@n24q02m/better-notion-mcp"]
     }
-  },
-  "skills": "../.agents/skills/"
+  }
 }
