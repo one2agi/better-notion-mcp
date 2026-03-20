@@ -100,12 +100,20 @@ import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 
 ```
 src/
-  init-server.ts              # Server entry point, env validation
+  main.ts                     # Entry point — selects transport by TRANSPORT_MODE
+  init-server.ts              # Deprecated re-export of transports/stdio
+  create-server.ts            # Shared MCP Server factory
+  auth/                       # OAuth 2.1 + PKCE, DCR, session management
+    notion-oauth-provider.ts  # Notion OAuth callback relay + token storage
+    stateless-client-store.ts # Stateless HMAC-based DCR store
+  transports/
+    stdio.ts                  # Local mode (NOTION_TOKEN)
+    http.ts                   # Remote mode (Express + OAuth 2.1)
   docs/                       # Markdown docs served as MCP resources
   tools/
     registry.ts               # Tool registration + routing
-    composite/                 # One file per domain (pages, databases, blocks, etc.)
-    helpers/                   # errors, markdown, richtext, pagination, properties
+    composite/                # One file per domain (pages, databases, blocks, etc.)
+    helpers/                  # errors, markdown, richtext, pagination, properties, security
 ```
 
 ### Documentation
@@ -122,4 +130,4 @@ Conventional Commits: `type(scope): message`. Enforced via git hooks.
 
 1. `biome check --write` (lint + format)
 2. `tsc --noEmit` (type check)
-3. `bun test` (run tests)
+3. `bun run test` (run tests)
