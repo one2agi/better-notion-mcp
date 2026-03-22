@@ -9,20 +9,11 @@
   "homepage": "https://github.com/n24q02m/better-notion-mcp",
   "repository": "https://github.com/n24q02m/better-notion-mcp",
   "license": "MIT",
-  "keywords": [
-    "notion",
-    "knowledge-management",
-    "documentation",
-    "mcp",
-    "claude-code"
-  ],
+  "keywords": ["notion", "knowledge-management", "documentation", "mcp", "claude-code"],
   "mcpServers": {
     "better-notion-mcp": {
       "command": "npx",
-      "args": [
-        "-y",
-        "@n24q02m/better-notion-mcp"
-      ]
+      "args": ["-y", "@n24q02m/better-notion-mcp"]
     }
   }
 }
