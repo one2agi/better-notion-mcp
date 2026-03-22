@@ -93,7 +93,7 @@ Other runners: `bun x`, `pnpm dlx`, `yarn dlx` also work.
 }
 ```
 
-## Self-Hosting (Remote Mode)
+### Self-Hosting (Remote Mode)
 
 You can self-host the remote server with your own Notion OAuth app.
 
@@ -162,12 +162,13 @@ npm start
 ## Also by n24q02m
 
 | Server | Description |
-|:-------|:------------|
-| [wet-mcp](https://github.com/n24q02m/wet-mcp) | Web Extraction Tool -- search, extract, and process web content |
-| [mnemo-mcp](https://github.com/n24q02m/mnemo-mcp) | Memory and knowledge management for AI agents |
-| [better-email-mcp](https://github.com/n24q02m/better-email-mcp) | Email management via IMAP/SMTP |
-| [better-godot-mcp](https://github.com/n24q02m/better-godot-mcp) | Godot Engine game development for AI agents |
-| [better-telegram-mcp](https://github.com/n24q02m/better-telegram-mcp) | Telegram messaging and bot management |
+|--------|-------------|
+| [wet-mcp](https://github.com/n24q02m/wet-mcp) | Web search, content extraction, and documentation indexing |
+| [mnemo-mcp](https://github.com/n24q02m/mnemo-mcp) | Persistent AI memory with hybrid search and cross-machine sync |
+| [better-email-mcp](https://github.com/n24q02m/better-email-mcp) | Email (IMAP/SMTP) with multi-account and auto-discovery |
+| [better-godot-mcp](https://github.com/n24q02m/better-godot-mcp) | Godot Engine 4.x with 18 tools for scenes, scripts, and shaders |
+| [better-telegram-mcp](https://github.com/n24q02m/better-telegram-mcp) | Telegram dual-mode (Bot API + MTProto) with 6 composite tools |
+| [better-code-review-graph](https://github.com/n24q02m/better-code-review-graph) | Knowledge graph for token-efficient code reviews |
 
 ## Contributing
 
