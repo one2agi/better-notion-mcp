@@ -5,8 +5,8 @@
 
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Client } from '@notionhq/client'
-import { NotionMCPError } from '../tools/helpers/errors.js'
 import { createMCPServer } from '../create-server.js'
+import { NotionMCPError } from '../tools/helpers/errors.js'
 
 export async function startStdio() {
   const notionToken = process.env.NOTION_TOKEN
@@ -17,7 +17,9 @@ export async function startStdio() {
     const notion = new Client({ auth: notionToken, notionVersion: '2025-09-03' })
     notionClientFactory = () => notion
   } else {
-    console.error('Warning: NOTION_TOKEN not set. help and content_convert tools available; other tools will show setup instructions.')
+    console.error(
+      'Warning: NOTION_TOKEN not set. help and content_convert tools available; other tools will show setup instructions.'
+    )
     console.error('Get your token from https://www.notion.so/my-integrations')
     notionClientFactory = () => {
       throw new NotionMCPError(

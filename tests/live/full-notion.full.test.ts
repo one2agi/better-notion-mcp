@@ -453,23 +453,21 @@ describe.skipIf(!NOTION_TOKEN)('Stdio + NOTION_TOKEN — Real Notion API', () =>
   // -- Pages --
 
   describe('pages', () => {
-    it(
-      'create — should create a test parent page',
-      async () => {
-        // Search for a page to use as parent
-        const searchResult = await client.callTool({
-          name: 'workspace',
-          arguments: { action: 'search', limit: 1 }
-        })
-        const searchText = extractText(searchResult)
-        const searchParsed = safeParse(searchText)
-        const parentId = searchParsed.results?.[0]?.id
+    it('create — should create a test parent page', async () => {
+      // Search for a page to use as parent
+      const searchResult = await client.callTool({
+        name: 'workspace',
+        arguments: { action: 'search', limit: 1 }
+      })
+      const searchText = extractText(searchResult)
+      const searchParsed = safeParse(searchText)
+      const parentId = searchParsed.results?.[0]?.id
 
-        // If no accessible page, skip — integration needs at least one shared page
-        if (!parentId) {
-          console.warn('No accessible page found. Skipping page tests. Share a page with the integration.')
-          return
-        }
+      // If no accessible page, skip — integration needs at least one shared page
+      if (!parentId) {
+        console.warn('No accessible page found. Skipping page tests. Share a page with the integration.')
+        return
+      }
 
       const result = await client.callTool({
         name: 'pages',
@@ -486,9 +484,7 @@ describe.skipIf(!NOTION_TOKEN)('Stdio + NOTION_TOKEN — Real Notion API', () =>
       testParentPageId = extractId(parsed)!
       createdPageIds.push(testParentPageId)
       expect(testParentPageId).toBeTruthy()
-      },
-      60_000
-    )
+    }, 60_000)
 
     it('get — should retrieve the created page', async () => {
       if (!testParentPageId) return

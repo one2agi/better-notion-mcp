@@ -49,9 +49,7 @@ describe('initServer (delegates to startStdio)', () => {
     const server = await initServer()
 
     expect(server.connect).toHaveBeenCalledWith(expect.any(StdioServerTransport))
-    expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining('NOTION_TOKEN not set')
-    )
+    expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining('NOTION_TOKEN not set'))
   })
 
   it('should initialize server successfully with NOTION_TOKEN', async () => {
