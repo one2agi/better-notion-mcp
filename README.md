@@ -90,6 +90,30 @@ Then add to your MCP client config:
 
 Other runners: `bun x`, `pnpm dlx`, `yarn dlx` also work.
 
+<details>
+<summary>Other MCP clients (Cursor, Codex, Gemini CLI)</summary>
+
+```jsonc
+// Cursor (~/.cursor/mcp.json), Windsurf, Cline, Amp, OpenCode
+{
+  "mcpServers": {
+    "better-notion": {
+      "command": "npx",
+      "args": ["-y", "@n24q02m/better-notion-mcp@latest"]
+    }
+  }
+}
+```
+
+```toml
+# Codex (~/.codex/config.toml)
+[mcp_servers.better-notion]
+command = "npx"
+args = ["-y", "@n24q02m/better-notion-mcp@latest"]
+```
+
+</details>
+
 #### Option 3: Docker
 
 ```jsonc
@@ -140,6 +164,19 @@ docker run -p 8080:8080 \
 | `file_uploads` | `create`, `send`, `complete`, `retrieve`, `list` | Upload files to Notion |
 | `help` | - | Get full documentation for any tool |
 
+### MCP Resources
+
+| URI | Description |
+|:----|:------------|
+| `notion://docs/pages` | Page operations reference |
+| `notion://docs/databases` | Database operations reference |
+| `notion://docs/blocks` | Block operations reference |
+| `notion://docs/users` | User operations reference |
+| `notion://docs/workspace` | Workspace operations reference |
+| `notion://docs/comments` | Comment operations reference |
+| `notion://docs/content_convert` | Content conversion reference |
+| `notion://docs/file_uploads` | File upload reference |
+
 ## Configuration
 
 | Variable | Required | Default | Description |
@@ -152,14 +189,20 @@ docker run -p 8080:8080 \
 | `DCR_SERVER_SECRET` | Yes (http) | - | HMAC secret for stateless client registration |
 | `PORT` | No | `8080` | Server port |
 
+### Security
+
+- **OAuth 2.1 + PKCE S256** -- Secure authorization with code challenge
+- **Rate limiting** -- 120 req/min/IP on HTTP transport
+- **Session owner binding** -- IP check + TTL for pending token binds
+- **Null safety** -- Handles Notion API quirks (comments.list 404, undefined rich_text)
+
 ## Build from Source
 
 ```bash
 git clone https://github.com/n24q02m/better-notion-mcp.git
 cd better-notion-mcp
-npm install
-npm run build
-npm start
+bun install
+bun run dev
 ```
 
 ## Compatible With
