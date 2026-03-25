@@ -6,6 +6,8 @@ Xem `AGENTS.md` va `README.md` de hieu architecture va OAuth flow.
 ## Cau truc
 
 - `src/init-server.ts` -- Server entry point, env validation
+- `src/relay-setup.ts` -- Zero-config relay: create session, poll for config
+- `src/relay-schema.ts` -- Relay form schema (Notion token field)
 - `src/tools/registry.ts` -- Tool registration + routing
 - `src/tools/composite/` -- 1 file per domain (pages, databases, blocks, comments, users, workspace, content_convert, file_uploads)
 - `src/tools/helpers/` -- errors, markdown, richtext, pagination, properties
