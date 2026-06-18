@@ -2,6 +2,52 @@
 
 <!-- version list -->
 
+## v2.35.0-beta.2 (2026-06-18)
+
+### Bug Fixes
+
+- Add post-deploy canary gate with auto-rollback to deploy_cf.py
+  ([`d087f19`](https://github.com/n24q02m/better-notion-mcp/commit/d087f193232f4b374ef69f3833752417bb33cba4))
+
+- Forward MCP_RELAY_PASSWORD into CF container so Gate A is enforced
+  ([#977](https://github.com/n24q02m/better-notion-mcp/pull/977),
+  [`91ba1a7`](https://github.com/n24q02m/better-notion-mcp/commit/91ba1a78fb5140422afd4e5d1c4e599678621fc6))
+
+- Persist per-sub Notion token to KV so it survives container recreate
+  ([#976](https://github.com/n24q02m/better-notion-mcp/pull/976),
+  [`9714d3b`](https://github.com/n24q02m/better-notion-mcp/commit/9714d3b58173e4117275d537cf3bdb6913fa853e))
+
+- Prefix unused account var to satisfy RUF059
+  ([`d087f19`](https://github.com/n24q02m/better-notion-mcp/commit/d087f193232f4b374ef69f3833752417bb33cba4))
+
+- Refresh lockfile (renovate maintenance)
+  ([`e8d59c2`](https://github.com/n24q02m/better-notion-mcp/commit/e8d59c2f3525d3d3d43a98d1bfc58e2b33bca2d3))
+
+- Refresh lockfile (renovate maintenance)
+  ([`e43f95b`](https://github.com/n24q02m/better-notion-mcp/commit/e43f95b40bdba2c27f35958b499c72597e55fff0))
+
+- Reject path traversal in resource read via DOCS_DIR boundary check
+  ([`5200400`](https://github.com/n24q02m/better-notion-mcp/commit/52004000cc953b836c3318d670c8ccb4c49449f1))
+
+- Update node.js base image
+  ([`751cb8f`](https://github.com/n24q02m/better-notion-mcp/commit/751cb8faf370a3b59d0d8b69d9a74402aa9b7e04))
+
+- Update non-major dependencies
+  ([`aa1c811`](https://github.com/n24q02m/better-notion-mcp/commit/aa1c8113290011d391661c4b8502897a4715415a))
+
+- Update non-major dependencies
+  ([`c33cc96`](https://github.com/n24q02m/better-notion-mcp/commit/c33cc96c4f3c2b0efe78ca4993dd6c35acb0879c))
+
+### Features
+
+- Add post-deploy canary gate with auto-rollback to deploy_cf.py
+  ([`d087f19`](https://github.com/n24q02m/better-notion-mcp/commit/d087f193232f4b374ef69f3833752417bb33cba4))
+
+- Deploy notion to Cloudflare at notion.n24q02m.com
+  ([#975](https://github.com/n24q02m/better-notion-mcp/pull/975),
+  [`0856ebd`](https://github.com/n24q02m/better-notion-mcp/commit/0856ebde90e27883a9c52cdf19101527ade92aa1))
+
+
 ## v2.35.0-beta.1 (2026-06-15)
 
 ### Bug Fixes
