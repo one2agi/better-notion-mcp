@@ -2,6 +2,56 @@
 
 <!-- version list -->
 
+## v2.35.0-beta.3 (2026-06-21)
+
+### Bug Fixes
+
+- Add cf:deploy script for live wrangler deploy
+  ([#996](https://github.com/n24q02m/better-notion-mcp/pull/996),
+  [`ccdacc3`](https://github.com/n24q02m/better-notion-mcp/commit/ccdacc3eda0f4588a842a8bb7e57fafc6d3ba8c9))
+
+- Cross-platform DOCS_DIR containment for path traversal guard
+  ([#992](https://github.com/n24q02m/better-notion-mcp/pull/992),
+  [`cd64b4f`](https://github.com/n24q02m/better-notion-mcp/commit/cd64b4fbae6ef48aa7c04eb615a4208c7823aed6))
+
+- Drop env-derived value from cf_deploy log (CodeQL js/clear-text-logging)
+  ([#996](https://github.com/n24q02m/better-notion-mcp/pull/996),
+  [`ccdacc3`](https://github.com/n24q02m/better-notion-mcp/commit/ccdacc3eda0f4588a842a8bb7e57fafc6d3ba8c9))
+
+- Make canary gate utf-8-safe (decode+encode) and Cloudflare-UA-aware
+  ([`8c347ab`](https://github.com/n24q02m/better-notion-mcp/commit/8c347abf319cf8cdd7968a010b40897d9094708d))
+
+- Make canary gate utf-8-safe and Cloudflare-UA-aware
+  ([`8c347ab`](https://github.com/n24q02m/better-notion-mcp/commit/8c347abf319cf8cdd7968a010b40897d9094708d))
+
+- Neutral default endpoint + env-first secrets in CF self-host scripts
+  ([`2904b66`](https://github.com/n24q02m/better-notion-mcp/commit/2904b6670d07e08e94a6abf815dd6bc25fb21837))
+
+- Right-size CF container to cut GiB-second cost
+  ([#995](https://github.com/n24q02m/better-notion-mcp/pull/995),
+  [`952f5b9`](https://github.com/n24q02m/better-notion-mcp/commit/952f5b959d80253332b94b55202c69183350d9dc))
+
+- Use contextlib.suppress for stdout reconfigure (SIM105)
+  ([`8c347ab`](https://github.com/n24q02m/better-notion-mcp/commit/8c347abf319cf8cdd7968a010b40897d9094708d))
+
+- **deps**: Update non-major dependencies
+  ([#986](https://github.com/n24q02m/better-notion-mcp/pull/986),
+  [`1eb7318`](https://github.com/n24q02m/better-notion-mcp/commit/1eb7318807ef84318f95c1820c93fecdb6006fa2))
+
+### Chores
+
+- **deps**: Lock file maintenance ([#988](https://github.com/n24q02m/better-notion-mcp/pull/988),
+  [`5ca832c`](https://github.com/n24q02m/better-notion-mcp/commit/5ca832cd1217027563e2038a076facf3608d9b9c))
+
+- **deps**: Update actions/checkout action to v7
+  ([#987](https://github.com/n24q02m/better-notion-mcp/pull/987),
+  [`04e26fc`](https://github.com/n24q02m/better-notion-mcp/commit/04e26fce2e10e826262d3eebee30ac72c04de5a8))
+
+- **deps**: Update dependency @types/node to v26
+  ([#990](https://github.com/n24q02m/better-notion-mcp/pull/990),
+  [`9a42e03`](https://github.com/n24q02m/better-notion-mcp/commit/9a42e03ea02fedb217824be7283606e49789a5b4))
+
+
 ## v2.35.0-beta.2 (2026-06-18)
 
 ### Bug Fixes
