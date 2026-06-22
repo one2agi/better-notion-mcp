@@ -2,6 +2,23 @@
 
 <!-- version list -->
 
+## v2.35.0-beta.4 (2026-06-22)
+
+### Bug Fixes
+
+- Correct README + metadata to match current code
+  ([#997](https://github.com/n24q02m/better-notion-mcp/pull/997),
+  [`a50020e`](https://github.com/n24q02m/better-notion-mcp/commit/a50020e8ce01937a4a0d7bc486be3d0aea9ba7aa))
+
+- Pin CF container max_instances to 3
+  ([#1000](https://github.com/n24q02m/better-notion-mcp/pull/1000),
+  [`61d68c9`](https://github.com/n24q02m/better-notion-mcp/commit/61d68c9589c1c413cdfe77b86dd0bb65ba2e0e59))
+
+- **deps**: Update non-major dependencies to ^1.18.0-beta.17
+  ([#998](https://github.com/n24q02m/better-notion-mcp/pull/998),
+  [`8dd69d0`](https://github.com/n24q02m/better-notion-mcp/commit/8dd69d0eb85abdf922260ccab8569679483d2f6c))
+
+
 ## v2.35.0-beta.3 (2026-06-21)
 
 ### Bug Fixes
