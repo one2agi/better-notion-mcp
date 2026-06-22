@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.35.0-beta.5 (2026-06-22)
+
+### Bug Fixes
+
+- Bump mcp-core to 1.18.0b19 (relay model-search catalog + OAuth refresh-TTL)
+  ([#1001](https://github.com/n24q02m/better-notion-mcp/pull/1001),
+  [`442c626`](https://github.com/n24q02m/better-notion-mcp/commit/442c6265e64893833fe34a7d448f5a5bd7021d76))
+
+
 ## v2.35.0-beta.4 (2026-06-22)
 
 ### Bug Fixes
