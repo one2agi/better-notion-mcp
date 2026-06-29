@@ -2,6 +2,66 @@
 
 <!-- version list -->
 
+## v2.35.0-beta.6 (2026-06-29)
+
+### Bug Fixes
+
+- Cap max_instances=1 for CF container cost (solo dev default)
+  ([`2166e0a`](https://github.com/n24q02m/better-notion-mcp/commit/2166e0aa6bc35f4052954db07fa1a1d49b241390))
+
+- Cover databases retrieval fallback + bulk paths
+  ([`784ffb3`](https://github.com/n24q02m/better-notion-mcp/commit/784ffb376f7c697604fdb02837f4d5f5c930a66d))
+
+- Cover deriveSubject/selectTokenStore/ready probe
+  ([`a485aaf`](https://github.com/n24q02m/better-notion-mcp/commit/a485aafc178f5a76d510c405e98dd69a445af843))
+
+- Cover extractUserId error paths
+  ([`38d02f5`](https://github.com/n24q02m/better-notion-mcp/commit/38d02f53f29e77d9c3f1c705e99808186b3775eb))
+
+- Cover NotionTokenStore.getAsync load-error path
+  ([`23d159e`](https://github.com/n24q02m/better-notion-mcp/commit/23d159ef671e07759813339684c399ef2b24ddef))
+
+- Enforce per-plugin KV key-prefix isolation in Worker proxy
+  ([`3606a3c`](https://github.com/n24q02m/better-notion-mcp/commit/3606a3c8e944834610a47100c58aacb8b701b391))
+
+- Expand control-char regex to block obfuscated javascript URLs
+  ([`4f600fa`](https://github.com/n24q02m/better-notion-mcp/commit/4f600fa0d7979095bdfa25ccc035aec4e42fb54d))
+
+- Precompute registry RESOURCES/TOOLS for O(1) dispatch
+  ([`81b79c0`](https://github.com/n24q02m/better-notion-mcp/commit/81b79c0fc8373a08fdb6f91c531879d752221382))
+
+- Remove debug logging exposing sub in HTTP transport
+  ([`0a32e55`](https://github.com/n24q02m/better-notion-mcp/commit/0a32e55016ef849149477f8e29b6e89b80ee0791))
+
+- Require credential key present before marking notion configured
+  ([#1008](https://github.com/n24q02m/better-notion-mcp/pull/1008),
+  [`46d7ac6`](https://github.com/n24q02m/better-notion-mcp/commit/46d7ac65831a1209dfedba928704e8c198f8a7a8))
+
+- Single-pass buildSearchFilter to avoid redundant array allocation
+  ([`94596c1`](https://github.com/n24q02m/better-notion-mcp/commit/94596c13196bb1d86dab863914bb7d0d7bb76a81))
+
+- Verify JWT signature in Worker extractUserId routing
+  ([`e1041d4`](https://github.com/n24q02m/better-notion-mcp/commit/e1041d43d2ba7ab1a764e2007b25331d4d676caa))
+
+- **deps**: Update non-major dependencies
+  ([#1024](https://github.com/n24q02m/better-notion-mcp/pull/1024),
+  [`bdf7bb5`](https://github.com/n24q02m/better-notion-mcp/commit/bdf7bb5e9cf89d9d35c75c04043523cb39c35974))
+
+### Chores
+
+- **deps**: Lock file maintenance ([#1002](https://github.com/n24q02m/better-notion-mcp/pull/1002),
+  [`1e947d5`](https://github.com/n24q02m/better-notion-mcp/commit/1e947d5d7474332e0fe467bf7a871e8d7f3d6bb3))
+
+- **deps**: Update dawidd6/action-send-mail action to v18
+  ([#1029](https://github.com/n24q02m/better-notion-mcp/pull/1029),
+  [`f0e02fe`](https://github.com/n24q02m/better-notion-mcp/commit/f0e02fef6d9ecb37aed93b43048d906ae2537a3e))
+
+### Testing
+
+- **auth**: Add error path test for KvNotionTokenStore.getAsync
+  ([`23d159e`](https://github.com/n24q02m/better-notion-mcp/commit/23d159ef671e07759813339684c399ef2b24ddef))
+
+
 ## v2.35.0-beta.5 (2026-06-22)
 
 ### Bug Fixes
