@@ -2,6 +2,28 @@
 
 <!-- version list -->
 
+## v2.35.0-beta.8 (2026-07-01)
+
+### Bug Fixes
+
+- Bump @n24q02m/mcp-core to 1.18.0-beta.23 for durable delegated-OAuth session state
+  ([#1068](https://github.com/n24q02m/better-notion-mcp/pull/1068),
+  [`6e53cb8`](https://github.com/n24q02m/better-notion-mcp/commit/6e53cb8ecc61c2a623a1d6e57404dc5cf399444a))
+
+- Correct AGENTS.md file organization to match current src layout
+  ([#1067](https://github.com/n24q02m/better-notion-mcp/pull/1067),
+  [`268e626`](https://github.com/n24q02m/better-notion-mcp/commit/268e626ff5f27c25b9ae28d6ad2678f80ff73559))
+
+- **deps**: Update non-major dependencies
+  ([#1064](https://github.com/n24q02m/better-notion-mcp/pull/1064),
+  [`9e887de`](https://github.com/n24q02m/better-notion-mcp/commit/9e887defcd45733edd0eefbe14e830103b9aa4a3))
+
+### Chores
+
+- **deps**: Lock file maintenance ([#1065](https://github.com/n24q02m/better-notion-mcp/pull/1065),
+  [`25f3826`](https://github.com/n24q02m/better-notion-mcp/commit/25f3826efc60b84773a027905a5ae5b7db8e1d8b))
+
+
 ## v2.35.0-beta.7 (2026-06-30)
 
 ### Bug Fixes
