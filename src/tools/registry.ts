@@ -1,5 +1,5 @@
 /**
- * Tool Registry - 8 composite Notion tools + 3 infra tools (config, config__open_relay, help)
+ * Tool Registry - 8 composite Notion tools + 2 infra tools (config, help)
  * Consolidated registration for maximum coverage with minimal tools
  */
 
@@ -13,7 +13,6 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema
 } from '@modelcontextprotocol/sdk/types.js'
-import { buildOpenRelayHandler } from '@n24q02m/mcp-core'
 import type { Client } from '@notionhq/client'
 import { getState } from '../credential-state.js'
 // Import mega tools
@@ -30,14 +29,7 @@ import { aiReadableMessage, findClosestMatch, NotionMCPError } from './helpers/e
 import { wrapToolResult } from './helpers/security.js'
 
 // Tools that work without a Notion token
-const TOKEN_FREE_TOOLS = new Set(['help', 'content_convert', 'config', 'config__open_relay'])
-
-// publicUrl is null in stdio mode (no relay form to open). HTTP mode
-// substitutes it with PUBLIC_URL so the tool returns a valid /authorize URL.
-const openRelayHandler = buildOpenRelayHandler({
-  serverName: 'better-notion-mcp',
-  publicUrl: process.env.PUBLIC_URL ?? null
-})
+const TOKEN_FREE_TOOLS = new Set(['help', 'content_convert', 'config'])
 
 // Get docs directory path - works for both bundled CLI and unbundled code
 const __filename = fileURLToPath(import.meta.url)
@@ -76,7 +68,7 @@ const RESOURCE_MAP = new Map(RESOURCES.map((r) => [r.uri, r]))
 const AVAILABLE_RESOURCE_URIS = RESOURCES.map((r) => r.uri).join(', ')
 
 /**
- * 11 registered tools (8 composite Notion tools + config + config__open_relay + help)
+ * 10 registered tools (8 composite Notion tools + config + help)
  * covering ~95% of the official Notion API.
  * Compressed descriptions for token optimization (~77% reduction)
  *
@@ -472,24 +464,6 @@ const TOOLS = [
       },
       required: ['action']
     }
-  },
-  {
-    name: 'config__open_relay',
-    description:
-      'Open the relay configuration form for better-notion-mcp in the user browser. Returns the relay URL, whether the browser launched, and the current credential state.',
-    annotations: {
-      title: 'Open Relay',
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true
-    },
-    inputSchema: {
-      type: 'object',
-      properties: {},
-      additionalProperties: false,
-      required: []
-    }
   }
 ]
 
@@ -608,9 +582,6 @@ export function registerTools(server: Server, notionClientFactory: () => Client)
           break
         case 'config':
           result = await config(args as any)
-          break
-        case 'config__open_relay':
-          result = await openRelayHandler()
           break
         case 'file_uploads':
           result = await fileUploads(notion, args as any)

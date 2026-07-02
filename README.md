@@ -131,7 +131,7 @@ Full docs at **[mcp.n24q02m.com/servers/better-notion-mcp/](https://mcp.n24q02m.
 
 ## Tools
 
-Eight composite Notion tools (39 actions) plus three infrastructure tools (`config`, `config__open_relay`, `help`):
+Eight composite Notion tools (39 actions) plus two infrastructure tools (`config`, `help`):
 
 | Tool | Actions | Description |
 |:-----|:--------|:------------|
@@ -144,7 +144,6 @@ Eight composite Notion tools (39 actions) plus three infrastructure tools (`conf
 | `content_convert` | `markdown-to-blocks`, `blocks-to-markdown` | Convert between Markdown and Notion blocks (uses a `direction` parameter) |
 | `file_uploads` | `create`, `send`, `complete`, `retrieve`, `list` | Upload files to Notion (single or multi-part) |
 | `config` | `status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | Inspect and manage credential state and configuration lifecycle |
-| `config__open_relay` | - | Open the relay configuration form in the browser and return the relay URL + credential state |
 | `help` | - | Get full documentation for any composite tool (`tool_name` parameter) |
 
 ### MCP Resources

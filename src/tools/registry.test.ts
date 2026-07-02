@@ -11,17 +11,6 @@ vi.mock('./composite/workspace.js', () => ({ workspace: vi.fn() }))
 vi.mock('./composite/file-uploads.js', () => ({ fileUploads: vi.fn() }))
 vi.mock('./composite/config.js', () => ({ config: vi.fn() }))
 
-// Mock mcp-core open-relay helper to avoid spawning daemons in tests
-vi.mock('@n24q02m/mcp-core', () => ({
-  buildOpenRelayHandler: vi.fn(() =>
-    vi.fn(async () => ({
-      url: 'http://127.0.0.1:9999/',
-      browserOpened: false,
-      status: 'awaiting_setup' as const
-    }))
-  )
-}))
-
 // Mock credential state (tests run with credentials already configured)
 vi.mock('../credential-state.js', () => ({
   getState: vi.fn(() => 'configured'),
@@ -83,8 +72,7 @@ const EXPECTED_TOOL_NAMES = [
   'content_convert',
   'file_uploads',
   'help',
-  'config',
-  'config__open_relay'
+  'config'
 ]
 
 const EXPECTED_RESOURCE_URIS = [
@@ -139,11 +127,11 @@ describe('registerTools', () => {
   })
 
   describe('ListTools handler', () => {
-    it('should return exactly 11 tools', async () => {
+    it('should return exactly 10 tools', async () => {
       const handler = server.getHandler(0)
       const result = await handler()
 
-      expect(result.tools).toHaveLength(11)
+      expect(result.tools).toHaveLength(10)
     })
 
     it('should return all expected tool names', async () => {
@@ -495,33 +483,6 @@ describe('registerTools', () => {
       // config is called without notion client
       expect(config).toHaveBeenCalledWith({ action: 'status' })
       expect(result.content[0].text).toBe(JSON.stringify(mockResult, null, 2))
-    })
-
-    it('should route config__open_relay tool and return relay URL JSON', async () => {
-      const handler = server.getHandler(3)
-
-      const result = await handler({
-        params: { name: 'config__open_relay', arguments: {} }
-      })
-
-      const parsed = JSON.parse(result.content[0].text)
-      expect(parsed).toEqual({
-        url: 'http://127.0.0.1:9999/',
-        browserOpened: false,
-        status: 'awaiting_setup'
-      })
-      expect(result.isError).toBeUndefined()
-    })
-
-    it('should expose config__open_relay in TOOLS list with empty input schema', async () => {
-      const listHandler = server.getHandler(0)
-      const result = await listHandler()
-      const tool = result.tools.find((t: any) => t.name === 'config__open_relay')
-
-      expect(tool).toBeDefined()
-      expect(tool.inputSchema.type).toBe('object')
-      expect(tool.inputSchema.properties).toEqual({})
-      expect(tool.inputSchema.additionalProperties).toBe(false)
     })
 
     it('should route file_uploads tool correctly and wrap response with XPIA safety markers', async () => {
