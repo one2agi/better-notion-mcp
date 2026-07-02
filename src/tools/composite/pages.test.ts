@@ -12,8 +12,11 @@ import {
 
 vi.mock('../helpers/markdown.js', () => ({
   markdownToBlocks: vi.fn((md: string) => {
-    if (!md) return []
-    return [{ type: 'paragraph', paragraph: { rich_text: [{ text: { content: md } }] } }]
+    if (!md) return { blocks: [], warnings: [] }
+    return {
+      blocks: [{ type: 'paragraph', paragraph: { rich_text: [{ text: { content: md } }] } }],
+      warnings: []
+    }
   }),
   blocksToMarkdown: vi.fn((blocks: any[]) => {
     if (!blocks.length) return ''
