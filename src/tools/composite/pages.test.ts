@@ -36,6 +36,8 @@ function createMockNotion() {
       retrieve: vi.fn(),
       update: vi.fn(),
       move: vi.fn(),
+      retrieveMarkdown: vi.fn(),
+      updateMarkdown: vi.fn(),
       properties: { retrieve: vi.fn() }
     },
     blocks: {
@@ -947,6 +949,261 @@ describe('pages', () => {
   describe('unknown action', () => {
     it('throws on unknown action', async () => {
       await expect(pages(mockNotion as any, { action: 'explode' as any })).rejects.toThrow('Unknown action: explode')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // get_markdown (Notion SDK v5.22+ pages.retrieveMarkdown)
+  // ---------------------------------------------------------------------------
+  describe('get_markdown', () => {
+    it('returns markdown + truncated + unknown_block_ids from the SDK', async () => {
+      mockNotion.pages.retrieveMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '# Hello\n\nWorld',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      const result = await pages(mockNotion as any, {
+        action: 'get_markdown',
+        page_id: 'p1'
+      })
+
+      expect(result).toEqual({
+        action: 'get_markdown',
+        page_id: 'p1',
+        markdown: '# Hello\n\nWorld',
+        truncated: false,
+        unknown_block_ids: []
+      })
+      expect(mockNotion.pages.retrieveMarkdown).toHaveBeenCalledWith({ page_id: 'p1' })
+    })
+
+    it('throws without page_id', async () => {
+      await expect(pages(mockNotion as any, { action: 'get_markdown' })).rejects.toThrow('page_id is required')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // replace_content (Notion SDK v5.22+ updateMarkdown type=replace_content)
+  // ---------------------------------------------------------------------------
+  describe('replace_content', () => {
+    it('replaces whole page content with new_str', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: 'NEW',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      const result = await pages(mockNotion as any, {
+        action: 'replace_content',
+        page_id: 'p1',
+        new_str: 'NEW'
+      })
+
+      expect(result).toMatchObject({ action: 'replace_content', page_id: 'p1', replaced: true })
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'replace_content',
+        replace_content: { new_str: 'NEW', allow_deleting_content: true }
+      })
+    })
+
+    it('throws without new_str', async () => {
+      await expect(
+        pages(mockNotion as any, {
+          action: 'replace_content',
+          page_id: 'p1'
+        })
+      ).rejects.toThrow('new_str is required for replace_content action')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // insert_markdown (Notion SDK v5.22+ updateMarkdown type=insert_content)
+  // ---------------------------------------------------------------------------
+  describe('insert_markdown', () => {
+    it('inserts at end when position is end', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: 'x\nINSERTED',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'insert_markdown',
+        page_id: 'p1',
+        content: 'INSERTED',
+        position: 'end'
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'insert_content',
+        insert_content: { content: 'INSERTED', position: { type: 'end' } }
+      })
+    })
+
+    it('inserts at start when position is start', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'insert_markdown',
+        page_id: 'p1',
+        content: 'TOP',
+        position: 'start'
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'insert_content',
+        insert_content: { content: 'TOP', position: { type: 'start' } }
+      })
+    })
+
+    it('inserts after a specific block when after_block_id is provided', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'insert_markdown',
+        page_id: 'p1',
+        content: 'AFTER',
+        after_block_id: 'block-xyz'
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'insert_content',
+        insert_content: { content: 'AFTER', after: 'block-xyz' }
+      })
+    })
+
+    it('throws without content', async () => {
+      await expect(
+        pages(mockNotion as any, {
+          action: 'insert_markdown',
+          page_id: 'p1'
+        })
+      ).rejects.toThrow('content is required for insert_markdown action')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // update_content (Notion SDK v5.22+ search & replace)
+  // ---------------------------------------------------------------------------
+  describe('update_content', () => {
+    it('replaces first match by default', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'update_content',
+        page_id: 'p1',
+        updates: [{ old_str: 'foo', new_str: 'bar' }]
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'update_content',
+        update_content: {
+          content_updates: [{ old_str: 'foo', new_str: 'bar' }],
+          allow_deleting_content: false
+        }
+      })
+    })
+
+    it('passes replace_all_matches=true when set', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'update_content',
+        page_id: 'p1',
+        updates: [{ old_str: 'Q1', new_str: 'Q2', replace_all_matches: true }]
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'update_content',
+        update_content: {
+          content_updates: [{ old_str: 'Q1', new_str: 'Q2', replace_all_matches: true }],
+          allow_deleting_content: false
+        }
+      })
+    })
+
+    it('throws when updates is missing or empty', async () => {
+      await expect(pages(mockNotion as any, { action: 'update_content', page_id: 'p1' })).rejects.toThrow(
+        'updates is required for update_content action'
+      )
+      await expect(pages(mockNotion as any, { action: 'update_content', page_id: 'p1', updates: [] })).rejects.toThrow(
+        'updates is required for update_content action'
+      )
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // replace_content_range (Notion SDK v5.22+ replace specific markdown range)
+  // ---------------------------------------------------------------------------
+  describe('replace_content_range', () => {
+    it('replaces content within a specific content_range', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'replace_content_range',
+        page_id: 'p1',
+        content: 'NEW CONTENT',
+        content_range: 'OLD CONTENT'
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'replace_content_range',
+        replace_content_range: {
+          content: 'NEW CONTENT',
+          content_range: 'OLD CONTENT',
+          allow_deleting_content: false
+        }
+      })
+    })
+
+    it('throws without content or content_range', async () => {
+      await expect(pages(mockNotion as any, { action: 'replace_content_range', page_id: 'p1' })).rejects.toThrow(
+        'content and content_range required for replace_content_range action'
+      )
     })
   })
 })
