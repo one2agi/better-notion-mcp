@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v2.36.0-beta.1 (2026-07-02)
+
+### Features
+
+- Deploy CF Worker+Container on release from cd.yml
+  ([#1071](https://github.com/n24q02m/better-notion-mcp/pull/1071),
+  [`2fbfd16`](https://github.com/n24q02m/better-notion-mcp/commit/2fbfd1692c7f0c31d835a09d3d0ecaaf3517cd8a))
+
+
 ## v2.35.0 (2026-07-01)
 
 
