@@ -34,52 +34,52 @@ function getRichTextContent(block: NotionBlock): string {
 describe('markdownToBlocks', () => {
   describe('empty input', () => {
     it('should return empty array for empty string', () => {
-      expect(markdownToBlocks('')).toEqual([])
+      expect(markdownToBlocks('').blocks).toEqual([])
     })
 
     it('should return empty array for whitespace-only input', () => {
-      expect(markdownToBlocks('   \n  \n  ')).toEqual([])
+      expect(markdownToBlocks('   \n  \n  ').blocks).toEqual([])
     })
   })
 
   describe('headings', () => {
     it('should parse heading level 1', () => {
-      const blocks = markdownToBlocks('# Hello')
+      const { blocks } = markdownToBlocks('# Hello')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('heading_1')
       expect(getRichTextContent(blocks[0])).toBe('Hello')
     })
 
     it('should parse heading level 2', () => {
-      const blocks = markdownToBlocks('## World')
+      const { blocks } = markdownToBlocks('## World')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('heading_2')
       expect(getRichTextContent(blocks[0])).toBe('World')
     })
 
     it('should parse heading level 3', () => {
-      const blocks = markdownToBlocks('### Subtitle')
+      const { blocks } = markdownToBlocks('### Subtitle')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('heading_3')
       expect(getRichTextContent(blocks[0])).toBe('Subtitle')
     })
 
     it('should set color to default', () => {
-      const blocks = markdownToBlocks('# Title')
+      const { blocks } = markdownToBlocks('# Title')
       expect(blocks[0].heading_1.color).toBe('default')
     })
   })
 
   describe('paragraphs', () => {
     it('should parse plain text as paragraph', () => {
-      const blocks = markdownToBlocks('Hello world')
+      const { blocks } = markdownToBlocks('Hello world')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('paragraph')
       expect(getRichTextContent(blocks[0])).toBe('Hello world')
     })
 
     it('should skip empty lines between paragraphs', () => {
-      const blocks = markdownToBlocks('First\n\nSecond')
+      const { blocks } = markdownToBlocks('First\n\nSecond')
       expect(blocks).toHaveLength(2)
       expect(blocks[0].type).toBe('paragraph')
       expect(blocks[1].type).toBe('paragraph')
@@ -90,7 +90,7 @@ describe('markdownToBlocks', () => {
 
   describe('bulleted lists', () => {
     it('should parse dash-prefixed items', () => {
-      const blocks = markdownToBlocks('- First\n- Second')
+      const { blocks } = markdownToBlocks('- First\n- Second')
       expect(blocks).toHaveLength(2)
       expect(blocks[0].type).toBe('bulleted_list_item')
       expect(blocks[1].type).toBe('bulleted_list_item')
@@ -98,7 +98,7 @@ describe('markdownToBlocks', () => {
       expect(getRichTextContent(blocks[1])).toBe('Second')
     })
     it('should parse indented bulleted items', () => {
-      const blocks = markdownToBlocks('  - First\n    - Second')
+      const { blocks } = markdownToBlocks('  - First\n    - Second')
       expect(blocks).toHaveLength(2)
       expect(blocks[0].type).toBe('bulleted_list_item')
       expect(blocks[1].type).toBe('bulleted_list_item')
@@ -107,7 +107,7 @@ describe('markdownToBlocks', () => {
     })
 
     it('should parse asterisk-prefixed items', () => {
-      const blocks = markdownToBlocks('* Item A\n* Item B')
+      const { blocks } = markdownToBlocks('* Item A\n* Item B')
       expect(blocks).toHaveLength(2)
       expect(blocks[0].type).toBe('bulleted_list_item')
       expect(getRichTextContent(blocks[0])).toBe('Item A')
@@ -116,7 +116,7 @@ describe('markdownToBlocks', () => {
 
   describe('numbered lists', () => {
     it('should parse numbered items', () => {
-      const blocks = markdownToBlocks('1. First\n2. Second\n3. Third')
+      const { blocks } = markdownToBlocks('1. First\n2. Second\n3. Third')
       expect(blocks).toHaveLength(3)
       for (const block of blocks) {
         expect(block.type).toBe('numbered_list_item')
@@ -125,7 +125,7 @@ describe('markdownToBlocks', () => {
       expect(getRichTextContent(blocks[2])).toBe('Third')
     })
     it('should parse indented numbered items', () => {
-      const blocks = markdownToBlocks('  1. One\n    2. Two')
+      const { blocks } = markdownToBlocks('  1. One\n    2. Two')
       expect(blocks).toHaveLength(2)
       expect(blocks[0].type).toBe('numbered_list_item')
       expect(blocks[1].type).toBe('numbered_list_item')
@@ -134,7 +134,7 @@ describe('markdownToBlocks', () => {
 
   describe('todo / checkbox', () => {
     it('should parse unchecked todo item', () => {
-      const blocks = markdownToBlocks('- [ ] Buy milk')
+      const { blocks } = markdownToBlocks('- [ ] Buy milk')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('to_do')
       expect(blocks[0].to_do.checked).toBe(false)
@@ -142,26 +142,26 @@ describe('markdownToBlocks', () => {
     })
 
     it('should parse checked todo item with lowercase x', () => {
-      const blocks = markdownToBlocks('- [x] Done task')
+      const { blocks } = markdownToBlocks('- [x] Done task')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].to_do.checked).toBe(true)
       expect(getRichTextContent(blocks[0])).toBe('Done task')
     })
 
     it('should parse checked todo item with uppercase X', () => {
-      const blocks = markdownToBlocks('- [X] Also done')
+      const { blocks } = markdownToBlocks('- [X] Also done')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].to_do.checked).toBe(true)
     })
 
     it('should handle mixed checked and unchecked items', () => {
-      const blocks = markdownToBlocks('- [ ] Pending\n- [x] Complete')
+      const { blocks } = markdownToBlocks('- [ ] Pending\n- [x] Complete')
       expect(blocks).toHaveLength(2)
       expect(blocks[0].to_do.checked).toBe(false)
       expect(blocks[1].to_do.checked).toBe(true)
     })
     it('should parse todo item with plus bullet', () => {
-      const blocks = markdownToBlocks('+ [ ] Plus todo')
+      const { blocks } = markdownToBlocks('+ [ ] Plus todo')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('to_do')
       expect(blocks[0].to_do.checked).toBe(false)
@@ -169,21 +169,21 @@ describe('markdownToBlocks', () => {
     })
 
     it('should parse indented todo item', () => {
-      const blocks = markdownToBlocks('  - [ ] Indented')
+      const { blocks } = markdownToBlocks('  - [ ] Indented')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('to_do')
       expect(getRichTextContent(blocks[0])).toBe('Indented')
     })
 
     it('should parse todo item without text', () => {
-      const blocks = markdownToBlocks('- [ ]')
+      const { blocks } = markdownToBlocks('- [ ]')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('to_do')
       expect(getRichTextContent(blocks[0])).toBe('')
     })
 
     it('should parse todo item with asterisk bullet', () => {
-      const blocks = markdownToBlocks('* [x] Asterisk')
+      const { blocks } = markdownToBlocks('* [x] Asterisk')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('to_do')
       expect(blocks[0].to_do.checked).toBe(true)
@@ -193,7 +193,7 @@ describe('markdownToBlocks', () => {
 
   describe('code blocks', () => {
     it('should parse code block with language', () => {
-      const blocks = markdownToBlocks('```typescript\nconst x = 1\n```')
+      const { blocks } = markdownToBlocks('```typescript\nconst x = 1\n```')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('code')
       expect(blocks[0].code.language).toBe('typescript')
@@ -201,21 +201,21 @@ describe('markdownToBlocks', () => {
     })
 
     it('should parse code block without language as plain text', () => {
-      const blocks = markdownToBlocks('```\nhello\n```')
+      const { blocks } = markdownToBlocks('```\nhello\n```')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].code.language).toBe('plain text')
     })
 
     it('should preserve multi-line code content', () => {
       const code = '```js\nline1\nline2\nline3\n```'
-      const blocks = markdownToBlocks(code)
+      const { blocks } = markdownToBlocks(code)
       expect(blocks[0].code.rich_text[0].text.content).toBe('line1\nline2\nline3')
     })
   })
 
   describe('quotes', () => {
     it('should parse blockquote', () => {
-      const blocks = markdownToBlocks('> This is a quote')
+      const { blocks } = markdownToBlocks('> This is a quote')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('quote')
       expect(getRichTextContent(blocks[0])).toBe('This is a quote')
@@ -224,20 +224,20 @@ describe('markdownToBlocks', () => {
 
   describe('dividers', () => {
     it('should parse triple dash divider', () => {
-      const blocks = markdownToBlocks('---')
+      const { blocks } = markdownToBlocks('---')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('divider')
       expect(blocks[0].divider).toEqual({})
     })
 
     it('should parse triple asterisk divider', () => {
-      const blocks = markdownToBlocks('***')
+      const { blocks } = markdownToBlocks('***')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('divider')
     })
 
     it('should parse longer dash dividers', () => {
-      const blocks = markdownToBlocks('-----')
+      const { blocks } = markdownToBlocks('-----')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('divider')
     })
@@ -245,7 +245,7 @@ describe('markdownToBlocks', () => {
 
   describe('callouts', () => {
     it('should parse NOTE callout', () => {
-      const blocks = markdownToBlocks('> [!NOTE] This is a note')
+      const { blocks } = markdownToBlocks('> [!NOTE] This is a note')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('callout')
       expect(getRichTextContent(blocks[0])).toBe('This is a note')
@@ -253,43 +253,54 @@ describe('markdownToBlocks', () => {
     })
 
     it('should parse TIP callout', () => {
-      const blocks = markdownToBlocks('> [!TIP] Helpful tip')
+      const { blocks } = markdownToBlocks('> [!TIP] Helpful tip')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].callout.color).toBe('green_background')
     })
 
     it('should parse WARNING callout', () => {
-      const blocks = markdownToBlocks('> [!WARNING] Be careful')
+      const { blocks } = markdownToBlocks('> [!WARNING] Be careful')
       expect(blocks[0].callout.color).toBe('yellow_background')
     })
 
     it('should parse IMPORTANT callout', () => {
-      const blocks = markdownToBlocks('> [!IMPORTANT] Critical info')
+      const { blocks } = markdownToBlocks('> [!IMPORTANT] Critical info')
       expect(blocks[0].callout.color).toBe('purple_background')
     })
 
     it('should parse CAUTION callout', () => {
-      const blocks = markdownToBlocks('> [!CAUTION] Danger zone')
+      const { blocks } = markdownToBlocks('> [!CAUTION] Danger zone')
       expect(blocks[0].callout.color).toBe('red_background')
     })
 
     it('should parse INFO callout', () => {
-      const blocks = markdownToBlocks('> [!INFO] Information')
+      const { blocks } = markdownToBlocks('> [!INFO] Information')
       expect(blocks[0].callout.color).toBe('blue_background')
     })
 
     it('should parse SUCCESS callout', () => {
-      const blocks = markdownToBlocks('> [!SUCCESS] All passed')
+      const { blocks } = markdownToBlocks('> [!SUCCESS] All passed')
       expect(blocks[0].callout.color).toBe('green_background')
     })
 
     it('should parse ERROR callout', () => {
-      const blocks = markdownToBlocks('> [!ERROR] Something failed')
+      const { blocks } = markdownToBlocks('> [!ERROR] Something failed')
       expect(blocks[0].callout.color).toBe('red_background')
     })
 
+    it('DANGER callout uses red_background', () => {
+      const { blocks } = markdownToBlocks('> [!DANGER] critical')
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('red_background')
+    })
+
+    it('DANGER callout is case-insensitive', () => {
+      const { blocks } = markdownToBlocks('> [!danger] lowercase')
+      expect(blocks[0].type).toBe('callout')
+    })
+
     it('should have emoji icon', () => {
-      const blocks = markdownToBlocks('> [!NOTE] Text')
+      const { blocks } = markdownToBlocks('> [!NOTE] Text')
       expect(blocks[0].callout.icon).toBeDefined()
       expect(blocks[0].callout.icon.type).toBe('emoji')
       expect(blocks[0].callout.icon.emoji).toBeTruthy()
@@ -307,20 +318,20 @@ describe('markdownToBlocks', () => {
         ['ERROR', '\u274c']
       ]
       for (const [type, expectedEmoji] of cases) {
-        const blocks = markdownToBlocks(`> [!${type}] Text`)
+        const { blocks } = markdownToBlocks(`> [!${type}] Text`)
         expect(blocks[0].callout.icon.emoji).toBe(expectedEmoji)
       }
     })
 
     it('should round-trip TIP callout', () => {
-      const blocks = markdownToBlocks('> [!TIP] Helpful tip')
+      const { blocks } = markdownToBlocks('> [!TIP] Helpful tip')
       const md = blocksToMarkdown(blocks)
       expect(md).toContain('[!TIP]')
       expect(md).toContain('Helpful tip')
     })
 
     it('should round-trip CAUTION callout', () => {
-      const blocks = markdownToBlocks('> [!CAUTION] Danger zone')
+      const { blocks } = markdownToBlocks('> [!CAUTION] Danger zone')
       const md = blocksToMarkdown(blocks)
       expect(md).toContain('[!CAUTION]')
       expect(md).toContain('Danger zone')
@@ -328,21 +339,21 @@ describe('markdownToBlocks', () => {
 
     it('should handle multi-line callout with continuation lines', () => {
       const md = '> [!NOTE] First line\n> Second line\n> Third line'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('callout')
       expect(getRichTextContent(blocks[0])).toBe('First line\nSecond line\nThird line')
     })
 
     it('should handle callout with no inline text', () => {
-      const blocks = markdownToBlocks('> [!WARNING]')
+      const { blocks } = markdownToBlocks('> [!WARNING]')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('callout')
       expect(getRichTextContent(blocks[0])).toBe('WARNING')
     })
 
     it('should be case-insensitive for callout type', () => {
-      const blocks = markdownToBlocks('> [!note] lowercase')
+      const { blocks } = markdownToBlocks('> [!note] lowercase')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('callout')
     })
@@ -351,7 +362,7 @@ describe('markdownToBlocks', () => {
   describe('toggles', () => {
     it('should parse toggle with content', () => {
       const md = '<details>\n<summary>Click me</summary>\n\nHidden content\n</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('toggle')
       expect(getRichTextContent(blocks[0])).toBe('Click me')
@@ -361,14 +372,14 @@ describe('markdownToBlocks', () => {
 
     it('should parse toggle with empty content', () => {
       const md = '<details>\n<summary>Empty toggle</summary>\n</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].toggle.children).toHaveLength(0)
     })
 
     it('should parse toggle with nested block content', () => {
       const md = '<details>\n<summary>Details</summary>\n\n# Heading inside\n\n- List item\n</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       const children = blocks[0].toggle.children
       expect(children).toHaveLength(2)
@@ -378,7 +389,7 @@ describe('markdownToBlocks', () => {
 
     it('should preserve title when summary is inline with details tag', () => {
       const md = '<details><summary>Title</summary>\nContent\n</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('toggle')
       expect(getRichTextContent(blocks[0])).toBe('Title')
@@ -388,7 +399,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse all-on-one-line toggle', () => {
       const md = '<details><summary>Title</summary>Content here</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('toggle')
       expect(getRichTextContent(blocks[0])).toBe('Title')
@@ -399,7 +410,7 @@ describe('markdownToBlocks', () => {
     it('should parse sequential toggles as siblings', () => {
       const md =
         '<details>\n<summary>First</summary>\n\nContent 1\n</details>\n\n<details>\n<summary>Second</summary>\n\nContent 2\n</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(2)
       expect(blocks[0].type).toBe('toggle')
       expect(getRichTextContent(blocks[0])).toBe('First')
@@ -412,7 +423,7 @@ describe('markdownToBlocks', () => {
     it('should parse nested toggles correctly', () => {
       const md =
         '<details>\n<summary>Outer</summary>\n\n<details>\n<summary>Inner</summary>\n\nInner content\n</details>\n\n</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(getRichTextContent(blocks[0])).toBe('Outer')
       const outerChildren = blocks[0].toggle.children
@@ -424,9 +435,9 @@ describe('markdownToBlocks', () => {
 
     it('should round-trip toggle blocks preserving title and children', () => {
       const md = '<details>\n<summary>Round Trip</summary>\n\nSome content\n</details>'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const output = blocksToMarkdown(blocks)
-      const reparsed = markdownToBlocks(output)
+      const { blocks: reparsed } = markdownToBlocks(output)
       expect(reparsed).toHaveLength(1)
       expect(reparsed[0].type).toBe('toggle')
       expect(getRichTextContent(reparsed[0])).toBe('Round Trip')
@@ -437,7 +448,7 @@ describe('markdownToBlocks', () => {
   describe('tables', () => {
     it('should parse table with header separator', () => {
       const md = '| Name | Age |\n| --- | --- |\n| Alice | 30 |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('table')
       expect(blocks[0].table.has_column_header).toBe(true)
@@ -447,7 +458,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse table without header separator', () => {
       const md = '| A | B |\n| C | D |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].table.has_column_header).toBe(false)
       expect(blocks[0].table.children).toHaveLength(2)
@@ -455,14 +466,14 @@ describe('markdownToBlocks', () => {
 
     it('should parse table with multiple data rows', () => {
       const md = '| H1 | H2 |\n| --- | --- |\n| r1c1 | r1c2 |\n| r2c1 | r2c2 |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       // header row + 2 data rows = 3 table_row children
       expect(blocks[0].table.children).toHaveLength(3)
     })
 
     it('should extract cell text correctly', () => {
       const md = '| Name | Value |\n| --- | --- |\n| key | 42 |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const headerCells = blocks[0].table.children[0].table_row.cells
       expect(headerCells[0][0].text.content).toBe('Name')
       expect(headerCells[1][0].text.content).toBe('Value')
@@ -473,7 +484,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse bold text in table cells', () => {
       const md = '| Header |\n| --- |\n| **bold** |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const cell = blocks[0].table.children[1].table_row.cells[0]
       expect(cell).toHaveLength(1)
       expect(cell[0].text.content).toBe('bold')
@@ -482,7 +493,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse italic text in table cells', () => {
       const md = '| Header |\n| --- |\n| *italic* |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const cell = blocks[0].table.children[1].table_row.cells[0]
       expect(cell[0].text.content).toBe('italic')
       expect(cell[0].annotations.italic).toBe(true)
@@ -490,7 +501,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse inline code in table cells', () => {
       const md = '| Header |\n| --- |\n| `code` |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const cell = blocks[0].table.children[1].table_row.cells[0]
       expect(cell[0].text.content).toBe('code')
       expect(cell[0].annotations.code).toBe(true)
@@ -498,7 +509,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse links in table cells', () => {
       const md = '| Header |\n| --- |\n| [click](https://example.com) |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const cell = blocks[0].table.children[1].table_row.cells[0]
       expect(cell[0].text.content).toBe('click')
       expect(cell[0].text.link).toEqual({ url: 'https://example.com' })
@@ -506,7 +517,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse mixed formatting in table cells', () => {
       const md = '| Header |\n| --- |\n| **bold** and *italic* |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const cell = blocks[0].table.children[1].table_row.cells[0]
       // Should have multiple rich text segments
       expect(cell.length).toBeGreaterThan(1)
@@ -517,7 +528,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse rich text in header cells', () => {
       const md = '| **Bold Header** |\n| --- |\n| data |'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const headerCell = blocks[0].table.children[0].table_row.cells[0]
       expect(headerCell[0].text.content).toBe('Bold Header')
       expect(headerCell[0].annotations.bold).toBe(true)
@@ -526,7 +537,7 @@ describe('markdownToBlocks', () => {
 
   describe('images', () => {
     it('should parse image with alt text', () => {
-      const blocks = markdownToBlocks('![A cat](https://example.com/cat.png)')
+      const { blocks } = markdownToBlocks('![A cat](https://example.com/cat.png)')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('image')
       expect(blocks[0].image.external.url).toBe('https://example.com/cat.png')
@@ -534,7 +545,7 @@ describe('markdownToBlocks', () => {
     })
 
     it('should parse image without alt text', () => {
-      const blocks = markdownToBlocks('![](https://example.com/img.png)')
+      const { blocks } = markdownToBlocks('![](https://example.com/img.png)')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].image.external.url).toBe('https://example.com/img.png')
       expect(blocks[0].image.caption).toHaveLength(0)
@@ -543,16 +554,29 @@ describe('markdownToBlocks', () => {
 
   describe('bookmarks', () => {
     it('should parse bookmark link', () => {
-      const blocks = markdownToBlocks('[bookmark](https://example.com)')
+      const { blocks } = markdownToBlocks('[bookmark](https://example.com)')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('bookmark')
       expect(blocks[0].bookmark.url).toBe('https://example.com')
+    })
+
+    it('bookmark with caption parses', () => {
+      const { blocks } = markdownToBlocks('[bookmark](https://example.com "My Title")')
+      expect(blocks[0].type).toBe('bookmark')
+      expect(blocks[0].bookmark.url).toBe('https://example.com')
+      expect(blocks[0].bookmark.caption).toHaveLength(1)
+      expect(blocks[0].bookmark.caption[0].plain_text).toBe('My Title')
+    })
+
+    it('bookmark without caption still empty', () => {
+      const { blocks } = markdownToBlocks('[bookmark](https://example.com)')
+      expect(blocks[0].bookmark.caption).toEqual([])
     })
   })
 
   describe('embeds', () => {
     it('should parse embed link', () => {
-      const blocks = markdownToBlocks('[embed](https://youtube.com/watch?v=abc)')
+      const { blocks } = markdownToBlocks('[embed](https://youtube.com/watch?v=abc)')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('embed')
       expect(blocks[0].embed.url).toBe('https://youtube.com/watch?v=abc')
@@ -561,7 +585,7 @@ describe('markdownToBlocks', () => {
 
   describe('equations', () => {
     it('should parse single-line equation', () => {
-      const blocks = markdownToBlocks('$$E = mc^2$$')
+      const { blocks } = markdownToBlocks('$$E = mc^2$$')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('equation')
       expect(blocks[0].equation.expression).toBe('E = mc^2')
@@ -569,7 +593,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse multi-line equation', () => {
       const md = '$$\nx^2 + y^2 = z^2\n$$'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('equation')
       expect(blocks[0].equation.expression).toBe('x^2 + y^2 = z^2')
@@ -577,7 +601,7 @@ describe('markdownToBlocks', () => {
 
     it('should preserve newlines in multi-line equations', () => {
       const md = '$$\na = 1\nb = 2\nc = a + b\n$$'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks[0].equation.expression).toBe('a = 1\nb = 2\nc = a + b')
     })
   })
@@ -585,7 +609,7 @@ describe('markdownToBlocks', () => {
   describe('columns', () => {
     it('should parse column layout', () => {
       const md = ':::columns\n:::column\nLeft content\n:::column\nRight content\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('column_list')
       const columns = blocks[0].column_list.children
@@ -596,7 +620,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse column children as blocks', () => {
       const md = ':::columns\n:::column\n# Left heading\n:::column\n- List item\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const col1Children = blocks[0].column_list.children[0].column.children
       const col2Children = blocks[0].column_list.children[1].column.children
       expect(col1Children[0].type).toBe('heading_1')
@@ -605,7 +629,7 @@ describe('markdownToBlocks', () => {
 
     it('should handle columns with multiple blocks per column', () => {
       const md = ':::columns\n:::column\n# Title\nParagraph text\n:::column\n- Item 1\n- Item 2\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const col1Children = blocks[0].column_list.children[0].column.children
       const col2Children = blocks[0].column_list.children[1].column.children
       expect(col1Children).toHaveLength(2)
@@ -614,7 +638,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse callout inside column', () => {
       const md = ':::columns\n:::column\n> [!NOTE]\n> Important info\n:::column\nRight side\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const col1Children = blocks[0].column_list.children[0].column.children
       expect(col1Children[0].type).toBe('callout')
     })
@@ -622,7 +646,7 @@ describe('markdownToBlocks', () => {
     it('should parse toggle inside column', () => {
       const md =
         ':::columns\n:::column\n<details><summary>Click me</summary>\nHidden content\n</details>\n:::column\nRight side\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const col1Children = blocks[0].column_list.children[0].column.children
       expect(col1Children[0].type).toBe('toggle')
       expect(col1Children[0].toggle.children).toHaveLength(1)
@@ -630,14 +654,14 @@ describe('markdownToBlocks', () => {
 
     it('should parse three columns', () => {
       const md = ':::columns\n:::column\nCol 1\n:::column\nCol 2\n:::column\nCol 3\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const columns = blocks[0].column_list.children
       expect(columns).toHaveLength(3)
     })
 
     it('should handle empty column content', () => {
       const md = ':::columns\n:::column\n:::column\nRight side\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const columns = blocks[0].column_list.children
       expect(columns).toHaveLength(2)
       // Empty column should still exist but with no children
@@ -646,7 +670,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse width ratio on columns', () => {
       const md = ':::columns\n:::column{width=0.7}\nWide column\n:::column{width=0.3}\nNarrow column\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const columns = blocks[0].column_list.children
       expect(columns[0].column.format?.column_ratio).toBe(0.7)
       expect(columns[1].column.format?.column_ratio).toBe(0.3)
@@ -654,7 +678,7 @@ describe('markdownToBlocks', () => {
 
     it('should parse columns without width ratio (default)', () => {
       const md = ':::columns\n:::column\nLeft\n:::column\nRight\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const columns = blocks[0].column_list.children
       expect(columns[0].column.format).toBeUndefined()
       expect(columns[1].column.format).toBeUndefined()
@@ -663,13 +687,13 @@ describe('markdownToBlocks', () => {
 
   describe('table of contents', () => {
     it('should parse [toc]', () => {
-      const blocks = markdownToBlocks('[toc]')
+      const { blocks } = markdownToBlocks('[toc]')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('table_of_contents')
     })
 
     it('should parse [TOC] (uppercase)', () => {
-      const blocks = markdownToBlocks('[TOC]')
+      const { blocks } = markdownToBlocks('[TOC]')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('table_of_contents')
     })
@@ -677,13 +701,13 @@ describe('markdownToBlocks', () => {
 
   describe('breadcrumb', () => {
     it('should parse [breadcrumb]', () => {
-      const blocks = markdownToBlocks('[breadcrumb]')
+      const { blocks } = markdownToBlocks('[breadcrumb]')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('breadcrumb')
     })
 
     it('should parse [BREADCRUMB] (uppercase)', () => {
-      const blocks = markdownToBlocks('[BREADCRUMB]')
+      const { blocks } = markdownToBlocks('[BREADCRUMB]')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('breadcrumb')
     })
@@ -692,7 +716,7 @@ describe('markdownToBlocks', () => {
   describe('mixed content', () => {
     it('should parse headings + lists + paragraphs together', () => {
       const md = '# Title\n\nSome text\n\n- Item 1\n- Item 2\n\n## Subtitle\n\n1. First\n2. Second'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks[0].type).toBe('heading_1')
       expect(blocks[1].type).toBe('paragraph')
       expect(blocks[2].type).toBe('bulleted_list_item')
@@ -704,7 +728,7 @@ describe('markdownToBlocks', () => {
 
     it('should flush list items when switching to non-list content', () => {
       const md = '- Item A\n- Item B\nParagraph after list'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks[0].type).toBe('bulleted_list_item')
       expect(blocks[1].type).toBe('bulleted_list_item')
       expect(blocks[2].type).toBe('paragraph')
@@ -712,7 +736,7 @@ describe('markdownToBlocks', () => {
 
     it('should flush remaining list items at end of input', () => {
       const md = '- Last item 1\n- Last item 2'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       expect(blocks).toHaveLength(2)
       expect(blocks[0].type).toBe('bulleted_list_item')
       expect(blocks[1].type).toBe('bulleted_list_item')
@@ -993,6 +1017,20 @@ describe('blocksToMarkdown', () => {
       ]
       expect(blocksToMarkdown(blocks)).toBe('[bookmark](https://example.com)')
     })
+
+    it('bookmark with caption roundtrips via blocksToMarkdown', () => {
+      const blocks = [
+        {
+          object: 'block',
+          type: 'bookmark',
+          bookmark: {
+            url: 'https://example.com',
+            caption: [{ type: 'text', text: { content: 'My Title' } }]
+          }
+        }
+      ]
+      expect(blocksToMarkdown(blocks as NotionBlock[])).toBe('[bookmark](https://example.com "My Title")')
+    })
   })
 
   describe('embeds', () => {
@@ -1177,7 +1215,7 @@ describe('blocksToMarkdown', () => {
 
     it('should round-trip columns with width ratios', () => {
       const md = ':::columns\n:::column{width=0.7}\nWide content\n:::column{width=0.3}\nNarrow content\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const result = blocksToMarkdown(blocks)
       expect(result).toContain(':::column{width=0.7}')
       expect(result).toContain(':::column{width=0.3}')
@@ -1187,7 +1225,7 @@ describe('blocksToMarkdown', () => {
 
     it('should round-trip columns with callout inside', () => {
       const md = ':::columns\n:::column\n> [!NOTE]\n> Important info\n:::column\nRight side\n:::end'
-      const blocks = markdownToBlocks(md)
+      const { blocks } = markdownToBlocks(md)
       const result = blocksToMarkdown(blocks)
       expect(result).toContain(':::columns')
       expect(result).toContain('> [!NOTE]')
@@ -1799,134 +1837,134 @@ describe('extractPlainText', () => {
 describe('round-trip conversion', () => {
   it('should preserve heading_1 content', () => {
     const md = '# Hello World'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve heading_2 content', () => {
     const md = '## Section'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve heading_3 content', () => {
     const md = '### Subsection'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve paragraph content', () => {
     const md = 'Just a paragraph'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve bulleted list items', () => {
     const md = '- First\n- Second'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should normalize asterisk bullets to dash on round-trip', () => {
     const input = '* Item'
-    const output = blocksToMarkdown(markdownToBlocks(input))
+    const output = blocksToMarkdown(markdownToBlocks(input).blocks)
     expect(output).toBe('- Item')
   })
 
   it('should preserve numbered list items (always outputs 1.)', () => {
     const md = '1. First\n1. Second'
     const input = '1. First\n2. Second'
-    expect(blocksToMarkdown(markdownToBlocks(input))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(input).blocks)).toBe(md)
   })
 
   it('should preserve unchecked todo', () => {
     const md = '- [ ] Task'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve checked todo', () => {
     const md = '- [x] Done'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve code block with language', () => {
     const md = '```python\nprint("hi")\n```'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should convert code block without language to plain text on round-trip', () => {
     const input = '```\ncode\n```'
-    const output = blocksToMarkdown(markdownToBlocks(input))
+    const output = blocksToMarkdown(markdownToBlocks(input).blocks)
     expect(output).toBe('```plain text\ncode\n```')
   })
 
   it('should preserve quote', () => {
     const md = '> Quoted text'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should normalize *** divider to --- on round-trip', () => {
     const input = '***'
-    const output = blocksToMarkdown(markdownToBlocks(input))
+    const output = blocksToMarkdown(markdownToBlocks(input).blocks)
     expect(output).toBe('---')
   })
 
   it('should preserve --- divider', () => {
     const md = '---'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve single-line equation', () => {
     const md = '$$x^2 + 1$$'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should flatten multi-line equation to single-line on round-trip', () => {
     const input = '$$\na + b\n$$'
-    const output = blocksToMarkdown(markdownToBlocks(input))
+    const output = blocksToMarkdown(markdownToBlocks(input).blocks)
     expect(output).toBe('$$a + b$$')
   })
 
   it('should preserve bookmark', () => {
     const md = '[bookmark](https://example.com)'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve embed', () => {
     const md = '[embed](https://youtube.com/watch?v=abc)'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve image with alt text', () => {
     const md = '![photo](https://example.com/img.png)'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve image without alt text', () => {
     const md = '![](https://example.com/img.png)'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should preserve [toc]', () => {
     const md = '[toc]'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should normalize [TOC] to [toc] on round-trip', () => {
     const input = '[TOC]'
-    const output = blocksToMarkdown(markdownToBlocks(input))
+    const output = blocksToMarkdown(markdownToBlocks(input).blocks)
     expect(output).toBe('[toc]')
   })
 
   it('should preserve [breadcrumb]', () => {
     const md = '[breadcrumb]'
-    expect(blocksToMarkdown(markdownToBlocks(md))).toBe(md)
+    expect(blocksToMarkdown(markdownToBlocks(md).blocks)).toBe(md)
   })
 
   it('should normalize [BREADCRUMB] to [breadcrumb] on round-trip', () => {
     const input = '[BREADCRUMB]'
-    const output = blocksToMarkdown(markdownToBlocks(input))
+    const output = blocksToMarkdown(markdownToBlocks(input).blocks)
     expect(output).toBe('[breadcrumb]')
   })
 
   it('should preserve table with header through round-trip', () => {
     const md = '| Name | Age |\n| --- | --- |\n| Alice | 30 |'
-    const output = blocksToMarkdown(markdownToBlocks(md))
+    const output = blocksToMarkdown(markdownToBlocks(md).blocks)
     const lines = output.split('\n')
     expect(lines[0]).toBe('| Name | Age |')
     expect(lines[1]).toBe('| --- | --- |')
@@ -1935,14 +1973,14 @@ describe('round-trip conversion', () => {
 
   it('should preserve callout type through round-trip', () => {
     const md = '> [!WARNING] Watch out'
-    const output = blocksToMarkdown(markdownToBlocks(md))
+    const output = blocksToMarkdown(markdownToBlocks(md).blocks)
     expect(output).toContain('[!WARNING]')
     expect(output).toContain('Watch out')
   })
 
   it('should preserve toggle through round-trip', () => {
     const md = '<details>\n<summary>FAQ</summary>\n\nAnswer here\n</details>'
-    const output = blocksToMarkdown(markdownToBlocks(md))
+    const output = blocksToMarkdown(markdownToBlocks(md).blocks)
     expect(output).toContain('<details>')
     expect(output).toContain('<summary>FAQ</summary>')
     expect(output).toContain('Answer here')
@@ -1950,12 +1988,12 @@ describe('round-trip conversion', () => {
   })
 
   it('should preserve empty input through round-trip', () => {
-    expect(blocksToMarkdown(markdownToBlocks(''))).toBe('')
+    expect(blocksToMarkdown(markdownToBlocks('').blocks)).toBe('')
   })
 
   it('should preserve mixed content structure', () => {
     const md = '# Title\n- Item 1\n- Item 2\n---\n> Quote'
-    const blocks = markdownToBlocks(md)
+    const { blocks } = markdownToBlocks(md)
     const output = blocksToMarkdown(blocks)
     expect(output).toContain('# Title')
     expect(output).toContain('- Item 1')

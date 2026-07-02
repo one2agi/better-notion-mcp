@@ -25,12 +25,16 @@ export async function contentConvert(input: ContentConvertInput): Promise<any> {
             'Provide a string content'
           )
         }
-        const blocks = markdownToBlocks(input.content)
-        return {
+        const { blocks, warnings } = markdownToBlocks(input.content)
+        const result: any = {
           direction: input.direction,
           block_count: blocks.length,
           blocks
         }
+        if (warnings.length > 0) {
+          result.warnings = warnings
+        }
+        return result
       }
 
       case 'blocks-to-markdown': {

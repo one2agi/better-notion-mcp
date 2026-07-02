@@ -295,7 +295,7 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
 
   // Add content if provided
   if (input.content) {
-    const blocks = markdownToBlocks(input.content)
+    const { blocks } = markdownToBlocks(input.content)
     if (blocks.length > 0) {
       await notion.blocks.children.append({
         block_id: page.id,
@@ -511,7 +511,7 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
         }
       }
 
-      const newBlocks = markdownToBlocks(input.content)
+      const { blocks: newBlocks } = markdownToBlocks(input.content)
       if (newBlocks.length > 0) {
         await notion.blocks.children.append({
           block_id: input.page_id,
@@ -519,7 +519,7 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
         })
       }
     } else if (input.append_content) {
-      const blocks = markdownToBlocks(input.append_content)
+      const { blocks } = markdownToBlocks(input.append_content)
       if (blocks.length > 0) {
         await notion.blocks.children.append({
           block_id: input.page_id,

@@ -184,7 +184,7 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
       'Provide after_block_id with the block ID to insert after'
     )
   }
-  const blocksList = markdownToBlocks(input.content)
+  const { blocks: blocksList } = markdownToBlocks(input.content)
   const appendParams: any = {
     block_id: input.block_id,
     children: blocksList as any
@@ -239,7 +239,7 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
 
   if (input.content) {
     // Markdown path: parse content and extract type-specific fields
-    const newBlocks = markdownToBlocks(input.content)
+    const { blocks: newBlocks } = markdownToBlocks(input.content)
 
     if (newBlocks.length === 0) {
       throw new NotionMCPError('Content must produce at least one block', 'VALIDATION_ERROR', 'Invalid markdown')

@@ -11,7 +11,7 @@ describe('Security: Markdown Parsing Vulnerabilities', () => {
     })
 
     it('should sanitize javascript: in image src', () => {
-      const blocks = markdownToBlocks('![alt](javascript:alert(1))')
+      const { blocks } = markdownToBlocks('![alt](javascript:alert(1))')
       // Correct behavior: should not be an image block, or image block with empty/safe URL
       // The implementation falls through to paragraph if unsafe
       expect(blocks[0].type).toBe('paragraph')
@@ -21,7 +21,7 @@ describe('Security: Markdown Parsing Vulnerabilities', () => {
     })
 
     it('should sanitize javascript: in bookmarks', () => {
-      const blocks = markdownToBlocks('[bookmark](javascript:void(0))')
+      const { blocks } = markdownToBlocks('[bookmark](javascript:void(0))')
       // Correct behavior: fall through to paragraph
       expect(blocks[0].type).toBe('paragraph')
       // Renders as plain text "bookmark" because link is stripped
@@ -29,7 +29,7 @@ describe('Security: Markdown Parsing Vulnerabilities', () => {
     })
 
     it('should sanitize javascript: in embeds', () => {
-      const blocks = markdownToBlocks('[embed](javascript:confirm(1))')
+      const { blocks } = markdownToBlocks('[embed](javascript:confirm(1))')
       // Correct behavior: fall through to paragraph
       expect(blocks[0].type).toBe('paragraph')
       // Renders as plain text "embed" because link is stripped
@@ -53,7 +53,7 @@ describe('Security: Markdown Parsing Vulnerabilities', () => {
       const result = parseRichText('[link](https://example.com)')
       expect(result[0].text.link?.url).toBe('https://example.com')
 
-      const blocks = markdownToBlocks('![alt](https://example.com/img.png)')
+      const { blocks } = markdownToBlocks('![alt](https://example.com/img.png)')
       expect(blocks[0].type).toBe('image')
       expect(blocks[0].image.external.url).toBe('https://example.com/img.png')
     })

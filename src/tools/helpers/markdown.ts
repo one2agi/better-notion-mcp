@@ -14,6 +14,18 @@ export interface NotionBlock {
   [key: string]: any
 }
 
+export interface MarkdownWarning {
+  code: string
+  message: string
+  block_index: number
+  original_line: string
+}
+
+export interface MarkdownParseResult {
+  blocks: NotionBlock[]
+  warnings: MarkdownWarning[]
+}
+
 export interface RichText {
   type: 'text' | 'mention'
   text: {
@@ -59,9 +71,9 @@ function createMention(
 }
 
 // Regular expressions for block parsing
-const CALLOUT_REGEX = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR)\]\s*(.*)/i
-const IMAGE_REGEX = /^!\[([^\]]*)\]\(([^)]+)\)$/
-const BOOKMARK_REGEX = /^\[(bookmark|embed)\]\(([^)]+)\)$/i
+const CALLOUT_REGEX = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR|DANGER)\]\s*(.*)/i
+const IMAGE_REGEX = /^!\[([^\]]*)\]\(([^)]+)\)/
+const BOOKMARK_REGEX = /^\[(bookmark|embed)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/i
 const CHECKED_LIST_REGEX = /^\s*[-*+]\s\[([ xX])\](?:\s|$)/
 const BULLETED_LIST_REGEX = /^\s*[-*+]\s/
 const NUMBERED_LIST_REGEX = /^\s*\d+\.\s/
@@ -79,9 +91,23 @@ class MarkdownParser {
   private blocks: NotionBlock[] = []
   private currentList: NotionBlock[] = []
   private currentListType: 'bulleted' | 'numbered' | null = null
+  private warnings: MarkdownWarning[] = []
 
   constructor(markdown: string) {
     this.lines = markdown.split('\n')
+  }
+
+  public getWarnings(): MarkdownWarning[] {
+    return this.warnings
+  }
+
+  private addWarning(code: string, message: string, line: string): void {
+    this.warnings.push({
+      code,
+      message,
+      block_index: this.blocks.length,
+      original_line: line
+    })
   }
 
   public parse(): NotionBlock[] {
@@ -149,6 +175,7 @@ class MarkdownParser {
       if (isSafeUrl(url)) {
         this.blocks.push(createImage(url, imageMatch[1]))
       } else {
+        this.addWarning('UNSAFE_URL', `Unsafe image URL rejected; downgraded to paragraph: ${url}`, line)
         this.blocks.push(createParagraph(line))
       }
       return i
@@ -159,13 +186,15 @@ class MarkdownParser {
     if (bookmarkMatch) {
       const type = bookmarkMatch[1].toLowerCase()
       const url = bookmarkMatch[2]
+      const caption = bookmarkMatch[3]
       if (isSafeUrl(url)) {
         if (type === 'embed') {
           this.blocks.push(createEmbed(url))
         } else {
-          this.blocks.push(createBookmark(url))
+          this.blocks.push(createBookmark(url, caption))
         }
       } else {
+        this.addWarning('UNSAFE_URL', `Unsafe ${type} URL rejected; downgraded to paragraph: ${url}`, line)
         this.blocks.push(createParagraph(line))
       }
       return i
@@ -249,9 +278,11 @@ class MarkdownParser {
   }
 }
 
-export function markdownToBlocks(markdown: string): NotionBlock[] {
+export function markdownToBlocks(markdown: string): MarkdownParseResult {
   const parser = new MarkdownParser(markdown)
-  return parser.parse()
+  const blocks = parser.parse()
+  const warnings = parser.getWarnings()
+  return { blocks, warnings }
 }
 
 /**
@@ -413,7 +444,15 @@ const BLOCK_HANDLERS: Record<string, BlockHandler> = {
     lines.push(`![${caption}](${imageUrl})`)
   },
   bookmark: (block, lines) => {
-    lines.push(`[bookmark](${block.bookmark.url})`)
+    const captionText = block.bookmark.caption
+      ?.map((rt: RichText) => rt.plain_text ?? rt.text?.content ?? '')
+      .filter((s: string) => s.length > 0)
+      .join('')
+    if (captionText) {
+      lines.push(`[bookmark](${block.bookmark.url} "${captionText}")`)
+    } else {
+      lines.push(`[bookmark](${block.bookmark.url})`)
+    }
   },
   embed: (block, lines) => {
     lines.push(`[embed](${block.embed.url})`)
@@ -480,8 +519,13 @@ class InlineParser {
   private noMoreCloseBrackets = false
   private noMoreMentionCloseBrackets = false
   private i = 0
+  private warnings: MarkdownWarning[] = []
 
   constructor(private readonly text: string) {}
+
+  public getWarnings(): MarkdownWarning[] {
+    return this.warnings
+  }
 
   private flushCurrent(): void {
     if (this.current) {
@@ -555,6 +599,15 @@ class InlineParser {
           const linkText = this.text.slice(this.i + 1, closeBracket)
           const linkUrl = this.text.slice(closeBracket + 2, closeParen)
           const isSafe = isSafeUrl(linkUrl)
+
+          if (!isSafe) {
+            this.warnings.push({
+              code: 'UNSAFE_URL',
+              message: `Unsafe inline link URL rejected; link dropped: ${linkUrl}`,
+              block_index: -1,
+              original_line: this.text
+            })
+          }
 
           this.richText.push({
             type: 'text',
@@ -848,7 +901,7 @@ function parseToggle(lines: string[], startIndex: number): ToggleParseResult {
         childLines.push(afterSummary)
       }
       const childContent = childLines.join('\n').trim()
-      const children = childContent ? markdownToBlocks(childContent) : []
+      const children = childContent ? markdownToBlocks(childContent).blocks : []
       return { title, children, endIndex: i }
     }
 
@@ -893,7 +946,7 @@ function parseToggle(lines: string[], startIndex: number): ToggleParseResult {
 
   // Convert child content to blocks
   const childContent = childLines.join('\n').trim()
-  const children = childContent ? markdownToBlocks(childContent) : []
+  const children = childContent ? markdownToBlocks(childContent).blocks : []
 
   return { title, children, endIndex: i }
 }
@@ -921,7 +974,7 @@ function parseColumns(lines: string[], startIndex: number): ColumnParseResult {
     if (line === ':::end') {
       // Flush last column
       if (inColumn) {
-        columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()))
+        columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()).blocks)
         currentColumnLines = []
       }
       break
@@ -931,7 +984,7 @@ function parseColumns(lines: string[], startIndex: number): ColumnParseResult {
     if (columnMatch) {
       // Flush previous column (even if empty)
       if (inColumn) {
-        columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()))
+        columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()).blocks)
         currentColumnLines = []
       }
       inColumn = true
@@ -946,7 +999,7 @@ function parseColumns(lines: string[], startIndex: number): ColumnParseResult {
 
   // If no :::end found, flush remaining
   if (currentColumnLines.length > 0 && (columns.length > 0 || currentColumnLines.some((l) => l.trim()))) {
-    columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()))
+    columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()).blocks)
   }
 
   return { columns, widthRatios, endIndex: i }
@@ -964,7 +1017,8 @@ const CALLOUT_ICONS: Record<string, string> = {
   CAUTION: '🛑',
   INFO: 'ℹ️',
   SUCCESS: '✅',
-  ERROR: '❌'
+  ERROR: '❌',
+  DANGER: '❌'
 }
 
 const CALLOUT_COLORS: Record<string, string> = {
@@ -975,7 +1029,8 @@ const CALLOUT_COLORS: Record<string, string> = {
   CAUTION: 'red_background',
   INFO: 'blue_background',
   SUCCESS: 'green_background',
-  ERROR: 'red_background'
+  ERROR: 'red_background',
+  DANGER: 'red_background'
 }
 
 const CALLOUT_ICON_MAP: Record<string, string> = {
@@ -1156,11 +1211,15 @@ function createImage(url: string, caption: string = ''): NotionBlock {
   }
 }
 
-function createBookmark(url: string): NotionBlock {
+function createBookmark(url: string, caption?: string): NotionBlock {
+  const captionRt = caption ? [createRichText(caption)] : []
+  if (captionRt.length > 0) {
+    captionRt[0].plain_text = caption
+  }
   return {
     object: 'block',
     type: 'bookmark',
-    bookmark: { url, caption: [] }
+    bookmark: { url, caption: captionRt }
   }
 }
 
