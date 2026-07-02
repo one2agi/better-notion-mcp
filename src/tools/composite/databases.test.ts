@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  type AggregateDatabaseResponse,
   type CreateDatabasePageResponse,
   type CreateDatabaseResponse,
   type CreateDataSourceResponse,
   type DeleteDatabasePageResponse,
   databases,
   type GetDatabaseResponse,
+  type GroupByDatabaseResponse,
   type ListDataSourceTemplatesResponse,
   type QueryDatabaseResponse,
   resolutionCache,
@@ -1087,6 +1089,275 @@ describe('databases', () => {
   describe('unknown action', () => {
     it('should throw on unknown action', async () => {
       await expect(databases(notion, { action: 'invalid' as any })).rejects.toThrow('Unknown action: invalid')
+    })
+  })
+
+  describe('aggregate', () => {
+    it('should count all rows when given a count aggregation', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: {} },
+          { id: 'p2', properties: {} },
+          { id: 'p3', properties: {} }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'count', alias: 'total' }]
+      })) as AggregateDatabaseResponse
+
+      expect(result).toEqual({
+        action: 'aggregate',
+        database_id: 'db-1',
+        data_source_id: 'ds-1',
+        total_rows_scanned: 3,
+        results: { total: 3 }
+      })
+    })
+
+    it('should sum a numeric property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Hours: { type: 'number', number: 5 } } },
+          { id: 'p2', properties: { Hours: { type: 'number', number: 3 } } },
+          { id: 'p3', properties: { Hours: { type: 'number', number: 7 } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'sum', property: 'Hours', alias: 'total_hours' }]
+      })) as AggregateDatabaseResponse
+
+      expect(result.results).toEqual({ total_hours: 15 })
+    })
+
+    it('should average a numeric property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Hours: { type: 'number', number: 6 } } },
+          { id: 'p2', properties: { Hours: { type: 'number', number: 12 } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'avg', property: 'Hours', alias: 'avg_hours' }]
+      })) as AggregateDatabaseResponse
+
+      expect(result.results.avg_hours).toBe(9) // 6 + 12 / 2
+    })
+
+    it('should return null for sum/avg when no rows have the property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [{ id: 'p1', properties: { Other: { type: 'number', number: 5 } } }],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [
+          { type: 'sum', property: 'Hours', alias: 'total_hours' },
+          { type: 'avg', property: 'Hours', alias: 'avg_hours' }
+        ]
+      })) as AggregateDatabaseResponse
+
+      expect(result.results).toEqual({ total_hours: null, avg_hours: null })
+    })
+
+    it('should count unique values for a select property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } },
+          { id: 'p2', properties: { Owner: { type: 'select', select: { name: 'Bob' } } } },
+          { id: 'p3', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } },
+          { id: 'p4', properties: { Owner: { type: 'select', select: null } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'unique_count', property: 'Owner', alias: 'unique_owners' }]
+      })) as AggregateDatabaseResponse
+
+      // Alice + Bob = 2 unique; null Owner skipped
+      expect(result.results.unique_owners).toBe(2)
+    })
+
+    it('should find min and max of a numeric property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Score: { type: 'number', number: 42 } } },
+          { id: 'p2', properties: { Score: { type: 'number', number: 7 } } },
+          { id: 'p3', properties: { Score: { type: 'number', number: 99 } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [
+          { type: 'min', property: 'Score', alias: 'lowest' },
+          { type: 'max', property: 'Score', alias: 'highest' }
+        ]
+      })) as AggregateDatabaseResponse
+
+      expect(result.results).toEqual({ lowest: 7, highest: 99 })
+    })
+
+    it('should throw when database_id is missing', async () => {
+      await expect(
+        databases(notion, {
+          action: 'aggregate',
+          aggregations: [{ type: 'count' }]
+        })
+      ).rejects.toThrow('database_id required for aggregate action')
+    })
+
+    it('should throw when aggregations is missing or empty', async () => {
+      await expect(databases(notion, { action: 'aggregate', database_id: 'db-1' })).rejects.toThrow(
+        'aggregations required for aggregate action'
+      )
+
+      await expect(databases(notion, { action: 'aggregate', database_id: 'db-1', aggregations: [] })).rejects.toThrow(
+        'aggregations required for aggregate action'
+      )
+    })
+  })
+
+  describe('group_by', () => {
+    it('should group by a select property and count per group', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } },
+          { id: 'p2', properties: { Owner: { type: 'select', select: { name: 'Bob' } } } },
+          { id: 'p3', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } },
+          { id: 'p4', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: { property: 'Owner' },
+        aggregations: [{ type: 'count' }]
+      })) as GroupByDatabaseResponse
+
+      // Groups are sorted by key alphabetically; null last
+      expect(result).toEqual({
+        action: 'group_by',
+        database_id: 'db-1',
+        data_source_id: 'ds-1',
+        total_rows_scanned: 4,
+        group_by_property: 'Owner',
+        groups: [
+          { key: 'Alice', count: 3, aggregations: { count: 3 } },
+          { key: 'Bob', count: 1, aggregations: { count: 1 } }
+        ]
+      })
+    })
+
+    it('should group by with sum on numeric property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'p1',
+            properties: { Owner: { type: 'select', select: { name: 'Alice' } }, Hours: { type: 'number', number: 5 } }
+          },
+          {
+            id: 'p2',
+            properties: { Owner: { type: 'select', select: { name: 'Alice' } }, Hours: { type: 'number', number: 3 } }
+          },
+          {
+            id: 'p3',
+            properties: { Owner: { type: 'select', select: { name: 'Bob' } }, Hours: { type: 'number', number: 7 } }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: { property: 'Owner' },
+        aggregations: [{ type: 'count' }, { type: 'sum', property: 'Hours', alias: 'total_hours' }]
+      })) as GroupByDatabaseResponse
+
+      expect(result.groups).toEqual([
+        { key: 'Alice', count: 2, aggregations: { count: 2, total_hours: 8 } },
+        { key: 'Bob', count: 1, aggregations: { count: 1, total_hours: 7 } }
+      ])
+    })
+
+    it('should put null property values into a null-keyed group at the end', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } },
+          { id: 'p2', properties: { Owner: { type: 'select', select: null } } },
+          { id: 'p3', properties: { Owner: { type: 'select', select: { name: 'Bob' } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: { property: 'Owner' },
+        aggregations: [{ type: 'count' }]
+      })) as GroupByDatabaseResponse
+
+      expect(result.groups.map((g) => g.key)).toEqual(['Alice', 'Bob', null])
+      expect(result.groups[2].count).toBe(1)
+    })
+
+    it('should throw when database_id is missing', async () => {
+      await expect(
+        databases(notion, {
+          action: 'group_by',
+          group_by: { property: 'Owner' },
+          aggregations: [{ type: 'count' }]
+        })
+      ).rejects.toThrow('database_id required for group_by action')
+    })
+
+    it('should throw when group_by is missing', async () => {
+      await expect(
+        databases(notion, {
+          action: 'group_by',
+          database_id: 'db-1',
+          aggregations: [{ type: 'count' }]
+        })
+      ).rejects.toThrow('group_by required for group_by action')
     })
   })
 })
