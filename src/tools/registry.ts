@@ -90,7 +90,7 @@ const TOOLS = [
   {
     name: 'pages',
     description:
-      'Page CRUD for individual pages and database rows.\n\nActions (required params -> optional):\n- create (parent_id -> title, content, properties, icon, cover)\n- get (page_id): returns markdown content\n- get_property (page_id, property_id)\n- update (page_id -> title, content, append_content, properties, icon, cover, archived)\n- move (page_id, parent_id)\n- archive (page_id) / restore (page_id)\n- duplicate (page_id -> parent_id)\n\nUse `databases` instead for querying or bulk row operations. Property format: simple values auto-convert -- string for title/rich_text/select/status, number for number, boolean for checkbox, string[] for multi_select, ISO date "2025-01-15" for date. Example: properties: {"Name": "My Page", "Status": "In Progress", "Tags": ["tag1", "tag2"], "Due": "2025-06-01", "Count": 42, "Done": true}.',
+      'Page CRUD for individual pages and database rows.\n\nActions (required params -> optional):\n- create (parent_id -> title, content, properties, icon, cover)\n- get (page_id): returns markdown content\n- get_property (page_id, property_id)\n- update (page_id -> title, content, append_content, properties, icon, cover, archived)\n- move (page_id, parent_id)\n- archive (page_id) / restore (page_id)\n- duplicate (page_id -> parent_id)\n- get_markdown (page_id): server-side markdown render (faster than `get`, requires Notion API 2025-09-03 + SDK v5.22+)\n- replace_content (page_id, new_str): overwrite whole page with markdown (destructive)\n- insert_markdown (page_id, content, position=\"start\"|\"end\", after_block_id?): insert at position or after block\n- update_content (page_id, updates[{old_str,new_str,replace_all_matches?}]): server-side search & replace\n- replace_content_range (page_id, content, content_range): replace a specific markdown range\n\nUse `databases` instead for querying or bulk row operations. Property format: simple values auto-convert -- string for title/rich_text/select/status, number for number, boolean for checkbox, string[] for multi_select, ISO date "2025-01-15" for date. Example: properties: {"Name": "My Page", "Status": "In Progress", "Tags": ["tag1", "tag2"], "Due": "2025-06-01", "Count": 42, "Done": true}.',
     annotations: {
       title: 'Pages',
       readOnlyHint: false,
@@ -103,7 +103,21 @@ const TOOLS = [
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'get', 'get_property', 'update', 'move', 'archive', 'restore', 'duplicate'],
+          enum: [
+            'create',
+            'get',
+            'get_property',
+            'update',
+            'move',
+            'archive',
+            'restore',
+            'duplicate',
+            'get_markdown',
+            'replace_content',
+            'insert_markdown',
+            'update_content',
+            'replace_content_range'
+          ],
           description: 'Action to perform'
         },
         page_id: { type: 'string', description: 'Page ID (required for most actions)' },
@@ -136,7 +150,7 @@ const TOOLS = [
   {
     name: 'databases',
     description:
-      'Database schema, query, and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search)\n- create_page (database_id, pages[{properties}])\n- update_page (database_id, page_id, page_properties)\n- delete_page (database_id, page_ids)\n- create_data_source / update_data_source / update_database / list_templates\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
+      'Database schema, query, and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search)\n- aggregate (database_id, aggregations[{type,property,alias}]): count/sum/avg/min/max/unique_count\n- group_by (database_id, group_by{property}, aggregations): group rows by a property, compute per-group stats\n- create_page (database_id, pages[{properties}])\n- update_page (database_id, page_id, page_properties)\n- delete_page (database_id, page_ids)\n- create_data_source / update_data_source / update_database / list_templates\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
     annotations: {
       title: 'Databases',
       readOnlyHint: false,
@@ -153,6 +167,8 @@ const TOOLS = [
             'create',
             'get',
             'query',
+            'aggregate',
+            'group_by',
             'create_page',
             'update_page',
             'delete_page',
@@ -166,7 +182,7 @@ const TOOLS = [
         database_id: {
           type: 'string',
           description:
-            'Database ID (from Notion URL) or data_source_id (from workspace search). Auto-resolved for query/create_page/list_templates.'
+            'Database ID (from Notion URL) or data_source_id (from workspace search). Auto-resolved for query/aggregate/group_by/create_page/list_templates.'
         },
         data_source_id: { type: 'string', description: 'Data source ID (for update_data_source action)' },
         parent_id: { type: 'string', description: 'Parent page ID (for create/update_database)' },
@@ -184,10 +200,34 @@ const TOOLS = [
           description:
             'Cover image (for update_database): URL or built-in shorthand (gradient_1..11, solid_red/yellow/blue/beige, nasa_*, met_*, rijksmuseum_*, woodcuts_*)'
         },
-        filters: { type: 'object', description: 'Query filters (for query action)' },
+        filters: { type: 'object', description: 'Query filters (for query/aggregate/group_by actions)' },
         sorts: { type: 'array', items: { type: 'object' }, description: 'Query sorts' },
         limit: { type: 'number', description: 'Max query results' },
-        search: { type: 'string', description: 'Smart search across text fields (for query)' },
+        search: { type: 'string', description: 'Smart search across text fields (for query/aggregate/group_by)' },
+        aggregations: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['count', 'sum', 'avg', 'min', 'max', 'unique_count'] },
+              property: {
+                type: 'string',
+                description: 'Property name (required for sum/avg/min/max/unique_count; ignored for count)'
+              },
+              alias: { type: 'string', description: 'Output key (default: ${type}_${property})' }
+            },
+            required: ['type']
+          },
+          description: 'Aggregation specs (for aggregate/group_by actions)'
+        },
+        group_by: {
+          type: 'object',
+          properties: {
+            property: { type: 'string', description: 'Property name to group by' }
+          },
+          required: ['property'],
+          description: 'Group-by config (for group_by action)'
+        },
         page_id: { type: 'string', description: 'Single page ID (for update_page)' },
         page_ids: { type: 'array', items: { type: 'string' }, description: 'Multiple page IDs (for delete_page)' },
         page_properties: { type: 'object', description: 'Page properties to update (for update_page)' },
