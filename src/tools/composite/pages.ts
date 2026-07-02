@@ -12,6 +12,31 @@ import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/p
 import { convertToNotionProperties, extractPageProperties } from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
 
+/**
+ * Server-side markdown endpoints from Notion SDK v5.22.0 (`pages.retrieveMarkdown`,
+ * `pages.updateMarkdown`). The SDK exposes the methods on `Client.d.ts` but does
+ * not re-export the request/response interfaces from its public entry, so we
+ * declare the surface we use locally to keep call sites type-safe.
+ */
+interface PageMarkdownAPI {
+  retrieveMarkdown(args: { page_id: string }): Promise<{
+    markdown?: string
+    truncated?: boolean
+    unknown_block_ids?: string[]
+  }>
+  updateMarkdown(args: {
+    page_id: string
+    type: 'insert_content' | 'replace_content' | 'update_content' | 'replace_content_range'
+    insert_content?: { content: string; position?: { type: 'start' | 'end' }; after?: string }
+    replace_content?: { new_str: string; allow_deleting_content?: boolean }
+    update_content?: {
+      content_updates: Array<{ old_str: string; new_str: string; replace_all_matches?: boolean }>
+      allow_deleting_content?: boolean
+    }
+    replace_content_range?: { content: string; content_range: string; allow_deleting_content?: boolean }
+  }): Promise<{ markdown?: string; truncated?: boolean }>
+}
+
 export interface CreatePageResult {
   action: 'create'
   page_id: string
@@ -695,7 +720,7 @@ async function getPageMarkdown(notion: Client, input: PagesInput): Promise<GetPa
     throw new NotionMCPError('page_id is required for get_markdown action', 'VALIDATION_ERROR', 'Provide page_id')
   }
   // SDK types don't include retrieveMarkdown in Client.d.ts pre-v5.22; cast for forward-compat.
-  const r: any = await (notion.pages as any).retrieveMarkdown({ page_id: input.page_id })
+  const r = await (notion.pages as unknown as PageMarkdownAPI).retrieveMarkdown({ page_id: input.page_id })
   return {
     action: 'get_markdown',
     page_id: input.page_id,
@@ -722,7 +747,7 @@ async function replacePageContent(notion: Client, input: PagesInput): Promise<Re
     )
   }
   const allowDel = input.allow_deleting_content ?? true
-  const r: any = await (notion.pages as any).updateMarkdown({
+  const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
     page_id: input.page_id,
     type: 'replace_content',
     replace_content: {
@@ -764,7 +789,7 @@ async function insertPageMarkdown(notion: Client, input: PagesInput): Promise<In
     // default: append to end
     insertContent.position = { type: 'end' }
   }
-  const r: any = await (notion.pages as any).updateMarkdown({
+  const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
     page_id: input.page_id,
     type: 'insert_content',
     insert_content: insertContent
@@ -795,7 +820,7 @@ async function updatePageContent(notion: Client, input: PagesInput): Promise<Upd
       'Provide updates: [{old_str, new_str, replace_all_matches?}] (at least one)'
     )
   }
-  const r: any = await (notion.pages as any).updateMarkdown({
+  const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
     page_id: input.page_id,
     type: 'update_content',
     update_content: {
@@ -831,7 +856,7 @@ async function replacePageContentRange(notion: Client, input: PagesInput): Promi
       'Provide both content (new markdown) and content_range (existing range to replace)'
     )
   }
-  const r: any = await (notion.pages as any).updateMarkdown({
+  const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
     page_id: input.page_id,
     type: 'replace_content_range',
     replace_content_range: {
