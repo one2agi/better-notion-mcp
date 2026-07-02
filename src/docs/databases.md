@@ -1,7 +1,7 @@
 # Databases Tool - Full Documentation
 
 ## Overview
-Database operations: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database, list_templates.
+Database operations: create, get, query, **aggregate**, **group_by**, create_page, update_page, delete_page, create_data_source, update_data_source, update_database, list_templates.
 
 ## Architecture
 - **Database** = container holding one or more data sources
@@ -11,6 +11,9 @@ Database operations: create, get, query, create_page, update_page, delete_page, 
 1. create -> Creates database + initial data source
 2. get -> Retrieves data_source_id
 3. query/create_page/update_page -> Uses data_source_id (auto-fetched)
+4. **aggregate / group_by** -> Walks the entire data source with auto-pagination, computes analytics client-side after fetch
+
+
 
 ## Actions
 
@@ -27,6 +30,60 @@ Database operations: create, get, query, create_page, update_page, delete_page, 
 ### query
 ```json
 {"action": "query", "database_id": "xxx", "filters": {"property": "Status", "select": {"equals": "Done"}}}
+```
+
+### aggregate
+Compute one or more analytics over a single property across **every row** in the data source. No filters, no manual rollup — `aggregate` walks every page and reduces.
+
+```json
+{
+  "action": "aggregate",
+  "database_id": "xxx",
+  "aggregations": [
+    {"type": "count", "alias": "total"},
+    {"type": "count", "property": "Status", "alias": "done_count"},
+    {"type": "sum", "property": "Hours", "alias": "total_hours"},
+    {"type": "avg", "property": "Hours", "alias": "avg_hours"},
+    {"type": "min", "property": "Hours"},
+    {"type": "max", "property": "Hours"},
+    {"type": "unique_count", "property": "Owner", "alias": "unique_owners"}
+  ]
+}
+```
+
+**Aggregation types:**
+- `count` — number of rows (omit `property` for total, or set to a specific property to count non-null values)
+- `sum`, `avg`, `min`, `max` — numeric only (other types silently skipped per row)
+- `unique_count` — number of distinct values (works for select, multi_select, people, rich_text, date)
+
+Each aggregation accepts an optional `alias` for the result key. Response: `{ aggregations: { alias_or_type_property: value, ... }, total_rows_scanned: 42 }`.
+
+**Performance note:** For very large data sources (>5k rows) consider exporting with an explicit filter via `query` first, then `aggregate` over the smaller dataset.
+
+### group_by
+Group rows by a property value and compute per-group aggregations. Use for breakdowns like "tasks per owner" or "sum of revenue per region".
+
+```json
+{
+  "action": "group_by",
+  "database_id": "xxx",
+  "group_by": {"property": "Status"},
+  "aggregations": [
+    {"type": "count", "alias": "n"},
+    {"type": "sum", "property": "Hours", "alias": "hours"}
+  ]
+}
+```
+
+`group_by.property` must be a `select`, `multi_select`, or `status` type. Response:
+```json
+{
+  "groups": [
+    {"key": "Todo", "n": 5, "hours": 12.5},
+    {"key": "Done", "n": 8, "hours": 24.0}
+  ],
+  "total_rows_scanned": 13
+}
 ```
 
 ### create_page
@@ -83,3 +140,5 @@ Optionally specify `data_source_id` to target a specific data source (defaults t
 - `page_ids` - Multiple page IDs (for delete_page)
 - `page_properties` - Properties to update (for update_page)
 - `pages` - Array of pages for bulk operations
+- `aggregations` - Array of `{ type, property?, alias? }` (for aggregate / group_by)
+- `group_by` - `{ property }` (for group_by action, property must be select/multi_select/status)
