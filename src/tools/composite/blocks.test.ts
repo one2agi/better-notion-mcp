@@ -566,6 +566,50 @@ describe('Blocks Tool', () => {
         expect(call.table_row.cells[0][0]).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'text' })]))
       })
 
+      it('should pass through table_row.cells as RichText[][] when not strings', async () => {
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'table_row',
+          has_children: false,
+          archived: false,
+          table_row: { cells: [[], []] }
+        })
+        mockNotion.blocks.update.mockResolvedValue({})
+
+        const richCells = [
+          [{ type: 'text', text: { content: 'A', link: null }, annotations: { bold: true } }],
+          [{ type: 'text', text: { content: 'B', link: null }, annotations: { bold: false } }]
+        ]
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          properties: { cells: richCells }
+        })
+
+        expect((result as any).type).toBe('table_row')
+        const call = mockNotion.blocks.update.mock.calls[0][0]
+        expect(call.table_row.cells).toEqual(richCells) // passed through unchanged
+      })
+
+      it('should throw on malformed table_row.cells (not an array of arrays)', async () => {
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'table_row',
+          has_children: false,
+          archived: false,
+          table_row: { cells: [[], []] }
+        })
+
+        await expect(
+          blocks(mockNotion as any, {
+            action: 'update',
+            block_id: 'block-1',
+            properties: { cells: 'not an array' }
+          })
+        ).rejects.toThrow('table_row.properties.cells must be string[][] or RichText[][]')
+      })
+
       it('should update column.width_ratio via properties', async () => {
         mockNotion.blocks.retrieve.mockResolvedValue({
           id: 'block-1',
@@ -707,6 +751,31 @@ describe('Blocks Tool', () => {
           expect.objectContaining({
             block_id: 'block-1',
             link_to_page: { database_id: 'new-db-id-32-chars-bbbbbbbbbbbb' }
+          })
+        )
+      })
+
+      it('should update link_to_page with comment_id via properties', async () => {
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'link_to_page',
+          has_children: false,
+          archived: false,
+          link_to_page: { type: 'comment_id', comment_id: 'old-comment-id' }
+        })
+        mockNotion.blocks.update.mockResolvedValue({})
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          properties: { comment_id: 'new-comment-id-32-chars-cccccccccc' }
+        })
+
+        expect((result as any).type).toBe('link_to_page')
+        expect(mockNotion.blocks.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            block_id: 'block-1',
+            link_to_page: { comment_id: 'new-comment-id-32-chars-cccccccccc' }
           })
         )
       })
