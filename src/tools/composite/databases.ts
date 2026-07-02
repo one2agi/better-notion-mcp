@@ -104,6 +104,8 @@ export interface DatabasesInput {
     | 'update_data_source'
     | 'update_database'
     | 'list_templates'
+    | 'aggregate'
+    | 'group_by'
 
   // Common params
   database_id?: string
@@ -123,6 +125,10 @@ export interface DatabasesInput {
   sorts?: any[]
   limit?: number
   search?: string
+
+  // Aggregation params (for aggregate / group_by actions)
+  aggregations?: AggregationSpec[]
+  group_by?: { property: string }
 
   // Page operations params (create/update/delete database items)
   page_id?: string
@@ -233,6 +239,8 @@ export type DatabasesResponse =
   | CreateDatabaseResponse
   | GetDatabaseResponse
   | QueryDatabaseResponse
+  | AggregateDatabaseResponse
+  | GroupByDatabaseResponse
   | CreateDatabasePageResponse
   | UpdateDatabasePageResponse
   | DeleteDatabasePageResponse
@@ -328,11 +336,17 @@ export async function databases(notion: Client, input: DatabasesInput): Promise<
       case 'list_templates':
         return await listDataSourceTemplates(notion, input)
 
+      case 'aggregate':
+        return await aggregateDatabase(notion, input)
+
+      case 'group_by':
+        return await groupByDatabase(notion, input)
+
       default:
         throw new NotionMCPError(
           `Unknown action: ${input.action}`,
           'VALIDATION_ERROR',
-          'Supported actions: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database, list_templates'
+          'Supported actions: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database, list_templates, aggregate, group_by'
         )
     }
   })()
@@ -863,5 +877,277 @@ async function listDataSourceTemplates(
       title: t.properties?.title?.title?.[0]?.plain_text || t.properties?.Name?.title?.[0]?.plain_text || 'Untitled',
       properties: t.properties
     }))
+  }
+}
+
+/**
+ * Aggregation types for `aggregate` and `group_by` actions.
+ * Computed client-side over the result set; no Notion API call.
+ */
+export type AggregationType = 'count' | 'sum' | 'avg' | 'min' | 'max' | 'unique_count'
+
+export interface AggregationSpec {
+  type: AggregationType
+  /** Property name to aggregate over. Required for sum/avg/min/max; ignored for count/unique_count (set to any for count). */
+  property?: string
+  /** Output key in the results map. Defaults to `${type}_${property}` when omitted. */
+  alias?: string
+}
+
+export interface AggregateDatabaseResponse {
+  action: 'aggregate'
+  database_id: string
+  data_source_id?: string
+  total_rows_scanned: number
+  results: Record<string, number | null>
+}
+
+export interface GroupByDatabaseResponse {
+  action: 'group_by'
+  database_id: string
+  data_source_id?: string
+  total_rows_scanned: number
+  group_by_property: string
+  groups: Array<{
+    key: string | null
+    count: number
+    aggregations: Record<string, number | null>
+  }>
+}
+
+/**
+ * Resolve data source, optionally apply a smart-search filter, then fetch ALL pages
+ * via autoPaginate. Used by both `aggregate` and `group_by`.
+ */
+async function fetchAllDataSourcePages(
+  notion: Client,
+  databaseId: string,
+  dataSourceId: string,
+  filter: any,
+  search: string | undefined
+): Promise<any[]> {
+  let effectiveFilter = filter
+  if (search && !effectiveFilter) {
+    effectiveFilter = await getSmartSearchFilter(notion, dataSourceId, search)
+  }
+  const queryParams: any = { data_source_id: dataSourceId }
+  if (effectiveFilter) queryParams.filter = effectiveFilter
+
+  return autoPaginate(async (cursor) => {
+    const response: any = await (notion as any).dataSources.query({
+      ...queryParams,
+      start_cursor: cursor,
+      page_size: 100
+    })
+    return {
+      results: response.results,
+      next_cursor: response.next_cursor,
+      has_more: response.has_more
+    }
+  })
+}
+
+/**
+ * Read a property's raw value from a Notion page, used for numeric / date aggregations.
+ * Returns null for missing/empty properties (caller should skip these in sum/avg).
+ */
+function readPropertyValue(page: any, propertyName: string): any {
+  const prop = page?.properties?.[propertyName]
+  if (!prop) return null
+  switch (prop.type) {
+    case 'number':
+      return typeof prop.number === 'number' ? prop.number : null
+    case 'checkbox':
+      return typeof prop.checkbox === 'boolean' ? prop.checkbox : null
+    case 'select':
+      return prop.select?.name ?? null
+    case 'multi_select':
+      return Array.isArray(prop.multi_select) ? prop.multi_select.map((o: any) => o.name) : null
+    case 'date':
+      return prop.date?.start ?? null
+    case 'status':
+      return prop.status?.name ?? null
+    case 'people':
+      return Array.isArray(prop.people) ? prop.people.map((p: any) => p.id) : null
+    case 'rich_text':
+      return Array.isArray(prop.rich_text) ? prop.rich_text.map((t: any) => t.plain_text).join('') : null
+    case 'title':
+      return Array.isArray(prop.title) ? prop.title.map((t: any) => t.plain_text).join('') : null
+    default:
+      return null
+  }
+}
+
+/**
+ * Compute a single aggregation over a flat list of pages.
+ * Returns null if the aggregation cannot be computed (e.g. sum on no rows).
+ */
+function computeAggregation(pages: any[], spec: AggregationSpec): number | null {
+  const { type, property } = spec
+
+  if (type === 'count') {
+    return pages.length
+  }
+
+  if (!property) {
+    // sum/avg/min/max/unique_count all need a property
+    return null
+  }
+
+  if (type === 'unique_count') {
+    const seen = new Set<string>()
+    for (const p of pages) {
+      const v = readPropertyValue(p, property)
+      if (v === null || v === undefined) continue
+      seen.add(typeof v === 'object' ? JSON.stringify(v) : String(v))
+    }
+    return seen.size
+  }
+
+  // sum / avg / min / max need numeric values
+  const numericPages = pages.filter((p) => {
+    const v = readPropertyValue(p, property)
+    return typeof v === 'number' && !Number.isNaN(v)
+  })
+  const values = numericPages.map((p) => readPropertyValue(p, property) as number)
+
+  if (values.length === 0) return null
+
+  if (type === 'sum') {
+    let s = 0
+    for (const v of values) s += v
+    return s
+  }
+  if (type === 'avg') {
+    let s = 0
+    for (const v of values) s += v
+    return s / values.length
+  }
+  if (type === 'min') {
+    return Math.min(...values)
+  }
+  if (type === 'max') {
+    return Math.max(...values)
+  }
+
+  return null
+}
+
+/**
+ * Aggregate action: compute count/sum/avg/min/max/unique_count over a (filtered) data source.
+ * Maps to: client-side aggregation over POST /v1/data_sources/{id}/query results.
+ */
+async function aggregateDatabase(notion: Client, input: DatabasesInput): Promise<AggregateDatabaseResponse> {
+  if (!input.database_id) {
+    throw new NotionMCPError(
+      'database_id required for aggregate action',
+      'VALIDATION_ERROR',
+      'Provide database_id (or data_source_id)'
+    )
+  }
+  if (!input.aggregations || input.aggregations.length === 0) {
+    throw new NotionMCPError(
+      'aggregations required for aggregate action',
+      'VALIDATION_ERROR',
+      'Provide at least one aggregation spec, e.g. [{type: "count", alias: "total"}]'
+    )
+  }
+
+  const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
+  const pages = await fetchAllDataSourcePages(notion, databaseId, dataSourceId, input.filters, input.search)
+
+  const results: Record<string, number | null> = {}
+  for (const spec of input.aggregations) {
+    const alias = spec.alias ?? (spec.property ? `${spec.type}_${spec.property}` : spec.type)
+    results[alias] = computeAggregation(pages, spec)
+  }
+
+  return {
+    action: 'aggregate',
+    database_id: databaseId,
+    data_source_id: dataSourceId,
+    total_rows_scanned: pages.length,
+    results
+  }
+}
+
+/**
+ * group_by action: group rows by a property value, compute aggregations per group.
+ * Maps to: client-side groupBy over POST /v1/data_sources/{id}/query results.
+ */
+async function groupByDatabase(notion: Client, input: DatabasesInput): Promise<GroupByDatabaseResponse> {
+  if (!input.database_id) {
+    throw new NotionMCPError(
+      'database_id required for group_by action',
+      'VALIDATION_ERROR',
+      'Provide database_id (or data_source_id)'
+    )
+  }
+  if (!input.group_by) {
+    throw new NotionMCPError(
+      'group_by required for group_by action',
+      'VALIDATION_ERROR',
+      'Provide group_by: { property: "Owner" }'
+    )
+  }
+  if (!input.aggregations || input.aggregations.length === 0) {
+    throw new NotionMCPError(
+      'aggregations required for group_by action',
+      'VALIDATION_ERROR',
+      'Provide at least one aggregation spec, e.g. [{type: "count"}]'
+    )
+  }
+
+  const groupByProperty = input.group_by.property
+  if (!groupByProperty) {
+    throw new NotionMCPError(
+      'group_by.property required for group_by action',
+      'VALIDATION_ERROR',
+      'Provide group_by: { property: "Owner" }'
+    )
+  }
+
+  const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
+  const pages = await fetchAllDataSourcePages(notion, databaseId, dataSourceId, input.filters, input.search)
+
+  // Group pages by the group_by property value
+  const groups = new Map<string, any[]>()
+  for (const p of pages) {
+    const v = readPropertyValue(p, groupByProperty)
+    const key = v === null || v === undefined ? null : String(v)
+    const list = groups.get(key as string) ?? []
+    list.push(p)
+    groups.set(key as string, list)
+  }
+
+  const out: GroupByDatabaseResponse['groups'] = []
+  // Sort groups by key (null last) for stable output
+  const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
+    if (a === null) return 1
+    if (b === null) return -1
+    return a < b ? -1 : a > b ? 1 : 0
+  })
+  for (const key of sortedKeys) {
+    const groupPages = groups.get(key)!
+    const groupAggs: Record<string, number | null> = {}
+    const aggregations: AggregationSpec[] = input.aggregations ?? []
+    for (const spec of aggregations) {
+      const alias = spec.alias ?? (spec.property ? `${spec.type}_${spec.property}` : spec.type)
+      groupAggs[alias] = computeAggregation(groupPages, spec)
+    }
+    out.push({
+      key,
+      count: groupPages.length,
+      aggregations: groupAggs
+    })
+  }
+
+  return {
+    action: 'group_by',
+    database_id: databaseId,
+    data_source_id: dataSourceId,
+    total_rows_scanned: pages.length,
+    group_by_property: groupByProperty,
+    groups: out
   }
 }
