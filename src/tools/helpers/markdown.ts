@@ -195,12 +195,14 @@ class MarkdownParser {
     }
 
     // Heading
-    if (line.startsWith('# ')) {
+    if (line.startsWith('# ') && !line.startsWith('## ')) {
       this.blocks.push(createHeading(1, line.slice(2)))
-    } else if (line.startsWith('## ')) {
+    } else if (line.startsWith('## ') && !line.startsWith('### ')) {
       this.blocks.push(createHeading(2, line.slice(3)))
-    } else if (line.startsWith('### ')) {
+    } else if (line.startsWith('### ') && !line.startsWith('#### ')) {
       this.blocks.push(createHeading(3, line.slice(4)))
+    } else if (line.startsWith('#### ') && !line.startsWith('##### ')) {
+      this.blocks.push(createHeading(4, line.slice(5)))
     }
 
     // Code block
@@ -355,6 +357,12 @@ const BLOCK_HANDLERS: Record<string, BlockHandler> = {
     lines.push(`### ${richTextToMarkdown(block.heading_3.rich_text)}`)
     if (block.heading_3.children?.length > 0) {
       lines.push(blocksToMarkdown(block.heading_3.children))
+    }
+  },
+  heading_4: (block, lines) => {
+    lines.push(`#### ${richTextToMarkdown(block.heading_4.rich_text)}`)
+    if (block.heading_4.children?.length > 0) {
+      lines.push(blocksToMarkdown(block.heading_4.children))
     }
   },
   paragraph: (block, lines) => {
@@ -1014,14 +1022,15 @@ function createRichText(
   }
 }
 
-function createHeading(level: 1 | 2 | 3, text: string): NotionBlock {
-  const type = `heading_${level}` as 'heading_1' | 'heading_2' | 'heading_3'
+function createHeading(level: 1 | 2 | 3 | 4, text: string): NotionBlock {
+  const type = `heading_${level}` as 'heading_1' | 'heading_2' | 'heading_3' | 'heading_4'
   return {
     object: 'block',
     type,
     [type]: {
       rich_text: parseRichText(text),
-      color: 'default'
+      color: 'default',
+      is_toggleable: false
     }
   }
 }
@@ -1121,6 +1130,16 @@ function createToggle(text: string, children: NotionBlock[] = []): NotionBlock {
       rich_text: parseRichText(text),
       color: 'default',
       children
+    }
+  }
+}
+
+function createTemplate(text: string): NotionBlock {
+  return {
+    object: 'block',
+    type: 'template',
+    template: {
+      rich_text: parseRichText(text)
     }
   }
 }
