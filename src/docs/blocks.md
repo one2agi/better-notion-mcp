@@ -21,7 +21,7 @@ The markdown converter supports these Notion block types:
 | Code block | `` ```language `` ... `` ``` `` |
 | Quote | `> text` |
 | Divider | `---` or `***` |
-| Callout | `> [!NOTE] text`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, `> [!INFO]`, `> [!SUCCESS]`, `> [!ERROR]`. Multi-line: each line must start with `> `. Avoid CAUTION (emoji rejected by Notion). |
+| Callout | `> [!NOTE] text`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, `> [!INFO]`, `> [!SUCCESS]`, `> [!ERROR]`, `> [!DANGER]` (red_background, alias of ERROR). Multi-line: each line must start with `> `. Avoid CAUTION (emoji rejected by Notion). |
 | Toggle | `<details><summary>Title</summary>content</details>`. No nesting (toggle inside toggle fails). |
 | Table | Pipe-delimited `\| col1 \| col2 \|` with optional header separator |
 | Image | `![alt text](url)` — signed S3 URL (1h expiry), fetch to view content |
@@ -115,6 +115,8 @@ Returns markdown of child blocks.
   table_row, column, synced_block, link_to_page).
 
 Passing both → error. Passing neither → error.
+
+Note: this action uses the CLIENT-side markdown parser, so `[bookmark](url)`, `[embed](url)`, `[toc]`, and `> [!DANGER]` callouts all work. (The server-side parser used by `pages.replace_content` does NOT support these; see that section in pages.md.)
 
 ### Updateable block types
 

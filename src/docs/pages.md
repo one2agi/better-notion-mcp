@@ -96,6 +96,17 @@ Render the whole page as a single markdown string.
 **Faster than `get`** for long pages: skips per-block JSON parsing.
 Response: `{ markdown: "...", truncated: false, unknown_block_ids: [] }`
 
+### Server-side vs client-side parser
+
+The 3 write actions replace_content / insert_markdown / update_content use Notion server-side markdown parsing — NOT this MCP client parser. Special block syntax is silently demoted:
+
+- `[bookmark](url)` - demotes to paragraph link
+- `[embed](url)` - demotes to paragraph link
+- `[toc]` - demotes to paragraph
+- `> [!unsupported_callout_type]` - demotes to plain quote
+
+For these features, use `blocks.append` (or `pages.update` + `content`) instead.
+
 ### replace_content
 **DESTRUCTIVE.** Overwrite the entire page content with a single markdown string.
 ```json
@@ -155,3 +166,5 @@ range format).
 | Change specific phrases/words | `update_content` (search & replace) |
 | Replace a specific known range | `replace_content_range` |
 | Modify a single block in place | `blocks: update` |
+
+For `[bookmark]`/`[embed]`/`[toc]` content, use `blocks.append` (or `pages.update` + `content`) - see server vs client note above.

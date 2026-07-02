@@ -42,6 +42,8 @@ Most tools (pages, blocks) handle markdown automatically. Use this for preview/v
 {"direction": "markdown-to-blocks", "content": "# Heading\nParagraph\n- List item"}
 ```
 
+Response includes a `warnings` field (array of strings) when the parser silently downgrades unsupported syntax. Check this field if a block doesn't render as expected.
+
 ### blocks-to-markdown
 ```json
 {"direction": "blocks-to-markdown", "content": [{"type": "paragraph", "paragraph": {...}}]}
