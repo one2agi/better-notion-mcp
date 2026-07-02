@@ -282,7 +282,8 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
       }
     } else if (blockType === 'toggle') {
       updatePayload.toggle = {
-        rich_text: (newContent as any).toggle?.rich_text || []
+        rich_text: (newContent as any).toggle?.rich_text || [],
+        color: (newContent as any).toggle?.color ?? block.toggle?.color ?? 'default'
       }
     } else if (blockType === 'template') {
       updatePayload.template = {
