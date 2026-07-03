@@ -9,8 +9,10 @@ import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling
 import { formatIcon } from '../helpers/icons.js'
 import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
-import { convertToNotionProperties, extractPageProperties } from '../helpers/properties.js'
+import { convertToNotionProperties, extractPageProperties, filterToSchemaKeys, findTitleColumnName, sanitizeReadonlyProperties } from '../helpers/properties.js'
+import { updatePageWithParent } from '../../types/notion-extended.js'
 import * as RichText from '../helpers/richtext.js'
+import { getDataSourceSchema, resolveDataSourceId } from './databases.js'
 
 /**
  * Server-side markdown endpoints from Notion SDK v5.22.0 (`pages.retrieveMarkdown`,
@@ -266,6 +268,10 @@ export async function pages(notion: Client, input: PagesInput): Promise<PagesRes
 /**
  * Create page with title and content
  * Maps to: POST /v1/pages + PATCH /v1/blocks/{id}/children
+ *
+ * For database parents, fetches schema so convertToNotionProperties can
+ * correctly infer types for non-English column names (e.g. `名称`).
+ * Falls back to parent_id heuristic when the id resolves to a non-database page.
  */
 async function createPage(notion: Client, input: PagesInput): Promise<CreatePageResult> {
   if (!input.title) {
@@ -282,20 +288,54 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
 
   const normalizedId = input.parent_id.replace(/-/g, '')
 
-  // Auto-detect parent type
+  // Detect parent type by trying database retrieve first; if not found, treat as page_id.
   let parent: Record<string, any>
-  if (input.properties && Object.keys(input.properties).length > 0) {
-    parent = { type: 'database_id', database_id: normalizedId }
-  } else {
-    parent = { type: 'page_id', page_id: normalizedId }
+  let schemaForConvert: Record<string, string> | undefined
+  try {
+    const { databaseId, dataSourceId } = await resolveDataSourceId(notion, normalizedId)
+    parent = { type: 'database_id', database_id: databaseId }
+
+    // Fetch schema so convertToNotionProperties handles non-English column names correctly.
+    const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
+    if (schemaProperties) {
+      schemaForConvert = {}
+      for (const name of Object.keys(schemaProperties)) {
+        schemaForConvert[name] = schemaProperties[name]?.type ?? 'rich_text'
+      }
+    }
+  } catch (error: any) {
+    // Only fall back to page_id when the ID doesn't resolve to any known parent.
+    // resolveDataSourceId throws NotionMCPError('NOT_FOUND') when neither a database
+    // nor a data source can be found for the given ID — that case is the expected
+    // fallback path for plain page parents. For other errors (e.g. unauthorized,
+    // rate limit) we must surface them to the caller when database-shaped properties
+    // were supplied — otherwise the user would get a 200 response with their data
+    // silently dropped.
+    if (error?.code === 'NOT_FOUND' || error?.code === 'object_not_found') {
+      parent = { type: 'page_id', page_id: normalizedId }
+    } else if (input.properties && Object.keys(input.properties).length > 0) {
+      throw error
+    } else {
+      parent = { type: 'page_id', page_id: normalizedId }
+    }
   }
 
-  // Prepare properties
+  // Convert user-provided properties using schema. If user did not supply a title field,
+  // locate the schema's title column dynamically and set it from input.title.
   let properties: Record<string, any> = {}
   if (parent.database_id) {
-    properties = convertToNotionProperties(input.properties || {})
-    if (!properties.title && !properties.Name && !properties.Title) {
-      properties.Name = { title: [RichText.text(input.title)] }
+    properties = convertToNotionProperties(input.properties || {}, schemaForConvert)
+
+    if (schemaForConvert) {
+      // Drop user-supplied keys that don't exist in the schema (e.g. user
+      // passed { Name: 'X' } when schema title column is "Title"). Then
+      // locate the schema's actual title column and inject input.title if
+      // it wasn't already provided under that key.
+      properties = filterToSchemaKeys(properties, schemaForConvert)
+      const titleColumnName = findTitleColumnName(schemaForConvert)
+      if (titleColumnName && !properties[titleColumnName] && input.title) {
+        properties[titleColumnName] = { title: [RichText.text(input.title)] }
+      }
     }
   } else {
     properties = { title: { title: [RichText.text(input.title)] } }
@@ -483,7 +523,32 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
     updates.properties = {}
 
     if (input.title) {
-      updates.properties.title = { title: [RichText.text(input.title)] }
+      // Resolve schema-aware title column name (mirrors createPage logic).
+      // Default to "title" for non-database parents (page-only pages) where
+      // Notion accepts a literal "title" key in the properties object.
+      let titleColumnName = 'title'
+      try {
+        const page = (await notion.pages.retrieve({ page_id: input.page_id })) as PageObjectResponse
+        const parent = page.parent
+        if (parent?.type === 'database_id' && parent.database_id) {
+          const dbId = parent.database_id.replace(/-/g, '')
+          const { dataSourceId } = await resolveDataSourceId(notion, dbId)
+          const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
+          if (schemaProperties) {
+            const schemaTypeMap: Record<string, string> = {}
+            for (const name of Object.keys(schemaProperties)) {
+              schemaTypeMap[name] = schemaProperties[name]?.type ?? 'rich_text'
+            }
+            const found = findTitleColumnName(schemaTypeMap)
+            if (found) titleColumnName = found
+          }
+        }
+      } catch {
+        // Schema lookup failed — fall back to literal "title" key. This is
+        // the same default Notion uses for page-only parents and preserves
+        // behavior for users without database access to the parent.
+      }
+      updates.properties[titleColumnName] = { title: [RichText.text(input.title)] }
     }
 
     if (input.properties) {
@@ -590,8 +655,9 @@ async function movePage(notion: Client, input: PagesInput): Promise<MovePageResu
 
   const normalizedParentId = input.parent_id.replace(/-/g, '')
 
-  // SDK types don't include parent in UpdatePageParameters, but the API supports it
-  await (notion.pages as any).update({
+  // SDK types don't include parent in UpdatePageParameters, but the API supports it.
+  // Use the typed escape hatch (notion-extended.ts) instead of `as any`.
+  await updatePageWithParent(notion, {
     page_id: input.page_id,
     parent: { type: 'page_id', page_id: normalizedParentId }
   })
@@ -682,19 +748,10 @@ async function duplicatePage(notion: Client, input: PagesInput): Promise<Duplica
         parent = rawParent
       }
 
-      // Sanitize properties — filter out read-only types (formula, rollup) that cause
-      // API validation errors on page create. Keep all other properties as-is to preserve
-      // their exact Notion format including title, select, date objects, etc.
-      const READONLY_PROPERTY_TYPES = new Set(['formula', 'rollup'])
-      const sanitizedProps: Record<string, any> = {}
-      const originalProps = originalPage.properties || {}
-      for (const [key, prop] of Object.entries(originalProps)) {
-        const propType = (prop as any)?.type
-        if (propType && READONLY_PROPERTY_TYPES.has(propType)) {
-          continue // skip read-only properties
-        }
-        sanitizedProps[key] = prop
-      }
+      // Drop Notion-managed readonly types (formula, rollup, created_time, etc.)
+      // that POST /v1/pages rejects. All other properties pass through unchanged
+      // to preserve their exact Notion format (title, select, date objects, ...).
+      const sanitizedProps = sanitizeReadonlyProperties(originalPage.properties)
 
       // Create duplicate
       const duplicatedPage: any = await retryWithBackoff(() =>

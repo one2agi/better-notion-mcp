@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { convertToNotionProperties, extractPageProperties } from './properties'
+import { buildSchemaMap, convertToNotionProperties, extractPageProperties, filterToSchemaKeys, findTitleColumnName, normalizeBlockProperties, READONLY_PROPERTY_TYPES, readPropertyValue, sanitizeReadonlyProperties } from './properties'
 
 const richText = (content: string) => ({
   type: 'text',
@@ -125,10 +125,13 @@ describe('convertToNotionProperties', () => {
       })
     })
 
-    it('falls back to status for keys containing "status"', () => {
+    it('falls back to select (not status) for keys containing "status" when schema is missing', () => {
+      // Without schema, we cannot distinguish a `select` column named "Status" from an actual
+      // `status` column, so default to `select` (Notion API rejects `{ status: ... }` on a
+      // select column). Real `status` columns are handled by the schema-aware branch above.
       const result = convertToNotionProperties({ Status: 'Active' })
       expect(result).toEqual({
-        Status: { status: { name: 'Active' } }
+        Status: { select: { name: 'Active' } }
       })
     })
 
@@ -136,6 +139,30 @@ describe('convertToNotionProperties', () => {
       const result = convertToNotionProperties({ Category: 'Active' })
       expect(result).toEqual({
         Category: { select: { name: 'Active' } }
+      })
+    })
+
+    it('falls back to select (not status) for "Status" key when schema is missing', () => {
+      // Most "Status"-named columns in Notion are actually `select` type, not `status`.
+      // Without schema we cannot tell them apart, so default to select to avoid
+      // sending `{ status: ... }` to a select column (which Notion API rejects).
+      const result = convertToNotionProperties({ Status: 'Active' })
+      expect(result).toEqual({
+        Status: { select: { name: 'Active' } }
+      })
+    })
+
+    it('falls back to select (not status) for "状态" key when schema is missing', () => {
+      const result = convertToNotionProperties({ 状态: '进行中' })
+      expect(result).toEqual({
+        状态: { select: { name: '进行中' } }
+      })
+    })
+
+    it('falls back to select (not status) for arbitrary key when schema is missing', () => {
+      const result = convertToNotionProperties({ State: 'In progress' })
+      expect(result).toEqual({
+        State: { select: { name: 'In progress' } }
       })
     })
   })
@@ -799,5 +826,214 @@ describe('extractPageProperties', () => {
       }
     }
     expect(extractPageProperties(props)).toEqual({ Window: '2026-01-01 to 2026-01-31' })
+  })
+})
+
+describe('property helpers', () => {
+  describe('findTitleColumnName', () => {
+    it('returns the title column name from a schema', () => {
+      expect(findTitleColumnName({ Subject: 'title', Body: 'rich_text' })).toBe('Subject')
+      expect(findTitleColumnName({ 名称: 'title', 状态: 'select' })).toBe('名称')
+    })
+
+    it('returns null when no title column exists', () => {
+      expect(findTitleColumnName({ Body: 'rich_text', Status: 'select' })).toBeNull()
+    })
+
+    it('returns null for empty schema', () => {
+      expect(findTitleColumnName({})).toBeNull()
+    })
+  })
+
+  describe('filterToSchemaKeys', () => {
+    it('drops keys not in the schema', () => {
+      const out = filterToSchemaKeys(
+        { Name: 'X', Status: 'Active' },
+        { Title: 'title', Status: 'select' }
+      )
+      expect(out).toEqual({ Status: 'Active' })
+    })
+
+    it('preserves keys whose names match the schema even if values are not schema-shaped', () => {
+      const out = filterToSchemaKeys(
+        { Status: { select: { name: 'Active' } }, Other: 'foo' },
+        { Status: 'select' }
+      )
+      expect(out).toEqual({ Status: { select: { name: 'Active' } } })
+    })
+
+    it('returns empty object when nothing matches', () => {
+      const out = filterToSchemaKeys({ Foo: 'bar' }, { Status: 'select' })
+      expect(out).toEqual({})
+    })
+  })
+
+  describe('sanitizeReadonlyProperties', () => {
+    it('strips all 7 readonly types and keeps writable types', () => {
+      const input = {
+        Name: { type: 'title' },
+        Status: { type: 'select' },
+        Score: { type: 'number' },
+        Created: { type: 'created_time' },
+        Edited: { type: 'last_edited_time' },
+        Author: { type: 'created_by' },
+        Editor: { type: 'last_edited_by' },
+        UID: { type: 'unique_id' },
+        RollupCol: { type: 'rollup' },
+        FormulaCol: { type: 'formula' }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(Object.keys(out).sort()).toEqual(['Name', 'Score', 'Status'])
+    })
+
+    it('returns empty object for undefined input', () => {
+      expect(sanitizeReadonlyProperties(undefined)).toEqual({})
+    })
+
+    it('passes through properties without a type field', () => {
+      const input = { Plain: { foo: 'bar' } }
+      expect(sanitizeReadonlyProperties(input)).toEqual({ Plain: { foo: 'bar' } })
+    })
+  })
+
+  describe('READONLY_PROPERTY_TYPES', () => {
+    it('contains exactly the 7 known readonly types', () => {
+      expect([...READONLY_PROPERTY_TYPES].sort()).toEqual([
+        'created_by',
+        'created_time',
+        'formula',
+        'last_edited_by',
+        'last_edited_time',
+        'rollup',
+        'unique_id'
+      ])
+    })
+  })
+})
+
+describe('normalizeBlockProperties', () => {
+  it('converts string[][] cells to RichText[][] for table_row', () => {
+    const out = normalizeBlockProperties('table_row', { cells: [['A', 'B'], ['C', 'D']] })
+    // Notion API: cells is RichText[][] — each cell is itself an array of RichText
+    expect(out.cells).toHaveLength(2)
+    expect(out.cells[0]).toHaveLength(2)
+    expect(out.cells[0][0]).toHaveLength(1)
+    expect(out.cells[0][0][0]).toMatchObject({ type: 'text' })
+  })
+
+  it('passes through RichText[][] cells', () => {
+    const cells = [[{ type: 'text', text: { content: 'A' } }]]
+    expect(normalizeBlockProperties('table_row', { cells }).cells).toBe(cells)
+  })
+
+  it('throws on invalid table_row.cells', () => {
+    expect(() => normalizeBlockProperties('table_row', { cells: 'bad' })).toThrow(/cells/)
+  })
+
+  it('handles synced_block null (unlink)', () => {
+    expect(normalizeBlockProperties('synced_block', { synced_from: null })).toEqual({ synced_from: null })
+  })
+
+  it('handles synced_block { block_id } (link)', () => {
+    expect(normalizeBlockProperties('synced_block', { synced_from: { block_id: 'x' } })).toEqual({
+      synced_from: { block_id: 'x' }
+    })
+  })
+
+  it('throws on invalid synced_block shape', () => {
+    expect(() => normalizeBlockProperties('synced_block', { synced_from: 42 })).toThrow(/synced_from/)
+  })
+
+  it('link_to_page requires exactly one target', () => {
+    expect(() => normalizeBlockProperties('link_to_page', {})).toThrow(/exactly one/)
+    expect(() => normalizeBlockProperties('link_to_page', { page_id: 'p', database_id: 'd' })).toThrow(
+      /exactly one/
+    )
+    expect(normalizeBlockProperties('link_to_page', { page_id: 'p' })).toEqual({ page_id: 'p' })
+  })
+
+  it('column requires width_ratio in (0, 1]', () => {
+    expect(() => normalizeBlockProperties('column', { width_ratio: 0 })).toThrow(/width_ratio/)
+    expect(() => normalizeBlockProperties('column', { width_ratio: 2 })).toThrow(/width_ratio/)
+    expect(normalizeBlockProperties('column', { width_ratio: 0.5 })).toEqual({ width_ratio: 0.5 })
+  })
+
+  it('passes through unknown block types', () => {
+    expect(normalizeBlockProperties('paragraph', { foo: 'bar' })).toEqual({ foo: 'bar' })
+  })
+})
+
+describe('readPropertyValue', () => {
+  const pageOf = (type: string, value: any) => ({ properties: { Field: { type, [type]: value } } })
+
+  it('returns number for number type', () => {
+    expect(readPropertyValue(pageOf('number', 42), 'Field')).toBe(42)
+  })
+
+  it('returns boolean for checkbox', () => {
+    expect(readPropertyValue(pageOf('checkbox', true), 'Field')).toBe(true)
+  })
+
+  it('returns name for select', () => {
+    expect(readPropertyValue(pageOf('select', { name: 'A' }), 'Field')).toBe('A')
+  })
+
+  it('returns null for missing property', () => {
+    expect(readPropertyValue({ properties: {} }, 'Field')).toBeNull()
+  })
+
+  it('returns null for missing page', () => {
+    expect(readPropertyValue(null, 'Field')).toBeNull()
+  })
+
+  it('returns formula.number for number formula', () => {
+    expect(readPropertyValue(pageOf('formula', { type: 'number', number: 42 }), 'Field')).toBe(42)
+  })
+
+  it('returns formula.date.start for date formula', () => {
+    expect(readPropertyValue(pageOf('formula', { type: 'date', date: { start: '2025-01-01' } }), 'Field')).toBe(
+      '2025-01-01'
+    )
+  })
+
+  it('returns formula.boolean for boolean formula', () => {
+    expect(readPropertyValue(pageOf('formula', { type: 'boolean', boolean: true }), 'Field')).toBe(true)
+  })
+})
+
+describe('buildSchemaMap', () => {
+  it('builds type+id map from properties', () => {
+    const out = buildSchemaMap({
+      Name: { type: 'title', id: 'p1' },
+      Status: { type: 'select', id: 'p2', select: { options: [{ name: 'A' }, { name: 'B' }] } }
+    })
+    expect(out.Name).toEqual({ type: 'title', id: 'p1' })
+    expect(out.Status.options).toEqual(['A', 'B'])
+  })
+
+  it('includes formula expression', () => {
+    const out = buildSchemaMap({
+      F: { type: 'formula', id: 'p1', formula: { expression: 'prop("X")' } }
+    })
+    expect(out.F.expression).toBe('prop("X")')
+  })
+
+  it('includes multi_select options', () => {
+    const out = buildSchemaMap({
+      Tags: { type: 'multi_select', id: 'p3', multi_select: { options: [{ name: 'x' }, { name: 'y' }] } }
+    })
+    expect(out.Tags.options).toEqual(['x', 'y'])
+  })
+
+  it('skips options when includeOptions=false', () => {
+    const out = buildSchemaMap(
+      { Status: { type: 'select', id: 'p2', select: { options: [{ name: 'A' }] } } },
+      { includeOptions: false }
+    )
+    expect(out.Status).toEqual({ type: 'select', id: 'p2' })
+  })
+
+  it('returns empty object for undefined input', () => {
+    expect(buildSchemaMap(undefined)).toEqual({})
   })
 })

@@ -24,14 +24,6 @@ vi.mock('../helpers/markdown.js', () => ({
   })
 }))
 
-vi.mock('../helpers/properties.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../helpers/properties.js')>()
-  return {
-    ...actual,
-    convertToNotionProperties: vi.fn().mockImplementation((props) => props)
-  }
-})
-
 function createMockNotion() {
   return {
     pages: {
@@ -42,6 +34,13 @@ function createMockNotion() {
       retrieveMarkdown: vi.fn(),
       updateMarkdown: vi.fn(),
       properties: { retrieve: vi.fn() }
+    },
+    databases: {
+      retrieve: vi.fn()
+    },
+    dataSources: {
+      retrieve: vi.fn(),
+      query: vi.fn()
     },
     blocks: {
       retrieve: vi.fn(),
@@ -55,11 +54,15 @@ function createMockNotion() {
   }
 }
 
+import { resolutionCache, schemaCache } from './databases.js'
+
 let mockNotion: ReturnType<typeof createMockNotion>
 
 describe('pages', () => {
   beforeEach(() => {
     mockNotion = createMockNotion()
+    schemaCache.clear()
+    resolutionCache.clear()
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -91,13 +94,24 @@ describe('pages', () => {
     })
 
     it('creates page with database parent when properties provided', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db123',
+        data_sources: [{ id: 'ds-1', name: 'Source 1' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-1',
+        properties: {
+          Name: { type: 'title', id: 'prop-1' },
+          Status: { type: 'select', id: 'prop-2', select: { options: [{ name: 'Active' }] } }
+        }
+      })
       mockNotion.pages.create.mockResolvedValue({ id: 'page-2', url: 'https://notion.so/page-2' })
 
       const result = (await pages(mockNotion as any, {
         action: 'create',
         title: 'DB Page',
         parent_id: 'db-123',
-        properties: { Status: { select: { name: 'Active' } } }
+        properties: { Status: 'Active' }
       })) as CreatePageResult
 
       expect(result.page_id).toBe('page-2')
@@ -108,7 +122,18 @@ describe('pages', () => {
       )
     })
 
-    it('adds Name property when database parent has no title property', async () => {
+    it('sets title on the schema title column when user did not supply one', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db456',
+        data_sources: [{ id: 'ds-2', name: 'Source 2' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-2',
+        properties: {
+          Name: { type: 'title', id: 'prop-1' },
+          Priority: { type: 'number', id: 'prop-2' }
+        }
+      })
       mockNotion.pages.create.mockResolvedValue({ id: 'page-3', url: 'https://notion.so/page-3' })
 
       await pages(mockNotion as any, {
@@ -122,6 +147,166 @@ describe('pages', () => {
       expect(callArgs.properties.Name).toEqual({
         title: [expect.objectContaining({ text: { content: 'Named Page', link: null } })]
       })
+    })
+
+    it('handles non-English title column names via schema (no hardcoding)', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db789',
+        data_sources: [{ id: 'ds-3', name: 'Source 3' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValue({
+        id: 'ds-3',
+        properties: {
+          名称: { type: 'title', id: 'prop-1' },
+          状态: { type: 'select', id: 'prop-2', select: { options: [{ name: '进行中' }] } }
+        }
+      })
+      mockNotion.pages.create.mockResolvedValue({ id: 'page-4', url: 'https://notion.so/page-4' })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'create',
+        title: '中文页面',
+        parent_id: 'db-789',
+        properties: { 状态: '进行中' }
+      })) as CreatePageResult
+
+      expect(result.page_id).toBe('page-4')
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(callArgs.properties.名称).toEqual({
+        title: [expect.objectContaining({ text: { content: '中文页面', link: null } })]
+      })
+      expect(callArgs.properties.状态).toEqual({ select: { name: '进行中' } })
+      // Should NOT inject a hardcoded "Name" key
+      expect(callArgs.properties.Name).toBeUndefined()
+    })
+
+    it('drops foreign property keys not present in schema and uses schema title column for input.title', async () => {
+      // Bug: schema's title column is "Title" (NOT "Name"). User passes { Name: 'X', Status: 'Active' }
+      // The "Name" key is NOT in the schema — it must be dropped, not wrapped as title.
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-fk',
+        data_sources: [{ id: 'ds-fk', name: 'Source FK' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-fk',
+        properties: {
+          Title: { type: 'title', id: 'prop-1' },
+          Status: { type: 'select', id: 'prop-2', select: { options: [{ name: 'Active' }] } }
+        }
+      })
+      mockNotion.pages.create.mockResolvedValue({ id: 'page-fk', url: 'https://notion.so/page-fk' })
+
+      await pages(mockNotion as any, {
+        action: 'create',
+        title: 'Real Title',
+        parent_id: 'db-fk',
+        properties: { Name: 'X', Status: 'Active' }
+      })
+
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      // Title goes to the schema's actual title column ("Title")
+      expect(callArgs.properties.Title).toEqual({
+        title: [expect.objectContaining({ text: { content: 'Real Title', link: null } })]
+      })
+      // Status preserved
+      expect(callArgs.properties.Status).toEqual({ select: { name: 'Active' } })
+      // Foreign "Name" key dropped — must NOT be sent to Notion
+      expect(callArgs.properties.Name).toBeUndefined()
+    })
+
+    it('reverse case: schema title column is "Name", user passes { Title: "X" } — drops foreign "Title" key', async () => {
+      // Reverse bug: schema's title column is "Name", user wrongly passes { Title: 'X' }
+      // The "Title" key is NOT in the schema — it must be dropped, not wrapped as title.
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-rev',
+        data_sources: [{ id: 'ds-rev', name: 'Source Rev' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-rev',
+        properties: {
+          Name: { type: 'title', id: 'prop-1' },
+          Status: { type: 'select', id: 'prop-2', select: { options: [{ name: 'Active' }] } }
+        }
+      })
+      mockNotion.pages.create.mockResolvedValue({ id: 'page-rev', url: 'https://notion.so/page-rev' })
+
+      await pages(mockNotion as any, {
+        action: 'create',
+        title: 'Real Title',
+        parent_id: 'db-rev',
+        properties: { Title: 'X', Status: 'Active' }
+      })
+
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      // Title goes to the schema's actual title column ("Name")
+      expect(callArgs.properties.Name).toEqual({
+        title: [expect.objectContaining({ text: { content: 'Real Title', link: null } })]
+      })
+      // Status preserved
+      expect(callArgs.properties.Status).toEqual({ select: { name: 'Active' } })
+      // Foreign "Title" key dropped — must NOT be sent to Notion
+      expect(callArgs.properties.Title).toBeUndefined()
+    })
+
+    it('falls back to page_id when parent is not a database (object_not_found) even with properties', async () => {
+      // ID doesn't resolve to a database — expected fallback for plain page parents.
+      mockNotion.databases.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error('Not found'), { code: 'object_not_found' })
+      )
+      mockNotion.pages.create.mockResolvedValue({ id: 'page-fallback', url: 'https://notion.so/page-fallback' })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'create',
+        title: 'Fallback Page',
+        parent_id: 'not-a-database',
+        properties: { Status: 'Active' }
+      })) as CreatePageResult
+
+      // Plain page parent — schema was not loaded, properties are dropped (Notion will reject them anyway).
+      // The fallback is acceptable here because the ID clearly wasn't a database.
+      expect(result.page_id).toBe('page-fallback')
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(callArgs.parent).toEqual({ type: 'page_id', page_id: 'notadatabase' })
+    })
+
+    it('rethrows resolution errors when user supplied database properties (no silent data loss)', async () => {
+      // Real bug case: database ID with permissions error, but user passed properties.
+      // Must NOT silently fallback to page_id and lose the data.
+      mockNotion.databases.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error('Insufficient permissions'), { code: 'unauthorized' })
+      )
+
+      await expect(
+        pages(mockNotion as any, {
+          action: 'create',
+          title: 'Will Fail',
+          parent_id: 'db-with-permission-issue',
+          properties: { Status: 'Active' }
+        })
+      ).rejects.toThrow()
+
+      // Critical: pages.create must NOT have been called — otherwise data would be silently lost.
+      expect(mockNotion.pages.create).not.toHaveBeenCalled()
+    })
+
+    it('falls back to page_id when resolution fails but no properties supplied (preserves title-only path)', async () => {
+      // API error but user only wants a plain page with a title — fallback is acceptable.
+      mockNotion.databases.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error('Transient API error'), { code: 'service_unavailable' })
+      )
+      mockNotion.pages.create.mockResolvedValue({ id: 'page-no-props', url: 'https://notion.so/page-no-props' })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'create',
+        title: 'Title Only',
+        parent_id: 'unresolvable-id'
+      })) as CreatePageResult
+
+      expect(result.page_id).toBe('page-no-props')
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(callArgs.parent).toEqual({ type: 'page_id', page_id: 'unresolvableid' })
+      // Verify the title-bearing rich text was sent (annotations are added by RichText helper, not asserted).
+      expect(callArgs.properties.title.title[0].text.content).toBe('Title Only')
     })
 
     it('creates page with content blocks', async () => {
@@ -575,6 +760,152 @@ describe('pages', () => {
       expect(callArgs.properties.Status).toEqual({ select: { name: 'Done' } })
     })
 
+    it('uses schema title column when database title is not named "title" (no hardcoding)', async () => {
+      // Page in a database whose title column is "Subject" (not "title").
+      // Current code hardcodes `properties.title` which would 400 in real Notion.
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'page-1',
+        parent: { type: 'database_id', database_id: 'db-subj' }
+      })
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-subj',
+        data_sources: [{ id: 'ds-subj', name: 'Subjects DB' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-subj',
+        properties: {
+          Subject: { type: 'title', id: 'prop-1' },
+          Body: { type: 'rich_text', id: 'prop-2' }
+        }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        title: 'New Subject'
+      })
+
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      // The schema's actual title column must hold the title, NOT a hardcoded "title" key.
+      expect(callArgs.properties.Subject).toEqual({
+        title: [expect.objectContaining({ text: { content: 'New Subject', link: null } })]
+      })
+      expect(callArgs.properties.title).toBeUndefined()
+    })
+
+    it('falls back to literal "title" key for page-only parent (no schema fetch)', async () => {
+      // Page whose parent is another page (not a database). Schema fetch must
+      // be skipped — Notion accepts the literal "title" key for non-DB parents.
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'page-1',
+        parent: { type: 'page_id', page_id: 'other-page' }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        title: 'Renamed'
+      })
+
+      expect(mockNotion.databases.retrieve).not.toHaveBeenCalled()
+      expect(mockNotion.dataSources.retrieve).not.toHaveBeenCalled()
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      expect(callArgs.properties.title).toEqual({
+        title: [expect.objectContaining({ text: { content: 'Renamed', link: null } })]
+      })
+    })
+
+    it('falls back to literal "title" key for workspace-level parent (no schema fetch)', async () => {
+      // Workspace-root pages have no schema. Same fallback path as page-only parent.
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'page-1',
+        parent: { type: 'workspace', workspace: true }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        title: 'Workspace Title'
+      })
+
+      expect(mockNotion.databases.retrieve).not.toHaveBeenCalled()
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      expect(callArgs.properties.title).toEqual({
+        title: [expect.objectContaining({ text: { content: 'Workspace Title', link: null } })]
+      })
+    })
+
+    it('falls back to literal "title" key when pages.retrieve fails (graceful degradation)', async () => {
+      // pages.retrieve throws (e.g. permission, transient network error).
+      // The schema resolution is wrapped in try/catch and falls back to the
+      // pre-fix default of literal "title" — update must not fail.
+      mockNotion.pages.retrieve.mockRejectedValueOnce(
+        Object.assign(new Error('Unauthorized'), { code: 'unauthorized' })
+      )
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        title: 'Survives Lookup Failure'
+      })
+
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      expect(callArgs.properties.title).toEqual({
+        title: [expect.objectContaining({ text: { content: 'Survives Lookup Failure', link: null } })]
+      })
+    })
+
+    it('Fix 3 + Fix 5 roundtrip: create with custom title column, then update by title', async () => {
+      // Integration: a page created in a database whose title column is "Subject"
+      // must round-trip correctly through create → update. Both actions use the
+      // same schema-aware title column resolution; this verifies no drift.
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-subj',
+        data_sources: [{ id: 'ds-subj', name: 'Subjects DB' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-subj',
+        properties: {
+          Subject: { type: 'title', id: 'prop-1' },
+          Body: { type: 'rich_text', id: 'prop-2' }
+        }
+      })
+      mockNotion.pages.create.mockResolvedValue({ id: 'new-page', url: 'https://notion.so/new-page' })
+
+      // CREATE
+      await pages(mockNotion as any, {
+        action: 'create',
+        title: 'Initial Subject',
+        parent_id: 'db-subj'
+      })
+      const createArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(createArgs.properties.Subject).toEqual({
+        title: [expect.objectContaining({ text: { content: 'Initial Subject', link: null } })]
+      })
+
+      // UPDATE — schema cache will be hit, so no additional retrieve mocks needed.
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'new-page',
+        parent: { type: 'database_id', database_id: 'db-subj' }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'new-page' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'new-page',
+        title: 'Renamed Subject'
+      })
+      const updateArgs = mockNotion.pages.update.mock.calls[0][0]
+      expect(updateArgs.properties.Subject).toEqual({
+        title: [expect.objectContaining({ text: { content: 'Renamed Subject', link: null } })]
+      })
+      expect(updateArgs.properties.title).toBeUndefined()
+    })
+
     it('replaces content by deleting old blocks and appending new when replace is true', async () => {
       mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
       mockNotion.blocks.children.list
@@ -951,6 +1282,44 @@ describe('pages', () => {
           parent: { type: 'database_id', database_id: 'db-1' }
         })
       )
+    })
+
+    it('strips readonly property types (formula, rollup, created_time, last_edited_time, created_by, last_edited_by, unique_id) when duplicating', async () => {
+      mockNotion.pages.retrieve.mockResolvedValue({
+        id: 'orig-ro',
+        parent: { type: 'page_id', page_id: 'parent-1' },
+        properties: {
+          Name: { type: 'title', title: [{ plain_text: 'Task' }] },
+          Status: { type: 'select', select: { name: 'Open' } },
+          CreatedAt: { type: 'created_time', created_time: '2026-01-01T00:00:00.000Z' },
+          EditedAt: { type: 'last_edited_time', last_edited_time: '2026-01-02T00:00:00.000Z' },
+          Author: { type: 'created_by', created_by: { id: 'user-1' } },
+          LastEditor: { type: 'last_edited_by', last_edited_by: { id: 'user-2' } },
+          UID: { type: 'unique_id', unique_id: { number: 42, prefix: 'T' } }
+        },
+        icon: null,
+        cover: null
+      })
+      mockNotion.blocks.children.list.mockResolvedValue({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+      mockNotion.pages.create.mockResolvedValue({
+        id: 'dup-ro',
+        url: 'https://notion.so/dup-ro'
+      })
+
+      await pages(mockNotion as any, { action: 'duplicate', page_id: 'orig-ro' })
+
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(callArgs.properties).toHaveProperty('Name')
+      expect(callArgs.properties).toHaveProperty('Status')
+      expect(callArgs.properties).not.toHaveProperty('CreatedAt')
+      expect(callArgs.properties).not.toHaveProperty('EditedAt')
+      expect(callArgs.properties).not.toHaveProperty('Author')
+      expect(callArgs.properties).not.toHaveProperty('LastEditor')
+      expect(callArgs.properties).not.toHaveProperty('UID')
     })
 
     it('duplicates multiple pages via page_ids', async () => {
