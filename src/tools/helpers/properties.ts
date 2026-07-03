@@ -86,8 +86,13 @@ export function convertToNotionProperties(
         // Fallback: guess title from key name
         converted[key] = { title: [RichText.text(value)] }
       } else {
-        // Fallback: default to select
-        converted[key] = { select: { name: value } }
+        // Fallback: default to select, but if key looks like a status property, use status format
+        const isStatusKey = /status|状态/i.test(key)
+        if (isStatusKey) {
+          converted[key] = { status: { name: value } }
+        } else {
+          converted[key] = { select: { name: value } }
+        }
       }
     } else if (typeof value === 'number') {
       converted[key] = { number: value }

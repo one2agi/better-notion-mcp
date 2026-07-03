@@ -125,10 +125,17 @@ describe('convertToNotionProperties', () => {
       })
     })
 
-    it('falls back to select for other string keys', () => {
+    it('falls back to status for keys containing "status"', () => {
       const result = convertToNotionProperties({ Status: 'Active' })
       expect(result).toEqual({
-        Status: { select: { name: 'Active' } }
+        Status: { status: { name: 'Active' } }
+      })
+    })
+
+    it('falls back to select for other string keys', () => {
+      const result = convertToNotionProperties({ Category: 'Active' })
+      expect(result).toEqual({
+        Category: { select: { name: 'Active' } }
       })
     })
   })

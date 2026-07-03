@@ -647,11 +647,25 @@ async function duplicatePage(notion: Client, input: PagesInput): Promise<Duplica
         parent = rawParent
       }
 
+      // Sanitize properties — filter out read-only types (formula, rollup) that cause
+      // API validation errors on page create. Keep all other properties as-is to preserve
+      // their exact Notion format including title, select, date objects, etc.
+      const READONLY_PROPERTY_TYPES = new Set(['formula', 'rollup'])
+      const sanitizedProps: Record<string, any> = {}
+      const originalProps = originalPage.properties || {}
+      for (const [key, prop] of Object.entries(originalProps)) {
+        const propType = (prop as any)?.type
+        if (propType && READONLY_PROPERTY_TYPES.has(propType)) {
+          continue // skip read-only properties
+        }
+        sanitizedProps[key] = prop
+      }
+
       // Create duplicate
       const duplicatedPage: any = await retryWithBackoff(() =>
         notion.pages.create({
           parent,
-          properties: originalPage.properties,
+          properties: sanitizedProps,
           icon: originalPage.icon,
           cover: originalPage.cover
         })
