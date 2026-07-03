@@ -5,8 +5,9 @@
 
 import type { Client } from '@notionhq/client'
 import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
-import { blocksToMarkdown, markdownToBlocks, parseRichText } from '../helpers/markdown.js'
+import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren } from '../helpers/pagination.js'
+import { normalizeBlockProperties } from '../helpers/properties.js'
 
 const UPDATABLE_BLOCK_TYPES = new Set([
   'paragraph',
@@ -327,7 +328,7 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
         'Provide markdown content that parses to this block type'
       )
     }
-    const normalized = normalizeProperties(blockType, input.properties!)
+    const normalized = normalizeBlockProperties(blockType, input.properties!)
     updatePayload = { [blockType]: normalized }
   }
 
@@ -374,73 +375,6 @@ const STRUCTURAL_BLOCK_TYPES = new Set([
   'link_to_page',
   'template' // template has no markdown syntax; rich_text must be passed via properties
 ])
-
-/**
- * Normalize raw `properties` input into the shape the SDK expects per block type.
- */
-function normalizeProperties(blockType: string, raw: Record<string, any>): any {
-  if (blockType === 'table_row') {
-    const cells = raw.cells
-    if (Array.isArray(cells) && cells.length > 0 && Array.isArray(cells[0])) {
-      // cells is string[][] or RichText[][]
-      if (cells[0].length > 0 && typeof cells[0][0] === 'string') {
-        // string[][] -> RichText[][]
-        return {
-          cells: (cells as string[][]).map((row) => row.map((cell) => parseRichText(cell)))
-        }
-      }
-      // already RichText[][] - pass through
-      return { cells }
-    }
-    throw new NotionMCPError(
-      'table_row.properties.cells must be string[][] or RichText[][]',
-      'VALIDATION_ERROR',
-      'Provide cells as e.g. [["A", "B"], ["C", "D"]]'
-    )
-  }
-
-  if (blockType === 'synced_block') {
-    // Accept { synced_from: null } (unlink) or { synced_from: { block_id } } (link)
-    if (raw.synced_from === null) {
-      return { synced_from: null }
-    }
-    if (raw.synced_from && typeof raw.synced_from === 'object' && typeof raw.synced_from.block_id === 'string') {
-      return { synced_from: { block_id: raw.synced_from.block_id } }
-    }
-    throw new NotionMCPError(
-      'synced_block.properties.synced_from must be null or { block_id: string }',
-      'VALIDATION_ERROR',
-      'Pass null to unlink, or { block_id: "<id>" } to link'
-    )
-  }
-
-  if (blockType === 'link_to_page') {
-    const targets = ['page_id', 'database_id', 'comment_id'].filter((k) => raw[k])
-    if (targets.length !== 1) {
-      throw new NotionMCPError(
-        'link_to_page requires exactly one of: page_id, database_id, comment_id',
-        'VALIDATION_ERROR',
-        'Provide e.g. { page_id: "<page-id>" } or { database_id: "<db-id>" }'
-      )
-    }
-    return { [targets[0]]: raw[targets[0]] }
-  }
-
-  if (blockType === 'column') {
-    const ratio = raw.width_ratio
-    if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio <= 0 || ratio > 1) {
-      throw new NotionMCPError(
-        'width_ratio must be between 0 and 1',
-        'VALIDATION_ERROR',
-        'Provide a positive number up to 1 (e.g. 0.5 for half-width column)'
-      )
-    }
-    return { width_ratio: ratio }
-  }
-
-  // table: pass-through (has_column_header / has_row_header are already bool)
-  return raw
-}
 
 /**
  * Remove block

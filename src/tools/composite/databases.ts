@@ -9,7 +9,7 @@ import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling
 import { formatIcon } from '../helpers/icons.js'
 import { normalizeId } from '../helpers/id.js'
 import { autoPaginate, processBatches } from '../helpers/pagination.js'
-import { convertToNotionProperties, extractPageProperties } from '../helpers/properties.js'
+import { buildSchemaMap, convertToNotionProperties, extractPageProperties, readPropertyValue } from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
 
 // Cache for data source schema (properties)
@@ -20,13 +20,13 @@ export const resolutionCache = new Map<string, { databaseId: string; dataSourceI
 /**
  * Get data source properties with caching
  */
-async function getDataSourceSchema(notion: Client, dataSourceId: string): Promise<any> {
+export async function getDataSourceSchema(notion: Client, dataSourceId: string): Promise<any> {
   const cached = schemaCache.get(dataSourceId)
   if (cached && Date.now() < cached.expiresAt) {
     return cached.properties
   }
 
-  const dataSource: any = await (notion as any).dataSources.retrieve({
+  const dataSource: any = await notion.dataSources.retrieve({
     data_source_id: dataSourceId
   })
   const properties = dataSource.properties
@@ -254,7 +254,7 @@ export type DatabasesResponse =
  * Tries database_id first; if NOT_FOUND, tries as data_source_id
  * Returns both IDs for downstream operations
  */
-async function resolveDataSourceId(notion: Client, id: string): Promise<{ databaseId: string; dataSourceId: string }> {
+export async function resolveDataSourceId(notion: Client, id: string): Promise<{ databaseId: string; dataSourceId: string }> {
   const normalized = normalizeId(id)
 
   const cached = resolutionCache.get(normalized)
@@ -281,7 +281,7 @@ async function resolveDataSourceId(notion: Client, id: string): Promise<{ databa
     // If NOT_FOUND, try interpreting as data_source_id
     if (error.code === 'object_not_found') {
       try {
-        const ds: any = await (notion as any).dataSources.retrieve({ data_source_id: normalized })
+        const ds: any = await notion.dataSources.retrieve({ data_source_id: normalized })
         const result = {
           databaseId: ds.parent?.database_id || normalized,
           dataSourceId: ds.id
@@ -443,31 +443,7 @@ async function getDatabase(notion: Client, input: DatabasesInput): Promise<GetDa
 
     // Format properties for AI-friendly output
     if (properties) {
-      const keys = Object.keys(properties)
-      for (let i = 0; i < keys.length; i++) {
-        const name = keys[i]
-        const p = properties[name] as any
-        const type = p.type
-
-        schema[name] = {
-          type,
-          id: p.id
-        }
-
-        if (type === 'select' && p.select?.options) {
-          const opts = p.select.options
-          const arr = new Array(opts.length)
-          for (let j = 0; j < opts.length; j++) arr[j] = opts[j].name
-          schema[name].options = arr
-        } else if (type === 'multi_select' && p.multi_select?.options) {
-          const opts = p.multi_select.options
-          const arr = new Array(opts.length)
-          for (let j = 0; j < opts.length; j++) arr[j] = opts[j].name
-          schema[name].options = arr
-        } else if (type === 'formula' && p.formula) {
-          schema[name].expression = p.formula.expression
-        }
-      }
+      Object.assign(schema, buildSchemaMap(properties))
     }
   }
 
@@ -514,7 +490,7 @@ async function queryDatabase(notion: Client, input: DatabasesInput): Promise<Que
 
   // Fetch with pagination
   const allResults = await autoPaginate(async (cursor) => {
-    const response: any = await (notion as any).dataSources.query({
+    const response: any = await notion.dataSources.query({
       ...queryParams,
       start_cursor: cursor,
       page_size: 100
@@ -559,13 +535,10 @@ async function createDatabasePages(notion: Client, input: DatabasesInput): Promi
 
   // Fetch schema for property type mapping
   const properties = await getDataSourceSchema(notion, dataSourceId)
+  const richSchema = buildSchemaMap(properties, { includeOptions: false })
   const schema: Record<string, string> = {}
-  if (properties) {
-    const keys = Object.keys(properties)
-    for (let i = 0; i < keys.length; i++) {
-      const name = keys[i]
-      schema[name] = (properties[name] as any).type
-    }
+  for (const name of Object.keys(richSchema)) {
+    schema[name] = richSchema[name].type
   }
 
   const items = input.pages || (input.page_properties ? [{ properties: input.page_properties }] : [])
@@ -592,7 +565,7 @@ async function createDatabasePages(notion: Client, input: DatabasesInput): Promi
 
       const page = await retryWithBackoff(async () =>
         notion.pages.create({
-          parent: { type: 'data_source_id', data_source_id: dataSourceId },
+          parent: { type: 'database_id', database_id: databaseId },
           properties
         } as any)
       )
@@ -741,7 +714,7 @@ async function createDataSource(notion: Client, input: DatabasesInput): Promise<
     dataSourceData.description = [RichText.text(input.description)]
   }
 
-  const dataSource: any = await (notion as any).dataSources.create(dataSourceData)
+  const dataSource: any = await notion.dataSources.create(dataSourceData)
 
   return {
     action: 'create_data_source',
@@ -782,7 +755,7 @@ async function updateDataSource(notion: Client, input: DatabasesInput): Promise<
     )
   }
 
-  await (notion as any).dataSources.update({
+  await notion.dataSources.update({
     data_source_id: input.data_source_id,
     ...updates
   })
@@ -868,7 +841,7 @@ async function listDataSourceTemplates(
   const dataSourceId = input.data_source_id || resolvedDsId
 
   const templates = await autoPaginate(async (cursor) => {
-    const response: any = await (notion as any).dataSources.listTemplates({
+    const response: any = await notion.dataSources.listTemplates({
       data_source_id: dataSourceId,
       start_cursor: cursor,
       page_size: 100
@@ -947,7 +920,7 @@ async function fetchAllDataSourcePages(
   if (effectiveFilter) queryParams.filter = effectiveFilter
 
   return autoPaginate(async (cursor) => {
-    const response: any = await (notion as any).dataSources.query({
+    const response: any = await notion.dataSources.query({
       ...queryParams,
       start_cursor: cursor,
       page_size: 100
@@ -961,35 +934,9 @@ async function fetchAllDataSourcePages(
 }
 
 /**
- * Read a property's raw value from a Notion page, used for numeric / date aggregations.
- * Returns null for missing/empty properties (caller should skip these in sum/avg).
+ * Read a property's raw value from a Notion page — extracted to
+ * `helpers/properties.ts` (`readPropertyValue`) for reuse with `extractPageProperties`.
  */
-function readPropertyValue(page: any, propertyName: string): any {
-  const prop = page?.properties?.[propertyName]
-  if (!prop) return null
-  switch (prop.type) {
-    case 'number':
-      return typeof prop.number === 'number' ? prop.number : null
-    case 'checkbox':
-      return typeof prop.checkbox === 'boolean' ? prop.checkbox : null
-    case 'select':
-      return prop.select?.name ?? null
-    case 'multi_select':
-      return Array.isArray(prop.multi_select) ? prop.multi_select.map((o: any) => o.name) : null
-    case 'date':
-      return prop.date?.start ?? null
-    case 'status':
-      return prop.status?.name ?? null
-    case 'people':
-      return Array.isArray(prop.people) ? prop.people.map((p: any) => p.id) : null
-    case 'rich_text':
-      return Array.isArray(prop.rich_text) ? prop.rich_text.map((t: any) => t.plain_text).join('') : null
-    case 'title':
-      return Array.isArray(prop.title) ? prop.title.map((t: any) => t.plain_text).join('') : null
-    default:
-      return null
-  }
-}
 
 /**
  * Compute a single aggregation over a flat list of pages.
