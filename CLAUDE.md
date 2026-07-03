@@ -87,6 +87,68 @@ mise run fix                # bun run check:fix
 - SDK pin `@modelcontextprotocol/sdk` v1.x -- v2 removes server-side OAuth
 - Notion API bug: `comments.list` tra 404 voi OAuth tokens tren API version `2025-09-03`
 
+## Testing methodology (bắt buộc)
+
+**Nguyên tắc cốt lõi**: Mỗi lần gặp Notion API error → **đọc kỹ error message** → **viết reverse test** ngay.
+
+Notion API error messages chứa **schema contract** dạng `"X should be defined"` / `"X should not be present"`. Đây là thông tin chính xác hơn cả official docs. Phải khai thác từng error một.
+
+### 1. Read every error (gold mine)
+
+Khi gặp bất kỳ lỗi nào từ Notion (400/422/500), extract:
+- `message` — contract rõ ràng ("X is expected to be status" / "body.properties.X.title should be defined")
+- `code` — `validation_error` / `object_not_found` / `unauthorized` etc.
+- `request_id` — để debug logs phía Notion
+
+Không bao giờ bỏ qua error mà không hiểu contract. Nếu error nói `relation: []` is invalid, đó là **API contract**, ghi vào test.
+
+### 2. Reverse testing pattern (反向测试)
+
+Workflow:
+```
+1. Gặp error E từ real Notion
+2. Phân tích contract từ E ("X should be defined, instead was `undefined`")
+3. Viết test: input vi phạm contract → expect API reject / code handle
+4. Viết test: input tuân thủ contract → expect success
+5. Commit test trước khi sửa code (TDD)
+```
+
+Ví dụ thực tế từ 7/4 testing:
+- Error: `body.properties.任务状态.title should be defined, instead was undefined`
+  → Contract: status-type field requires `status: { name }` wrapper, NOT `title: [...]`
+  → Reverse test: `pages.update({ properties: { 任务状态: '进行中' } })` 应当 fallback or 抛错
+  → 修法: 未来让 update action cũng fetch schema (như Fix 5)
+
+### 3. Real-data probing (颗粒度测试)
+
+Mock data che giấu edge cases. Mỗi release phải probe 5 schema khác nhau:
+- English-only
+- Chinese-only (中文)
+- Mixed
+- Chứa formula/rollup
+- Chứa status/verification/empty relation
+
+Dùng page test có sẵn: `https://app.notion.com/p/one2agi/2-3924f4cfc8e280aba43fcbb4ede3631e` (đã verify schema đa dạng).
+
+### 4. Edge value matrix
+
+Mỗi property input phải test:
+- `""` (empty string)
+- `null` / `undefined`
+- `[]` (empty array)
+- 单元素 / 超长 (>2000 chars)
+- 中文字符 / emoji / markdown special
+- 不存在的 property name
+- Schema có nhưng get không trả về
+
+### 5. Cross-action consistency
+
+Cùng input qua `pages.create` / `pages.update` / `pages.duplicate` phải cho behavior nhất quán. Inconsistency = bug (đã thấy ở status field handling).
+
+### 6. Hook reminder
+
+Project có PostToolUse hook (`.claude/hooks/notion-error-reminder.sh`) tự động inject reminder khi Notion tool trả error. Nếu reminder xuất hiện → **bắt buộc** viết reverse test cho error đó trước khi tiếp tục.
+
 ## Modes
 
 Two transports, selected in `init-server.ts:14-15` (delegated to `main.ts`). There is no `MCP_MODE` env var; the old `local-relay` / `remote-oauth` distinction was removed (see `transports/http.ts:4-9`).

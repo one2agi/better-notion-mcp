@@ -869,18 +869,19 @@ describe('property helpers', () => {
   })
 
   describe('sanitizeReadonlyProperties', () => {
-    it('strips all 7 readonly types and keeps writable types', () => {
+    it('strips all 8 readonly types and keeps writable types', () => {
       const input = {
-        Name: { type: 'title' },
-        Status: { type: 'select' },
-        Score: { type: 'number' },
+        Name: { type: 'title', title: [{ plain_text: 'A' }] },
+        Status: { type: 'select', select: { name: 'Active' } },
+        Score: { type: 'number', number: 5 },
         Created: { type: 'created_time' },
         Edited: { type: 'last_edited_time' },
         Author: { type: 'created_by' },
         Editor: { type: 'last_edited_by' },
         UID: { type: 'unique_id' },
         RollupCol: { type: 'rollup' },
-        FormulaCol: { type: 'formula' }
+        FormulaCol: { type: 'formula' },
+        Verify: { type: 'verification' }
       }
       const out = sanitizeReadonlyProperties(input)
       expect(Object.keys(out).sort()).toEqual(['Name', 'Score', 'Status'])
@@ -896,8 +897,95 @@ describe('property helpers', () => {
     })
   })
 
+  describe('sanitizeReadonlyProperties (reverse tests for official MCP behavior)', () => {
+    it('replicates official MCP: filters all read-only + server-managed property types', () => {
+      // What official MCP does: skip these before forwarding to Notion API
+      const input = {
+        // Writable (preserve)
+        Name: { type: 'title', title: [{ plain_text: 'A' }] },
+        Status: { type: 'select', select: { name: 'Active' } },
+        Tags: { type: 'multi_select', multi_select: [{ name: 'a' }] },
+        Score: { type: 'number', number: 42 },
+        Done: { type: 'checkbox', checkbox: true },
+        Date: { type: 'date', date: { start: '2026-01-01' } },
+        URL: { type: 'url', url: 'https://x.com' },
+        Email: { type: 'email', email: 'a@b.com' },
+        Phone: { type: 'phone_number', phone_number: '123' },
+        Files: { type: 'files', files: [{ file: { url: 'x' } }] },
+        People: { type: 'people', people: [{ id: 'u' }] },
+        StatusType: { type: 'status', status: { name: 'OK' } },
+        Relation: { type: 'relation', relation: [{ id: 'p' }] },
+        Rollup: { type: 'rollup', rollup: { number: 1, array: [] } },
+
+        // Server-managed (drop)
+        Created: { type: 'created_time', created_time: '2026-01-01' },
+        Edited: { type: 'last_edited_time', last_edited_time: '2026-01-01' },
+        Author: { type: 'created_by', created_by: { id: 'u' } },
+        Editor: { type: 'last_edited_by', last_edited_by: { id: 'u' } },
+        UID: { type: 'unique_id', unique_id: { number: 1 } },
+        Formula: { type: 'formula', formula: { type: 'number', number: 42 } },
+        Verify: { type: 'verification' }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      const expectedKept = ['Name', 'Status', 'Tags', 'Score', 'Done', 'Date', 'URL', 'Email', 'Phone', 'Files', 'People', 'StatusType', 'Relation']
+      expect(Object.keys(out).sort()).toEqual(expectedKept.sort())
+    })
+  })
+
+  describe('sanitizeReadonlyProperties (extended for Bug #23 + #29)', () => {
+    it('filters verification type (per Notion API docs)', () => {
+      const input = {
+        Name: { type: 'title' },
+        Verify: { type: 'verification' }
+      }
+      expect(Object.keys(sanitizeReadonlyProperties(input))).toEqual(['Name'])
+    })
+
+    it('drops empty relations (Notion API rejects relation: [])', () => {
+      const input = {
+        Name: { type: 'title' },
+        People: { type: 'relation', relation: [] },
+        Items: { type: 'relation', relation: [{ id: 'a' }] }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(Object.keys(out).sort()).toEqual(['Items', 'Name'])
+    })
+
+    it('drops empty rich_text / title arrays (Notion API rejects)', () => {
+      const input = {
+        T1: { type: 'title', title: [] },
+        T2: { type: 'title', title: [{ plain_text: 'ok' }] },
+        R1: { type: 'rich_text', rich_text: [] },
+        R2: { type: 'rich_text', rich_text: [{ plain_text: 'ok' }] }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(Object.keys(out).sort()).toEqual(['R2', 'T2'])
+    })
+
+    it('drops empty people / files arrays', () => {
+      const input = {
+        P: { type: 'people', people: [] },
+        F: { type: 'files', files: [] },
+        P2: { type: 'people', people: [{ id: 'u' }] }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(Object.keys(out)).toEqual(['P2'])
+    })
+
+    it('drops properties with null select/status value (Notion API rejects)', () => {
+      const input = {
+        HasValue: { type: 'select', select: { name: 'A' } },
+        NullSelect: { type: 'select', select: null },
+        NullStatus: { type: 'status', status: null },
+        HasStatus: { type: 'status', status: { name: 'OK' } }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(Object.keys(out).sort()).toEqual(['HasStatus', 'HasValue'])
+    })
+  })
+
   describe('READONLY_PROPERTY_TYPES', () => {
-    it('contains exactly the 7 known readonly types', () => {
+    it('contains exactly the 8 known readonly types including verification', () => {
       expect([...READONLY_PROPERTY_TYPES].sort()).toEqual([
         'created_by',
         'created_time',
@@ -905,8 +993,13 @@ describe('property helpers', () => {
         'last_edited_by',
         'last_edited_time',
         'rollup',
-        'unique_id'
+        'unique_id',
+        'verification'
       ])
+    })
+
+    it('contains verification in readonly set (per Notion API docs)', () => {
+      expect(READONLY_PROPERTY_TYPES.has('verification')).toBe(true)
     })
   })
 })

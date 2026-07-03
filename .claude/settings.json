@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__better-notion__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/notion-error-reminder.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}
