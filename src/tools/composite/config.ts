@@ -5,7 +5,7 @@
  */
 
 import { getState, getSubjectToken, resetState, resolveCredentialState } from '../../credential-state.js'
-import { NotionMCPError, withErrorHandling } from '../helpers/errors.js'
+import { throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 
 export interface ConfigInput {
   action: 'status' | 'setup_start' | 'setup_reset' | 'setup_complete' | 'set' | 'cache_clear'
@@ -97,10 +97,10 @@ export async function config(input: ConfigInput): Promise<any> {
       }
 
       default:
-        throw new NotionMCPError(
-          `Unsupported action: ${(input as any).action}`,
-          'VALIDATION_ERROR',
-          'Valid actions: status, setup_start, setup_reset, setup_complete, set, cache_clear'
+        throwUnknownAction(
+          (input as any).action,
+          ['status', 'setup_start', 'setup_reset', 'setup_complete', 'set', 'cache_clear'],
+          'config'
         )
     }
   })()

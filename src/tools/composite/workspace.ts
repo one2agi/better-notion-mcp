@@ -4,7 +4,7 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { autoPaginate } from '../helpers/pagination.js'
 
 export interface WorkspaceInfoResult {
@@ -154,11 +154,7 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
       }
 
       default:
-        throw new NotionMCPError(
-          `Unknown action: ${input.action}`,
-          'VALIDATION_ERROR',
-          'Supported actions: info, search'
-        )
+        throwUnknownAction(input.action, ['info', 'search'], 'workspace')
     }
   })()
 }

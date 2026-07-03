@@ -166,8 +166,13 @@ describe('config', () => {
   })
 
   describe('invalid action', () => {
-    it('should throw error for unsupported action', async () => {
-      await expect(config({ action: 'invalid' as never })).rejects.toThrow('Unsupported action: invalid')
+    it('should throw error for unsupported action with tool name', async () => {
+      await expect(config({ action: 'invalid' as never })).rejects.toThrow("Unknown action: 'invalid' for config.")
+    })
+
+    it('should suggest closest match for typo in action', async () => {
+      // 'statuss' is one typo away from 'status'
+      await expect(config({ action: 'statuss' as never })).rejects.toThrow("Did you mean 'status'?")
     })
   })
 })

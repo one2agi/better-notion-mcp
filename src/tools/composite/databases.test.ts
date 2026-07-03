@@ -1087,8 +1087,15 @@ describe('databases', () => {
   })
 
   describe('unknown action', () => {
-    it('should throw on unknown action', async () => {
-      await expect(databases(notion, { action: 'invalid' as any })).rejects.toThrow('Unknown action: invalid')
+    it('should throw on unknown action with tool name', async () => {
+      await expect(databases(notion, { action: 'invalid' as any })).rejects.toThrow(
+        "Unknown action: 'invalid' for databases."
+      )
+    })
+
+    it('should suggest closest match for typo in action', async () => {
+      // 'querry' is one typo away from 'query'
+      await expect(databases(notion, { action: 'querry' as any })).rejects.toThrow("Did you mean 'query'?")
     })
   })
 

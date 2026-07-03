@@ -4,7 +4,7 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { autoPaginate } from '../helpers/pagination.js'
 
 export interface UsersInput {
@@ -129,11 +129,7 @@ export async function users(notion: Client, input: UsersInput): Promise<any> {
       }
 
       default:
-        throw new NotionMCPError(
-          `Unknown action: ${input.action}`,
-          'VALIDATION_ERROR',
-          'Supported actions: list, get, me, from_workspace'
-        )
+        throwUnknownAction(input.action, ['list', 'get', 'me', 'from_workspace'], 'users')
     }
   })()
 }

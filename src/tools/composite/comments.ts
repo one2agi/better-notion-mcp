@@ -4,7 +4,7 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { autoPaginate } from '../helpers/pagination.js'
 import * as RichText from '../helpers/richtext.js'
 
@@ -143,11 +143,7 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
       }
 
       default:
-        throw new NotionMCPError(
-          `Unsupported action: ${input.action}`,
-          'VALIDATION_ERROR',
-          'Supported actions: list, get, create'
-        )
+        throwUnknownAction(input.action, ['list', 'get', 'create'], 'comments')
     }
   })()
 }
