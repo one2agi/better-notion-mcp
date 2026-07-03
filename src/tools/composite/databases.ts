@@ -5,7 +5,7 @@
 
 import type { Client } from '@notionhq/client'
 import { formatCover } from '../helpers/covers.js'
-import { NotionMCPError, retryWithBackoff, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
 import { normalizeId } from '../helpers/id.js'
 import { autoPaginate, processBatches } from '../helpers/pagination.js'
@@ -343,10 +343,23 @@ export async function databases(notion: Client, input: DatabasesInput): Promise<
         return await groupByDatabase(notion, input)
 
       default:
-        throw new NotionMCPError(
-          `Unknown action: ${input.action}`,
-          'VALIDATION_ERROR',
-          'Supported actions: create, get, query, create_page, update_page, delete_page, create_data_source, update_data_source, update_database, list_templates, aggregate, group_by'
+        throwUnknownAction(
+          input.action,
+          [
+            'create',
+            'get',
+            'query',
+            'create_page',
+            'update_page',
+            'delete_page',
+            'create_data_source',
+            'update_data_source',
+            'update_database',
+            'list_templates',
+            'aggregate',
+            'group_by'
+          ],
+          'databases'
         )
     }
   })()

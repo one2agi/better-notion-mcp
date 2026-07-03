@@ -4,7 +4,7 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { blocksToMarkdown, markdownToBlocks, parseRichText } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren } from '../helpers/pagination.js'
 
@@ -118,11 +118,7 @@ export async function blocks(notion: Client, input: BlocksInput): Promise<Blocks
         return await deleteBlock(notion, input)
 
       default:
-        throw new NotionMCPError(
-          `Unknown action: ${input.action}`,
-          'VALIDATION_ERROR',
-          'Supported actions: get, children, append, update, delete'
-        )
+        throwUnknownAction(input.action, ['get', 'children', 'append', 'update', 'delete'], 'blocks')
     }
   })()
 }

@@ -265,6 +265,20 @@ export function enhanceError(error: any): NotionMCPError {
 }
 
 /**
+ * Throw a validation error for an unknown action, with optional closest-match hint.
+ * Centralises the pattern across all composite tools so behaviour stays consistent.
+ */
+export function throwUnknownAction(action: unknown, validActions: readonly string[], toolName: string): never {
+  const closest = typeof action === 'string' ? findClosestMatch(action, [...validActions]) : null
+  const hint = closest ? ` Did you mean '${closest}'?` : ''
+  throw new NotionMCPError(
+    `Unknown action: '${String(action)}' for ${toolName}.${hint}`,
+    'VALIDATION_ERROR',
+    `Valid actions: ${validActions.join(', ')}`
+  )
+}
+
+/**
  * Find the closest matching string from a list of valid options.
  * Uses Levenshtein-like similarity (simple character overlap).
  */

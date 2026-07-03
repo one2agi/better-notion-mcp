@@ -5,7 +5,7 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { isValidBase64 } from '../helpers/id.js'
 import { autoPaginate } from '../helpers/pagination.js'
 
@@ -56,11 +56,7 @@ export async function fileUploads(notion: Client, input: FileUploadsInput): Prom
         return await listFileUploads(notion, input)
 
       default:
-        throw new NotionMCPError(
-          `Unknown action: ${input.action}`,
-          'VALIDATION_ERROR',
-          'Supported actions: create, send, complete, retrieve, list'
-        )
+        throwUnknownAction(input.action, ['create', 'send', 'complete', 'retrieve', 'list'], 'file_uploads')
     }
   })()
 }

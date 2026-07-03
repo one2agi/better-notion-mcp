@@ -317,9 +317,14 @@ describe('fileUploads', () => {
     })
   })
 
-  it('should throw on unknown action', async () => {
+  it('should throw on unknown action with tool name', async () => {
     await expect(fileUploads(mockNotion as any, { action: 'invalid' as any })).rejects.toThrow(
-      'Unknown action: invalid'
+      "Unknown action: 'invalid' for file_uploads."
     )
+  })
+
+  it('should suggest closest match for typo in action', async () => {
+    // 'cretate' is one typo away from 'create'
+    await expect(fileUploads(mockNotion as any, { action: 'cretate' as any })).rejects.toThrow("Did you mean 'create'?")
   })
 })
