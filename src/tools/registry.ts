@@ -135,6 +135,11 @@ const TOOLS = [
             'Cover image: URL or built-in shorthand (gradient_1..11, solid_red/yellow/blue/beige, nasa_*, met_*, rijksmuseum_*, woodcuts_*)'
         },
         archived: { type: 'boolean', description: 'Archive status' },
+        replace: {
+          type: 'boolean',
+          description:
+            'For update action with content: if true, delete existing blocks before appending new content (default false, which appends)'
+        },
         // Markdown-native actions parameters
         new_str: {
           type: 'string',
