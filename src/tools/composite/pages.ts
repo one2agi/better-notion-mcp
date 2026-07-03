@@ -5,7 +5,7 @@
 
 import type { Client, PageObjectResponse } from '@notionhq/client'
 import { formatCover } from '../helpers/covers.js'
-import { NotionMCPError, retryWithBackoff, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
 import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
@@ -240,10 +240,24 @@ export async function pages(notion: Client, input: PagesInput): Promise<PagesRes
         return await replacePageContentRange(notion, input)
 
       default:
-        throw new NotionMCPError(
-          `Unknown action: ${input.action}`,
-          'VALIDATION_ERROR',
-          'Supported actions: create, get, get_property, update, move, archive, restore, duplicate, get_markdown, replace_content, insert_markdown, update_content, replace_content_range'
+        throwUnknownAction(
+          input.action,
+          [
+            'create',
+            'get',
+            'get_property',
+            'update',
+            'move',
+            'archive',
+            'restore',
+            'duplicate',
+            'get_markdown',
+            'replace_content',
+            'insert_markdown',
+            'update_content',
+            'replace_content_range'
+          ],
+          'pages'
         )
     }
   })()
@@ -487,45 +501,66 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
   }
 
   // Handle content updates
-  if (input.content || input.append_content) {
-    if (input.content) {
+  // Decision matrix:
+  //   content present + replace=true   → delete all blocks, then append parsed content
+  //   content present + replace=false  → append parsed content only (default)
+  //   content empty/omitted + replace=true → delete all blocks (clear page), no append
+  //   append_content present           → append parsed append_content only (replace=false implicit)
+  if (input.content) {
+    if (input.replace) {
       // Delete existing content only if replace: true is explicitly set
-      if (input.replace) {
-        // Optimized: Fetch all blocks using autoPaginate, then delete them in batches.
-        const existingBlocks = await autoPaginate((cursor) =>
-          notion.blocks.children.list({
-            block_id: input.page_id!,
-            page_size: 100,
-            start_cursor: cursor
-          })
+      const existingBlocks = await autoPaginate((cursor) =>
+        notion.blocks.children.list({
+          block_id: input.page_id!,
+          page_size: 100,
+          start_cursor: cursor
+        })
+      )
+
+      if (existingBlocks.length > 0) {
+        await processBatches(
+          existingBlocks,
+          async (block) => {
+            await retryWithBackoff(() => notion.blocks.delete({ block_id: block.id }))
+          },
+          { batchSize: 5, concurrency: 3 }
         )
+      }
+    }
 
-        if (existingBlocks.length > 0) {
-          await processBatches(
-            existingBlocks,
-            async (block) => {
-              await retryWithBackoff(() => notion.blocks.delete({ block_id: block.id }))
-            },
-            { batchSize: 5, concurrency: 3 }
-          )
-        }
-      }
+    const { blocks: newBlocks } = markdownToBlocks(input.content)
+    if (newBlocks.length > 0) {
+      await notion.blocks.children.append({
+        block_id: input.page_id,
+        children: newBlocks as any
+      })
+    }
+  } else if (input.append_content) {
+    const { blocks } = markdownToBlocks(input.append_content)
+    if (blocks.length > 0) {
+      await notion.blocks.children.append({
+        block_id: input.page_id,
+        children: blocks as any
+      })
+    }
+  } else if (input.replace) {
+    // Boundary: replace=true with empty/omitted content = clear page (delete all, no append)
+    const existingBlocks = await autoPaginate((cursor) =>
+      notion.blocks.children.list({
+        block_id: input.page_id!,
+        page_size: 100,
+        start_cursor: cursor
+      })
+    )
 
-      const { blocks: newBlocks } = markdownToBlocks(input.content)
-      if (newBlocks.length > 0) {
-        await notion.blocks.children.append({
-          block_id: input.page_id,
-          children: newBlocks as any
-        })
-      }
-    } else if (input.append_content) {
-      const { blocks } = markdownToBlocks(input.append_content)
-      if (blocks.length > 0) {
-        await notion.blocks.children.append({
-          block_id: input.page_id,
-          children: blocks as any
-        })
-      }
+    if (existingBlocks.length > 0) {
+      await processBatches(
+        existingBlocks,
+        async (block) => {
+          await retryWithBackoff(() => notion.blocks.delete({ block_id: block.id }))
+        },
+        { batchSize: 5, concurrency: 3 }
+      )
     }
   }
 

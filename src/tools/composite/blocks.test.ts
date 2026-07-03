@@ -180,6 +180,79 @@ describe('Blocks Tool', () => {
       })
     })
 
+    // Defensive strip from 64b6612: column blocks cannot have format.column_ratio when
+    // created via blocks.children.append (Notion API rejects it). The parser currently
+    // does not emit column blocks, so this path is exercised via a mocked parser that
+    // synthesises a column block to guarantee coverage if future parser support is added.
+    it('should strip format.column_ratio from column blocks before appending', async () => {
+      const { markdownToBlocks } = await import('../helpers/markdown.js')
+      vi.mocked(markdownToBlocks).mockReturnValueOnce({
+        blocks: [
+          {
+            type: 'column',
+            column: {
+              rich_text: [{ text: { content: 'left' } }],
+              format: { column_ratio: 0.5 }
+            }
+          },
+          {
+            type: 'column',
+            column: {
+              rich_text: [{ text: { content: 'right' } }],
+              format: { column_ratio: 0.3, block_width: 100 } // keep non-empty format
+            }
+          }
+        ],
+        warnings: []
+      } as any)
+
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
+
+      await blocks(mockNotion as any, {
+        action: 'append',
+        block_id: 'parent-block',
+        content: 'irrelevant (parser is mocked)'
+      })
+
+      const captured = mockNotion.blocks.children.append.mock.calls[0][0]
+      const [col1, col2] = captured.children
+
+      // 1st column: format was only column_ratio → object should be deleted entirely
+      expect(col1.column.format?.column_ratio).toBeUndefined()
+      expect('format' in col1.column).toBe(false)
+      // rich_text should be preserved
+      expect(col1.column.rich_text).toEqual([{ text: { content: 'left' } }])
+
+      // 2nd column: format has other fields → only column_ratio removed, format retained
+      expect(col2.column.format?.column_ratio).toBeUndefined()
+      expect(col2.column.format?.block_width).toBe(100)
+    })
+
+    it('should not modify non-column blocks', async () => {
+      const { markdownToBlocks } = await import('../helpers/markdown.js')
+      vi.mocked(markdownToBlocks).mockReturnValueOnce({
+        blocks: [
+          { type: 'paragraph', paragraph: { rich_text: [{ text: { content: 'p1' } }] } },
+          { type: 'heading_1', heading_1: { rich_text: [{ text: { content: 'h' } }] } }
+        ],
+        warnings: []
+      } as any)
+
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
+
+      await blocks(mockNotion as any, {
+        action: 'append',
+        block_id: 'p',
+        content: 'x'
+      })
+
+      const captured = mockNotion.blocks.children.append.mock.calls[0][0]
+      expect(captured.children).toEqual([
+        { type: 'paragraph', paragraph: { rich_text: [{ text: { content: 'p1' } }] } },
+        { type: 'heading_1', heading_1: { rich_text: [{ text: { content: 'h' } }] } }
+      ])
+    })
+
     it('should throw when after_block without after_block_id', async () => {
       await expect(
         blocks(mockNotion as any, {
@@ -899,9 +972,16 @@ describe('Blocks Tool', () => {
   })
 
   describe('default', () => {
-    it('should throw on unknown action', async () => {
+    it('should throw on unknown action with closest-match hint', async () => {
       await expect(blocks(mockNotion as any, { action: 'invalid' as any, block_id: 'block-1' })).rejects.toThrow(
-        'Unknown action: invalid'
+        "Unknown action: 'invalid' for blocks."
+      )
+    })
+
+    it('should suggest closest match for typo in action', async () => {
+      // 'appnd' is one typo away from 'append'
+      await expect(blocks(mockNotion as any, { action: 'appnd' as any, block_id: 'block-1' })).rejects.toThrow(
+        "Did you mean 'append'?"
       )
     })
   })
