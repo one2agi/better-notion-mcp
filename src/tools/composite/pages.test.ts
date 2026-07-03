@@ -1028,6 +1028,68 @@ describe('pages', () => {
     })
   })
 
+  describe('update (reverse tests for official MCP behavior)', () => {
+    it('status field accepts plain string per official MCP contract', async () => {
+      // Official MCP accepts `{ 任务状态: '进行中' }` (simple string).
+      // This contract: pages.update should also accept simple string for status.
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'page-1',
+        parent: { type: 'database_id', database_id: 'db-task' }
+      })
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-task',
+        data_sources: [{ id: 'ds-task', name: 'Tasks' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-task',
+        properties: {
+          Name: { type: 'title', id: 'p1' },
+          任务状态: { type: 'status', id: 'p2' }
+        }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        properties: { 任务状态: '进行中' }
+      })
+
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      // Schema-aware: status-type field → status wrapper
+      expect(callArgs.properties['任务状态']).toEqual({ status: { name: '进行中' } })
+    })
+
+    it('select field accepts plain string per official MCP contract', async () => {
+      // Same as status but for select type
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'page-1',
+        parent: { type: 'database_id', database_id: 'db-sel' }
+      })
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-sel',
+        data_sources: [{ id: 'ds-sel', name: 'DB' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-sel',
+        properties: {
+          Name: { type: 'title', id: 'p1' },
+          Status: { type: 'select', id: 'p2', select: { options: [] } }
+        }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        properties: { Status: 'Active' }
+      })
+
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      expect(callArgs.properties.Status).toEqual({ select: { name: 'Active' } })
+    })
+  })
+
   // ---------------------------------------------------------------------------
   // move
   // ---------------------------------------------------------------------------
@@ -1350,6 +1412,72 @@ describe('pages', () => {
 
     it('throws without page_id or page_ids', async () => {
       await expect(pages(mockNotion as any, { action: 'duplicate' })).rejects.toThrow('page_id or page_ids required')
+    })
+  })
+
+  describe('duplicate (reverse tests for official MCP behavior)', () => {
+    it('replicates official: duplicate page with empty relation property succeeds', async () => {
+      // Notion API rejects `relation: []` — must filter out empty relations
+      const originalPage = {
+        id: 'src-page',
+        parent: { type: 'database_id', database_id: 'db-1' },
+        properties: {
+          Name: { type: 'title', title: [{ plain_text: 'X' }] },
+          EmptyRel: { type: 'relation', relation: [] },           // drop
+          NonEmptyRel: { type: 'relation', relation: [{ id: 'a' }] } // keep
+        }
+      }
+      mockNotion.pages.retrieve.mockResolvedValue(originalPage)
+      mockNotion.databases.retrieve.mockRejectedValue(new Error('not used'))
+      mockNotion.blocks.children.list.mockResolvedValue({ results: [], next_cursor: null })
+      mockNotion.pages.create.mockResolvedValue({
+        id: 'dup-page',
+        url: 'https://notion.so/dup-page'
+      })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'duplicate',
+        page_id: 'src-page'
+      })) as any
+
+      expect(result.results[0].duplicate_id).toBe('dup-page')
+      const createArgs = mockNotion.pages.create.mock.calls[0][0]
+      // EmptyRel should be filtered out
+      expect(createArgs.properties).not.toHaveProperty('EmptyRel')
+      // Non-empty preserved
+      expect(createArgs.properties.NonEmptyRel).toEqual({ type: 'relation', relation: [{ id: 'a' }] })
+    })
+
+    it('replicates official: duplicate page with omitted (no value) property succeeds', async () => {
+      // Notion returns properties without value fields for server-managed or unset
+      const originalPage = {
+        id: 'src-page',
+        parent: { type: 'database_id', database_id: 'db-1' },
+        properties: {
+          Name: { type: 'title', title: [{ plain_text: 'X' }] },
+          OmittedField: { type: 'select' },  // no select field — omitted by Notion
+          FormulaField: { type: 'formula', formula: { type: 'number', number: 42 } }
+        }
+      }
+      mockNotion.pages.retrieve.mockResolvedValue(originalPage)
+      mockNotion.databases.retrieve.mockRejectedValue(new Error('not used'))
+      mockNotion.blocks.children.list.mockResolvedValue({ results: [], next_cursor: null })
+      mockNotion.pages.create.mockResolvedValue({
+        id: 'dup-page',
+        url: 'https://notion.so/dup-page'
+      })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'duplicate',
+        page_id: 'src-page'
+      })) as any
+
+      expect(result.results[0].duplicate_id).toBe('dup-page')
+      const createArgs = mockNotion.pages.create.mock.calls[0][0]
+      // formula filtered, omitted dropped
+      expect(createArgs.properties).not.toHaveProperty('OmittedField')
+      expect(createArgs.properties).not.toHaveProperty('FormulaField')
+      expect(createArgs.properties.Name).toBeDefined()
     })
   })
 

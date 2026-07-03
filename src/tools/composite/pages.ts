@@ -522,37 +522,45 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
   if (input.properties || input.title) {
     updates.properties = {}
 
-    if (input.title) {
-      // Resolve schema-aware title column name (mirrors createPage logic).
-      // Default to "title" for non-database parents (page-only pages) where
-      // Notion accepts a literal "title" key in the properties object.
-      let titleColumnName = 'title'
-      try {
-        const page = (await notion.pages.retrieve({ page_id: input.page_id })) as PageObjectResponse
-        const parent = page.parent
-        if (parent?.type === 'database_id' && parent.database_id) {
-          const dbId = parent.database_id.replace(/-/g, '')
-          const { dataSourceId } = await resolveDataSourceId(notion, dbId)
-          const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
-          if (schemaProperties) {
-            const schemaTypeMap: Record<string, string> = {}
-            for (const name of Object.keys(schemaProperties)) {
-              schemaTypeMap[name] = schemaProperties[name]?.type ?? 'rich_text'
-            }
-            const found = findTitleColumnName(schemaTypeMap)
-            if (found) titleColumnName = found
+    // Resolve schema once for both title and properties paths. Mirrors createPage
+    // logic: fetches the parent database schema so convertToNotionProperties
+    // can correctly route status / select / date / relation values per their
+    // actual schema type (Bug #26). Falls back gracefully when the page is
+    // not in a database or schema lookup fails — preserves the pre-fix
+    // default behavior for page-only and workspace-level parents.
+    let schemaTypeMap: Record<string, string> | undefined
+    try {
+      const page = (await notion.pages.retrieve({ page_id: input.page_id })) as PageObjectResponse
+      const parent = page.parent
+      if (parent?.type === 'database_id' && parent.database_id) {
+        const dbId = parent.database_id.replace(/-/g, '')
+        const { dataSourceId } = await resolveDataSourceId(notion, dbId)
+        const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
+        if (schemaProperties) {
+          schemaTypeMap = {}
+          for (const name of Object.keys(schemaProperties)) {
+            schemaTypeMap[name] = schemaProperties[name]?.type ?? 'rich_text'
           }
         }
-      } catch {
-        // Schema lookup failed — fall back to literal "title" key. This is
-        // the same default Notion uses for page-only parents and preserves
-        // behavior for users without database access to the parent.
       }
+    } catch {
+      // Schema lookup failed — fall back to no schema. convertToNotionProperties
+      // will default unknown string fields to `{ select: { name } }`, which is
+      // the historical behavior for callers without database access.
+    }
+
+    if (input.title) {
+      // Default to "title" for non-database parents (page-only pages) where
+      // Notion accepts a literal "title" key in the properties object.
+      const titleColumnName = (schemaTypeMap && findTitleColumnName(schemaTypeMap)) || 'title'
       updates.properties[titleColumnName] = { title: [RichText.text(input.title)] }
     }
 
     if (input.properties) {
-      const converted = convertToNotionProperties(input.properties)
+      // Schema-aware conversion: status-type fields become `{ status: { name } }`,
+      // select-type fields become `{ select: { name } }`, etc. Without schema
+      // we fall through to convertToNotionProperties' key-name heuristics.
+      const converted = convertToNotionProperties(input.properties, schemaTypeMap)
       updates.properties = { ...updates.properties, ...converted }
     }
   }

@@ -19,7 +19,8 @@ export const READONLY_PROPERTY_TYPES: ReadonlySet<string> = new Set([
   'last_edited_time',
   'created_by',
   'last_edited_by',
-  'unique_id'
+  'unique_id',
+  'verification'
 ])
 
 /**
@@ -64,7 +65,29 @@ export function sanitizeReadonlyProperties(
   if (!properties) return result
   for (const [key, prop] of Object.entries(properties)) {
     const propType = (prop as any)?.type
+
+    // Skip server-managed readonly types (formula, rollup, created_*, etc.)
     if (propType && READONLY_PROPERTY_TYPES.has(propType)) continue
+
+    // Skip non-objects (defensive: malformed input)
+    if (!prop || typeof prop !== 'object') continue
+
+    // Skip properties whose value field exists but is empty — Notion API
+    // rejects these on POST /v1/pages (Bug #23 + #29). Only check when
+    // the value key is present; missing-value cases are passed through.
+    if (propType === 'relation') {
+      if ('relation' in prop && (!Array.isArray(prop.relation) || prop.relation.length === 0)) continue
+    } else if (propType === 'rich_text' || propType === 'title') {
+      if (propType in prop && (!Array.isArray(prop[propType]) || prop[propType].length === 0)) continue
+    } else if (propType === 'people' || propType === 'files') {
+      if (propType in prop && (!Array.isArray(prop[propType]) || prop[propType].length === 0)) continue
+    } else if (propType === 'select' || propType === 'status') {
+      // select / status: null OR no value field at all = unset — Notion rejects.
+      // (Real Notion API retrieve returns `{ type: 'select', select: null }` for unset;
+      // fetched pages may have value field omitted entirely.)
+      if (!(propType in prop) || prop[propType] === null) continue
+    }
+
     result[key] = prop
   }
   return result
