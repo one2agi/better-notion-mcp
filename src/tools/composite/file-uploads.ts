@@ -88,7 +88,7 @@ async function createFileUpload(notion: Client, input: FileUploadsInput): Promis
     params.number_of_parts = input.number_of_parts
   }
 
-  const response: any = await (notion as any).fileUploads.create(params)
+  const response: any = await notion.fileUploads.create(params)
 
   return {
     action: 'create',
@@ -145,7 +145,7 @@ async function sendFileUpload(notion: Client, input: FileUploadsInput): Promise<
   let contentType = input.content_type
   let filename = input.filename
   if (!contentType || !filename) {
-    const uploadInfo: any = await (notion as any).fileUploads.retrieve({
+    const uploadInfo: any = await notion.fileUploads.retrieve({
       file_upload_id: input.file_upload_id
     })
     contentType = contentType || uploadInfo.content_type || 'application/octet-stream'
@@ -164,7 +164,7 @@ async function sendFileUpload(notion: Client, input: FileUploadsInput): Promise<
     params.part_number = String(input.part_number)
   }
 
-  const response: any = await (notion as any).fileUploads.send(params)
+  const response: any = await notion.fileUploads.send(params)
 
   return {
     action: 'send',
@@ -187,7 +187,7 @@ async function completeFileUpload(notion: Client, input: FileUploadsInput): Prom
     )
   }
 
-  const response: any = await (notion as any).fileUploads.complete({
+  const response: any = await notion.fileUploads.complete({
     file_upload_id: input.file_upload_id
   })
 
@@ -212,7 +212,7 @@ async function retrieveFileUpload(notion: Client, input: FileUploadsInput): Prom
     )
   }
 
-  const response: any = await (notion as any).fileUploads.retrieve({
+  const response: any = await notion.fileUploads.retrieve({
     file_upload_id: input.file_upload_id
   })
 
@@ -232,7 +232,7 @@ async function retrieveFileUpload(notion: Client, input: FileUploadsInput): Prom
  */
 async function listFileUploads(notion: Client, input: FileUploadsInput): Promise<any> {
   const allResults = await autoPaginate(async (cursor) => {
-    const response: any = await (notion as any).fileUploads.list({
+    const response: any = await notion.fileUploads.list({
       start_cursor: cursor,
       page_size: 100
     })
