@@ -134,7 +134,43 @@ const TOOLS = [
           description:
             'Cover image: URL or built-in shorthand (gradient_1..11, solid_red/yellow/blue/beige, nasa_*, met_*, rijksmuseum_*, woodcuts_*)'
         },
-        archived: { type: 'boolean', description: 'Archive status' }
+        archived: { type: 'boolean', description: 'Archive status' },
+        // Markdown-native actions parameters
+        new_str: {
+          type: 'string',
+          description: 'Markdown body for replace_content / insert_markdown / replace_content_range'
+        },
+        content_range: {
+          type: 'string',
+          description: 'Existing content to replace for replace_content_range (old_str)'
+        },
+        position: {
+          type: 'string',
+          enum: ['start', 'end'],
+          description: 'Position for insert_markdown: "start" | "end" (default: "end")'
+        },
+        after_block_id: {
+          type: 'string',
+          description: 'Block ID to insert after (insert_markdown only)'
+        },
+        updates: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              old_str: { type: 'string' },
+              new_str: { type: 'string' },
+              replace_all_matches: { type: 'boolean' }
+            },
+            required: ['old_str', 'new_str']
+          },
+          description: 'Search-and-replace updates for update_content: [{old_str, new_str, replace_all_matches?}]'
+        },
+        allow_deleting_content: {
+          type: 'boolean',
+          description:
+            'Allow replace_content/update_content to delete unmatched content (default: true for replace_content, false for update_content)'
+        }
       },
       required: ['action']
     }

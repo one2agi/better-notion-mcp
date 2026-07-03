@@ -185,6 +185,16 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
     )
   }
   const { blocks: blocksList } = markdownToBlocks(input.content)
+  // Notion API rejects column_ratio in format when creating column blocks via blocks.children.append.
+  // Strip format.column_ratio from any column blocks (width is set implicitly or via separate update).
+  for (const block of blocksList) {
+    if (block.type === 'column' && (block as any).column?.format?.column_ratio !== undefined) {
+      delete (block as any).column.format.column_ratio
+      if (Object.keys((block as any).column.format).length === 0) {
+        delete (block as any).column.format
+      }
+    }
+  }
   const appendParams: any = {
     block_id: input.block_id,
     children: blocksList as any
@@ -256,14 +266,25 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
           `Provide properties with the relevant fields for ${blockType}`
         )
       }
-      throw new NotionMCPError(
-        `Block type mismatch: cannot update ${blockType} with content that parses to ${newContent.type}`,
-        'VALIDATION_ERROR',
-        `Provide markdown that parses to ${blockType}`
-      )
+      // Allow heading level conversion (e.g., heading_2 -> heading_3 if user uses ### markdown)
+      // Only heading types can auto-convert; other types still require exact match
+      const isHeadingConversion =
+        blockType.startsWith('heading_') &&
+        newContent.type.startsWith('heading_') &&
+        !STRUCTURAL_BLOCK_TYPES.has(blockType)
+      if (!isHeadingConversion) {
+        throw new NotionMCPError(
+          `Block type mismatch: cannot update ${blockType} with content that parses to ${newContent.type}`,
+          'VALIDATION_ERROR',
+          `Provide markdown that parses to ${blockType} (or use ### syntax matching your block's heading level)`
+        )
+      }
     }
 
     updatePayload = {}
+    // For heading conversions, use the new type
+    const effectiveBlockType = newContent.type !== blockType ? newContent.type : blockType
+
     if (blockType === 'to_do') {
       updatePayload.to_do = {
         rich_text: (newContent as any).to_do?.rich_text || [],
@@ -289,16 +310,16 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
       updatePayload.template = {
         rich_text: (newContent as any).template?.rich_text || []
       }
-    } else if (blockType === 'heading_4') {
+    } else if (effectiveBlockType === 'heading_4') {
       updatePayload.heading_4 = {
         rich_text: (newContent as any).heading_4?.rich_text || [],
-        color: (newContent as any).heading_4?.color ?? block.heading_4?.color ?? 'default',
-        is_toggleable: block.heading_4?.is_toggleable ?? false
+        color: (newContent as any).heading_4?.color ?? block[blockType]?.color ?? 'default',
+        is_toggleable: block[blockType]?.is_toggleable ?? false
       }
     } else {
       // paragraph, heading_1/2/3, bulleted_list_item, numbered_list_item, quote
-      updatePayload[blockType] = {
-        rich_text: (newContent as any)[blockType]?.rich_text || []
+      updatePayload[effectiveBlockType] = {
+        rich_text: (newContent as any)[effectiveBlockType]?.rich_text || []
       }
     }
   } else {
