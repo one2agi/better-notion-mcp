@@ -642,6 +642,44 @@ describe('pages', () => {
       })
     })
 
+    // Boundary case (Issue 1): replace=true with empty content should still clear the page
+    it('clears all existing blocks when replace=true and content is empty string', async () => {
+      mockNotion.blocks.children.list.mockResolvedValue({
+        results: [{ id: 'old-1' }, { id: 'old-2' }, { id: 'old-3' }],
+        next_cursor: null,
+        has_more: false
+      })
+      mockNotion.blocks.delete.mockResolvedValue({})
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        content: '',
+        replace: true
+      })
+
+      expect(mockNotion.blocks.delete).toHaveBeenCalledTimes(3)
+      expect(mockNotion.blocks.children.append).not.toHaveBeenCalled()
+    })
+
+    it('clears all existing blocks when replace=true and content field is omitted', async () => {
+      mockNotion.blocks.children.list.mockResolvedValue({
+        results: [{ id: 'old-1' }, { id: 'old-2' }],
+        next_cursor: null,
+        has_more: false
+      })
+      mockNotion.blocks.delete.mockResolvedValue({})
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        replace: true
+      })
+
+      expect(mockNotion.blocks.delete).toHaveBeenCalledTimes(2)
+      expect(mockNotion.blocks.children.append).not.toHaveBeenCalled()
+    })
+
     it('skips pages.update when only content changes', async () => {
       mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
 
@@ -950,8 +988,15 @@ describe('pages', () => {
   // unknown action
   // ---------------------------------------------------------------------------
   describe('unknown action', () => {
-    it('throws on unknown action', async () => {
-      await expect(pages(mockNotion as any, { action: 'explode' as any })).rejects.toThrow('Unknown action: explode')
+    it('throws on unknown action with tool name and closest-match hint', async () => {
+      // 'getts' is one typo away from 'get'
+      await expect(pages(mockNotion as any, { action: 'getts' as any })).rejects.toThrow("Did you mean 'get'?")
+    })
+
+    it('throws on completely unknown action without hint', async () => {
+      await expect(pages(mockNotion as any, { action: 'explode' as any })).rejects.toThrow(
+        "Unknown action: 'explode' for pages."
+      )
     })
   })
 
