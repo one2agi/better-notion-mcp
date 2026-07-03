@@ -486,6 +486,32 @@ describe('Blocks Tool', () => {
         )
       })
 
+      it('should update heading_2 via properties with color', async () => {
+        // Verify heading blocks support properties mode for preserving color
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'heading_2',
+          has_children: false,
+          archived: false,
+          heading_2: { rich_text: [], color: 'red', is_toggleable: false }
+        })
+        mockNotion.blocks.update.mockResolvedValue({})
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          properties: { rich_text: [{ type: 'text', text: { content: 'Updated heading' } }], color: 'blue' }
+        })
+
+        expect((result as any).type).toBe('heading_2')
+        expect(mockNotion.blocks.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            block_id: 'block-1',
+            heading_2: expect.objectContaining({ rich_text: expect.any(Array), color: 'blue' })
+          })
+        )
+      })
+
       it('should update heading_4 via markdown', async () => {
         mockNotion.blocks.retrieve.mockResolvedValue({
           id: 'block-1',

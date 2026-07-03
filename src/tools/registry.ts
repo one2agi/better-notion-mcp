@@ -267,7 +267,7 @@ const TOOLS = [
   {
     name: 'blocks',
     description:
-      'Read and modify block-level content within pages.\n\nActions (required params -> optional):\n- get (block_id): retrieve single block\n- children (block_id): list child blocks\n- append (block_id, content -> position, after_block_id): add markdown content at position\n- update (block_id, content): replace text block content\n- delete (block_id): remove block\n\nUse `pages` for page metadata/properties. Page IDs are valid block IDs. update only works on text blocks (paragraph, headings, lists, quote, to_do, code). Image/file blocks contain signed URLs (1h expiry). append supports position: "start" (prepend), "end" (default), "after_block" (requires after_block_id).',
+      'Read and modify block-level content within pages.\n\nActions (required params -> optional):\n- get (block_id): retrieve single block\n- children (block_id): list child blocks\n- append (block_id, content -> position, after_block_id): add markdown content at position\n- update (block_id, content OR properties): replace block content (mutually exclusive)\n- delete (block_id): remove block\n\nUse `pages` for page metadata/properties. Page IDs are valid block IDs. update has two modes: content (markdown string) or properties (direct fields for structural types or to preserve color on headings). Image/file blocks contain signed URLs (1h expiry). append supports position: "start" (prepend), "end" (default), "after_block" (requires after_block_id).',
     annotations: {
       title: 'Blocks',
       readOnlyHint: false,
@@ -291,7 +291,12 @@ const TOOLS = [
           description:
             'Insert position for append: start (prepend), end (default), after_block (requires after_block_id)'
         },
-        after_block_id: { type: 'string', description: 'Block ID to insert after (when position is after_block)' }
+        after_block_id: { type: 'string', description: 'Block ID to insert after (when position is after_block)' },
+        properties: {
+          type: 'object',
+          description:
+            'Direct block fields for update (for structural types or to preserve color on headings). Mutually exclusive with content.'
+        }
       },
       required: ['action', 'block_id']
     }
