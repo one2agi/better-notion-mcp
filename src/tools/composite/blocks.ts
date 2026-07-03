@@ -355,10 +355,8 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
  */
 const TEXT_RICH_BLOCK_TYPES = new Set([
   'paragraph',
-  'heading_1',
-  'heading_2',
-  'heading_3',
-  'heading_4',
+  // Note: heading_1/2/3/4 are NOT included here because they can be updated via
+  // properties mode (e.g., to preserve color) in addition to content mode
   'bulleted_list_item',
   'numbered_list_item',
   'quote',
