@@ -82,7 +82,7 @@ const TOOLS = [
   {
     name: 'pages',
     description:
-      'Page CRUD for individual pages and database rows.\n\nActions (required params -> optional):\n- create (parent_id -> title, content, properties, icon, cover)\n- get (page_id): returns markdown content\n- get_property (page_id, property_id)\n- update (page_id -> title, content, append_content, properties, icon, cover, archived)\n- move (page_id, parent_id)\n- archive (page_id) / restore (page_id)\n- duplicate (page_id -> parent_id)\n- get_markdown (page_id): server-side markdown render (faster than `get`, requires Notion API 2025-09-03 + SDK v5.22+)\n- replace_content (page_id, new_str): overwrite whole page with markdown (destructive)\n- insert_markdown (page_id, content, position=\"start\"|\"end\", after_block_id?): insert at position or after block\n- update_content (page_id, updates[{old_str,new_str,replace_all_matches?}]): server-side search & replace\n- replace_content_range (page_id, content, content_range): replace a specific markdown range\n\nUse `databases` instead for querying or bulk row operations. Property format: simple values auto-convert -- string for title/rich_text/select/status, number for number, boolean for checkbox, string[] for multi_select, ISO date "2025-01-15" for date. Example: properties: {"Name": "My Page", "Status": "In Progress", "Tags": ["tag1", "tag2"], "Due": "2025-06-01", "Count": 42, "Done": true}.',
+      'Page CRUD for individual pages and database rows.\n\nActions (required params -> optional):\n- create (parent_id -> title, content, properties, icon, cover)\n- get (page_id): returns markdown content\n- get_property (page_id, property_id)\n- update (page_id -> title, content, append_content, properties, icon, cover, archived)\n- move (page_id, parent_id)\n- archive (page_id) / restore (page_id)\n- duplicate (page_id -> parent_id)\n- get_markdown (page_id): server-side markdown render (faster than `get`, requires Notion API 2025-09-03 + SDK v5.22+)\n- replace_content (page_id, new_str): overwrite whole page with markdown (destructive)\n- insert_markdown (page_id, content, position="start"|"end", after_block_id?): insert at position or after block\n- update_content (page_id, updates[{old_str,new_str,replace_all_matches?}]): server-side search & replace\n- replace_content_range (page_id, content, content_range): replace a specific markdown range\n\nUse `databases` instead for querying or bulk row operations. Property format: simple values auto-convert -- string for title/rich_text/select/status, number for number, boolean for checkbox, string[] for multi_select, ISO date "2025-01-15" for date. Example: properties: {"Name": "My Page", "Status": "In Progress", "Tags": ["tag1", "tag2"], "Due": "2025-06-01", "Count": 42, "Done": true}.',
     annotations: {
       title: 'Pages',
       readOnlyHint: false,
@@ -109,8 +109,7 @@ const TOOLS = [
             'insert_markdown',
             'update_content',
             'replace_content_range'
-          ],
-          description: 'Action to perform'
+          ]
         },
         page_id: { type: 'string', description: 'Page ID (required for most actions)' },
         page_ids: { type: 'array', items: { type: 'string' }, description: 'Multiple page IDs for batch operations' },
@@ -209,8 +208,7 @@ const TOOLS = [
             'update_data_source',
             'update_database',
             'list_templates'
-          ],
-          description: 'Action to perform'
+          ]
         },
         database_id: {
           type: 'string',
@@ -285,8 +283,7 @@ const TOOLS = [
       properties: {
         action: {
           type: 'string',
-          enum: ['get', 'children', 'append', 'update', 'delete'],
-          description: 'Action to perform'
+          enum: ['get', 'children', 'append', 'update', 'delete']
         },
         block_id: { type: 'string', description: 'Block ID' },
         content: { type: 'string', description: 'Markdown content (for append/update)' },
@@ -322,8 +319,7 @@ const TOOLS = [
       properties: {
         action: {
           type: 'string',
-          enum: ['list', 'get', 'me', 'from_workspace'],
-          description: 'Action to perform'
+          enum: ['list', 'get', 'me', 'from_workspace']
         },
         user_id: { type: 'string', description: 'User ID (for get action)' }
       },
@@ -346,8 +342,7 @@ const TOOLS = [
       properties: {
         action: {
           type: 'string',
-          enum: ['info', 'search'],
-          description: 'Action to perform'
+          enum: ['info', 'search']
         },
         query: { type: 'string', description: 'Search query' },
         filter: {
@@ -386,7 +381,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'get', 'create'], description: 'Action to perform' },
+        action: { type: 'string', enum: ['list', 'get', 'create'] },
         page_id: { type: 'string', description: 'Page ID' },
         comment_id: { type: 'string', description: 'Comment ID (for get action)' },
         discussion_id: { type: 'string', description: 'Discussion ID (for replies)' },
@@ -435,8 +430,7 @@ const TOOLS = [
       properties: {
         action: {
           type: 'string',
-          enum: ['create', 'send', 'complete', 'retrieve', 'list'],
-          description: 'Action to perform'
+          enum: ['create', 'send', 'complete', 'retrieve', 'list']
         },
         file_upload_id: { type: 'string', description: 'File upload ID (from create step)' },
         filename: { type: 'string', description: 'Filename (for create)' },
@@ -492,8 +486,7 @@ const TOOLS = [
       properties: {
         action: {
           type: 'string',
-          enum: ['status', 'setup_start', 'setup_reset', 'setup_complete', 'set', 'cache_clear'],
-          description: 'Action to perform'
+          enum: ['status', 'setup_start', 'setup_reset', 'setup_complete', 'set', 'cache_clear']
         },
         force: {
           type: 'boolean',
