@@ -44,11 +44,12 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
         if (!input.page_id) {
           throw new NotionMCPError('page_id required for list action', 'VALIDATION_ERROR', 'Provide page_id')
         }
+        const pageId: string = input.page_id
 
         try {
           const comments = await autoPaginate(async (cursor) => {
-            return await (notion.comments as any).list({
-              block_id: input.page_id,
+            return await notion.comments.list({
+              block_id: pageId,
               start_cursor: cursor
             })
           })
@@ -82,7 +83,7 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
           throw new NotionMCPError('comment_id required for get action', 'VALIDATION_ERROR', 'Provide comment_id')
         }
 
-        const comment: any = await (notion.comments as any).retrieve({
+        const comment: any = await notion.comments.retrieve({
           comment_id: input.comment_id
         })
 
@@ -132,12 +133,15 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
           }
         }
 
-        const comment = await (notion.comments as any).create(createParams)
+        const comment = await notion.comments.create(createParams)
 
         return {
           action: 'create',
           comment_id: comment.id,
-          discussion_id: comment.discussion_id,
+          // Notion API returns `discussion_id` but the SDK response type omits it.
+          // Cast to access the real runtime value; safe because the API contract
+          // is documented at https://developers.notion.com/reference/create-a-comment.
+          discussion_id: (comment as { discussion_id: string }).discussion_id,
           created: true
         }
       }
