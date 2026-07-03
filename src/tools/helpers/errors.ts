@@ -309,7 +309,7 @@ export function findClosestMatch(input: string, validOptions: string[]): string 
       if (optionBigrams.has(b)) overlap++
     }
     const score = (2 * overlap) / (inputBigrams.size + optionBigrams.size)
-    if (score > bestScore && score > 0.4) {
+    if (score > bestScore && score >= 0.4) {
       bestScore = score
       bestMatch = option
     }

@@ -504,6 +504,13 @@ describe('findClosestMatch', () => {
     expect(findClosestMatch('xyz', ['abc', 'def'])).toBeNull()
   })
 
+  it('should match at score=0.4 boundary (regression: strict > excluded exact threshold)', () => {
+    // 'lst' vs 'list' yields exactly 0.4 bigram similarity
+    // (shared bigrams: 'st'; input has 2, target has 3; 2*1/(2+3) = 0.4)
+    // Previously returned null due to `score > 0.4` (strict)
+    expect(findClosestMatch('lst', ['list', 'login'])).toBe('list')
+  })
+
   it('should return the match with the highest score', () => {
     expect(findClosestMatch('test', ['testing', 'tent'])).toBe('testing')
   })
