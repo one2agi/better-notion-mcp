@@ -512,7 +512,7 @@ describe('databases', () => {
 
       expect(mockNotion.pages.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          parent: { type: 'data_source_id', data_source_id: 'ds-1' }
+          parent: { type: 'database_id', database_id: 'db-1' }
         })
       )
     })
@@ -644,6 +644,24 @@ describe('databases', () => {
       expect(result.processed).toBe(1)
       expect(result.results[0]).toEqual({ page_id: 'page-1', updated: true })
       expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'page-1' }))
+    })
+
+    it('should send `{ select: { name } }` (not `{ status: { name } }`) for a Status property on update_page when no schema is available', async () => {
+      // update_page does not fetch the schema, so convertToNotionProperties falls back to
+      // heuristic conversion. Most "Status"-named Notion columns are actually `select`,
+      // so the fallback must use `select`, not `status` (which Notion API rejects for select columns).
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'page-1' })
+
+      await databases(notion, {
+        action: 'update_page',
+        page_id: 'page-1',
+        page_properties: { Status: 'Active' }
+      })
+
+      expect(mockNotion.pages.update).toHaveBeenCalledWith({
+        page_id: 'page-1',
+        properties: { Status: { select: { name: 'Active' } } }
+      })
     })
 
     it('should throw when pages array is provided but contains no properties', async () => {
@@ -1168,6 +1186,27 @@ describe('databases', () => {
       expect(result.results.avg_hours).toBe(9) // 6 + 12 / 2
     })
 
+    it('should sum a formula property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Earned: { type: 'formula', formula: { type: 'number', number: 100 } } } },
+          { id: 'p2', properties: { Earned: { type: 'formula', formula: { type: 'number', number: 50 } } } },
+          { id: 'p3', properties: { Earned: { type: 'formula', formula: { type: 'number', number: 75 } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'sum', property: 'Earned', alias: 'total_earned' }]
+      })) as AggregateDatabaseResponse
+
+      expect(result.results).toEqual({ total_earned: 225 })
+    })
+
     it('should return null for sum/avg when no rows have the property', async () => {
       mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
       mockNotion.dataSources.query.mockResolvedValueOnce({
@@ -1252,6 +1291,144 @@ describe('databases', () => {
       await expect(databases(notion, { action: 'aggregate', database_id: 'db-1', aggregations: [] })).rejects.toThrow(
         'aggregations required for aggregate action'
       )
+    })
+
+    it('should count unique values for a formula boolean property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: true } } } },
+          { id: 'p2', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: false } } } },
+          { id: 'p3', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: true } } } },
+          { id: 'p4', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: true } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'unique_count', property: 'IsActive', alias: 'distinct_active' }]
+      })) as AggregateDatabaseResponse
+
+      // true + false = 2 unique booleans
+      expect(result.results.distinct_active).toBe(2)
+    })
+
+    it('should return null for sum on a formula boolean property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: true } } } },
+          { id: 'p2', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: false } } } },
+          { id: 'p3', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: true } } } },
+          { id: 'p4', properties: { IsActive: { type: 'formula', formula: { type: 'boolean', boolean: true } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'sum', property: 'IsActive', alias: 'sum_active' }]
+      })) as AggregateDatabaseResponse
+
+      // Booleans are not aggregable numerically -> null
+      expect(result.results.sum_active).toBeNull()
+    })
+
+    it('should count unique values for a formula date property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'p1',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-01' } } } }
+          },
+          {
+            id: 'p2',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-02' } } } }
+          },
+          {
+            id: 'p3',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-01' } } } }
+          },
+          {
+            id: 'p4',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-03' } } } }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'unique_count', property: 'DueDate', alias: 'distinct_dates' }]
+      })) as AggregateDatabaseResponse
+
+      // 2025-01-01, 2025-01-02, 2025-01-03 = 3 unique dates
+      expect(result.results.distinct_dates).toBe(3)
+    })
+
+    it('should return null for sum on a formula date property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'p1',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-01' } } } }
+          },
+          {
+            id: 'p2',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-02' } } } }
+          },
+          {
+            id: 'p3',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-01' } } } }
+          },
+          {
+            id: 'p4',
+            properties: { DueDate: { type: 'formula', formula: { type: 'date', date: { start: '2025-01-03' } } } }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'sum', property: 'DueDate', alias: 'sum_dates' }]
+      })) as AggregateDatabaseResponse
+
+      // Dates are not numeric -> null
+      expect(result.results.sum_dates).toBeNull()
+    })
+
+    it('should count unique values for a non-numeric formula string property', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'urgent' } } } },
+          { id: 'p2', properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'low' } } } },
+          { id: 'p3', properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'urgent' } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'unique_count', property: 'PriorityLabel', alias: 'distinct_labels' }]
+      })) as AggregateDatabaseResponse
+
+      // urgent + low = 2 unique labels
+      expect(result.results.distinct_labels).toBe(2)
     })
   })
 
