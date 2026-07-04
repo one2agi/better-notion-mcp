@@ -88,7 +88,17 @@ export function sanitizeReadonlyProperties(
       if (!(propType in prop) || prop[propType] === null) continue
     }
 
-    result[key] = prop
+    // Strip the top-level `type` field — Notion API GET returns properties in
+    // the shape `{ type: '<type>', <type>: {...} }`, but POST /v1/pages expects
+    // only `{ <type>: {...} }` (no top-level `type`). Forwarding the GET shape
+    // directly causes Notion to reject with "type should be not present"
+    // (Bug #7 — discovered via real-Notion differential testing).
+    if (propType && 'type' in prop) {
+      const { type: _, ...rest } = prop as Record<string, any>
+      result[key] = rest
+    } else {
+      result[key] = prop
+    }
   }
   return result
 }
