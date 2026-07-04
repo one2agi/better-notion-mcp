@@ -146,6 +146,13 @@ Eight composite Notion tools (46 actions) plus two infrastructure tools (`config
 | `config` | `status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | Inspect and manage credential state and configuration lifecycle |
 | `help` | - | Get full documentation for any composite tool (`tool_name` parameter) |
 
+> **Note on nested-object arguments**: Parameters typed as objects/arrays
+> (`properties`, `filters`, `sorts`, `aggregations`, `updates`, etc.) also
+> accept a **JSON string** of the same shape. Required when the calling MCP
+> client serializes arguments as XML (e.g. Claude Code), because XML
+> serialization silently drops nested content to `{}`. Pass
+> `'{"数字":42}'` instead of `{"数字":42}` in that case.
+
 ### MCP Resources
 
 | URI | Description |

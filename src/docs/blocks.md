@@ -3,6 +3,13 @@
 ## Overview
 Block-level content: get, children, append, update, delete.
 
+## Input format
+The `properties` parameter (used by `update` and `append`) accepts either a
+parsed object **or** a JSON stringification of one. Pass the string form when
+the calling MCP client serializes arguments as XML (e.g. Claude Code) — XML
+serialization drops nested content, so `'{ "color": "blue" }'` is the
+supported workaround.
+
 ## Important
 - **Page IDs are valid block IDs** (page is root block)
 - Use for **precise edits** within pages

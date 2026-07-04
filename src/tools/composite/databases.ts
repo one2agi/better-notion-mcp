@@ -8,8 +8,14 @@ import { formatCover } from '../helpers/covers.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
 import { normalizeId } from '../helpers/id.js'
+import { parseMaybeJSON } from '../helpers/json-input.js'
 import { autoPaginate, processBatches } from '../helpers/pagination.js'
-import { buildSchemaMap, convertToNotionProperties, extractPageProperties, readPropertyValue } from '../helpers/properties.js'
+import {
+  buildSchemaMap,
+  convertToNotionProperties,
+  extractPageProperties,
+  readPropertyValue
+} from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
 
 // Cache for data source schema (properties)
@@ -254,7 +260,10 @@ export type DatabasesResponse =
  * Tries database_id first; if NOT_FOUND, tries as data_source_id
  * Returns both IDs for downstream operations
  */
-export async function resolveDataSourceId(notion: Client, id: string): Promise<{ databaseId: string; dataSourceId: string }> {
+export async function resolveDataSourceId(
+  notion: Client,
+  id: string
+): Promise<{ databaseId: string; dataSourceId: string }> {
   const normalized = normalizeId(id)
 
   const cached = resolutionCache.get(normalized)
@@ -383,7 +392,7 @@ async function createDatabase(notion: Client, input: DatabasesInput): Promise<Cr
     parent: { type: 'page_id', page_id: input.parent_id },
     title: [RichText.text(input.title)],
     initial_data_source: {
-      properties: input.properties
+      properties: parseMaybeJSON(input.properties, 'properties')
     }
   }
 
@@ -477,7 +486,7 @@ async function queryDatabase(notion: Client, input: DatabasesInput): Promise<Que
   // Smart resolve: accepts both database_id and data_source_id
   const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
 
-  let filter = input.filters
+  let filter = parseMaybeJSON<any>(input.filters, 'filters')
 
   // Smart search across text properties
   if (input.search && !filter) {
@@ -486,7 +495,7 @@ async function queryDatabase(notion: Client, input: DatabasesInput): Promise<Que
 
   const queryParams: any = { data_source_id: dataSourceId }
   if (filter) queryParams.filter = filter
-  if (input.sorts) queryParams.sorts = input.sorts
+  queryParams.sorts = parseMaybeJSON(input.sorts, 'sorts')
 
   // Fetch with pagination
   const allResults = await autoPaginate(async (cursor) => {
@@ -541,7 +550,9 @@ async function createDatabasePages(notion: Client, input: DatabasesInput): Promi
     schema[name] = richSchema[name].type
   }
 
-  const items = input.pages || (input.page_properties ? [{ properties: input.page_properties }] : [])
+  const pageProperties = parseMaybeJSON<Record<string, any>>(input.page_properties, 'page_properties')
+  const parsedPages = parseMaybeJSON<NonNullable<DatabasesInput['pages']>>(input.pages, 'pages')
+  const items = parsedPages || (pageProperties ? [{ properties: pageProperties }] : [])
 
   if (items.length === 0) {
     throw new NotionMCPError('pages or page_properties required', 'VALIDATION_ERROR', 'Provide items to create')
@@ -593,9 +604,10 @@ async function createDatabasePages(notion: Client, input: DatabasesInput): Promi
  * Maps to: Multiple PATCH /v1/pages/{id}
  */
 async function updateDatabasePages(notion: Client, input: DatabasesInput): Promise<UpdateDatabasePageResponse> {
+  const pageProperties = parseMaybeJSON<Record<string, any>>(input.page_properties, 'page_properties')
+  const parsedPages = parseMaybeJSON<NonNullable<DatabasesInput['pages']>>(input.pages, 'pages')
   const items =
-    input.pages ||
-    (input.page_id && input.page_properties ? [{ page_id: input.page_id, properties: input.page_properties }] : [])
+    parsedPages || (input.page_id && pageProperties ? [{ page_id: input.page_id, properties: pageProperties }] : [])
 
   if (items.length === 0) {
     throw new NotionMCPError('pages or page_id+page_properties required', 'VALIDATION_ERROR', 'Provide items to update')
@@ -648,11 +660,12 @@ async function updateDatabasePages(notion: Client, input: DatabasesInput): Promi
  * Maps to: Multiple PATCH /v1/pages/{id} with archived: true
  */
 async function deleteDatabasePages(notion: Client, input: DatabasesInput): Promise<DeleteDatabasePageResponse> {
+  const parsedPages = parseMaybeJSON<NonNullable<DatabasesInput['pages']>>(input.pages, 'pages')
   let pageIds = input.page_ids || (input.page_id ? [input.page_id] : [])
   if (!pageIds || pageIds.length === 0) {
-    if (input.pages) {
+    if (parsedPages) {
       pageIds = []
-      for (const p of input.pages) {
+      for (const p of parsedPages) {
         if (p.page_id) {
           pageIds.push(p.page_id)
         }
@@ -707,7 +720,7 @@ async function createDataSource(notion: Client, input: DatabasesInput): Promise<
   const dataSourceData: any = {
     parent: { type: 'database_id', database_id: input.database_id },
     title: [RichText.text(input.title)],
-    properties: input.properties
+    properties: parseMaybeJSON(input.properties, 'properties')
   }
 
   if (input.description) {
@@ -743,8 +756,9 @@ async function updateDataSource(notion: Client, input: DatabasesInput): Promise<
     updates.description = [RichText.text(input.description)]
   }
 
-  if (input.properties) {
-    updates.properties = input.properties
+  const parsedProperties = parseMaybeJSON(input.properties, 'properties')
+  if (parsedProperties) {
+    updates.properties = parsedProperties
   }
 
   if (Object.keys(updates).length === 0) {
@@ -1005,7 +1019,8 @@ async function aggregateDatabase(notion: Client, input: DatabasesInput): Promise
       'Provide database_id (or data_source_id)'
     )
   }
-  if (!input.aggregations || input.aggregations.length === 0) {
+  const aggregations = parseMaybeJSON<NonNullable<DatabasesInput['aggregations']>>(input.aggregations, 'aggregations')
+  if (!aggregations || aggregations.length === 0) {
     throw new NotionMCPError(
       'aggregations required for aggregate action',
       'VALIDATION_ERROR',
@@ -1014,10 +1029,16 @@ async function aggregateDatabase(notion: Client, input: DatabasesInput): Promise
   }
 
   const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
-  const pages = await fetchAllDataSourcePages(notion, databaseId, dataSourceId, input.filters, input.search)
+  const pages = await fetchAllDataSourcePages(
+    notion,
+    databaseId,
+    dataSourceId,
+    parseMaybeJSON<any>(input.filters, 'filters'),
+    input.search
+  )
 
   const results: Record<string, number | null> = {}
-  for (const spec of input.aggregations) {
+  for (const spec of aggregations) {
     const alias = spec.alias ?? (spec.property ? `${spec.type}_${spec.property}` : spec.type)
     results[alias] = computeAggregation(pages, spec)
   }
@@ -1043,14 +1064,16 @@ async function groupByDatabase(notion: Client, input: DatabasesInput): Promise<G
       'Provide database_id (or data_source_id)'
     )
   }
-  if (!input.group_by) {
+  const groupBy = parseMaybeJSON<NonNullable<DatabasesInput['group_by']>>(input.group_by, 'group_by')
+  if (!groupBy) {
     throw new NotionMCPError(
       'group_by required for group_by action',
       'VALIDATION_ERROR',
       'Provide group_by: { property: "Owner" }'
     )
   }
-  if (!input.aggregations || input.aggregations.length === 0) {
+  const aggregations = parseMaybeJSON<NonNullable<DatabasesInput['aggregations']>>(input.aggregations, 'aggregations')
+  if (!aggregations || aggregations.length === 0) {
     throw new NotionMCPError(
       'aggregations required for group_by action',
       'VALIDATION_ERROR',
@@ -1058,7 +1081,7 @@ async function groupByDatabase(notion: Client, input: DatabasesInput): Promise<G
     )
   }
 
-  const groupByProperty = input.group_by.property
+  const groupByProperty = groupBy.property
   if (!groupByProperty) {
     throw new NotionMCPError(
       'group_by.property required for group_by action',
@@ -1068,7 +1091,13 @@ async function groupByDatabase(notion: Client, input: DatabasesInput): Promise<G
   }
 
   const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
-  const pages = await fetchAllDataSourcePages(notion, databaseId, dataSourceId, input.filters, input.search)
+  const pages = await fetchAllDataSourcePages(
+    notion,
+    databaseId,
+    dataSourceId,
+    parseMaybeJSON<any>(input.filters, 'filters'),
+    input.search
+  )
 
   // Group pages by the group_by property value
   const groups = new Map<string, any[]>()
@@ -1090,8 +1119,8 @@ async function groupByDatabase(notion: Client, input: DatabasesInput): Promise<G
   for (const key of sortedKeys) {
     const groupPages = groups.get(key)!
     const groupAggs: Record<string, number | null> = {}
-    const aggregations: AggregationSpec[] = input.aggregations ?? []
-    for (const spec of aggregations) {
+    const aggregationsList = aggregations as AggregationSpec[]
+    for (const spec of aggregationsList) {
       const alias = spec.alias ?? (spec.property ? `${spec.type}_${spec.property}` : spec.type)
       groupAggs[alias] = computeAggregation(groupPages, spec)
     }

@@ -8,6 +8,7 @@ import { updatePageWithParent } from '../../types/notion-extended.js'
 import { formatCover } from '../helpers/covers.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
+import { parseMaybeJSON } from '../helpers/json-input.js'
 import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
 import {
@@ -330,7 +331,7 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
   // locate the schema's title column dynamically and set it from input.title.
   let properties: Record<string, any> = {}
   if (parent.database_id) {
-    properties = convertToNotionProperties(input.properties || {}, schemaForConvert)
+    properties = convertToNotionProperties(parseMaybeJSON(input.properties, 'properties') || {}, schemaForConvert)
 
     if (schemaForConvert) {
       // Drop user-supplied keys that don't exist in the schema (e.g. user
@@ -566,7 +567,7 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
       // Schema-aware conversion: status-type fields become `{ status: { name } }`,
       // select-type fields become `{ select: { name } }`, etc. Without schema
       // we fall through to convertToNotionProperties' key-name heuristics.
-      const converted = convertToNotionProperties(input.properties, schemaTypeMap)
+      const converted = convertToNotionProperties(parseMaybeJSON(input.properties, 'properties'), schemaTypeMap)
       // Strip readonly types (created_time, formula, rollup, button, verification,
       // unique_id, created_by, last_edited_by, last_edited_time) before forwarding
       // to Notion API. Without this, the API returns 400 for any readonly key
@@ -979,7 +980,7 @@ async function updatePageContent(notion: Client, input: PagesInput): Promise<Upd
     page_id: input.page_id,
     type: 'update_content',
     update_content: {
-      content_updates: input.updates,
+      content_updates: parseMaybeJSON(input.updates, 'updates'),
       allow_deleting_content: input.allow_deleting_content ?? false
     }
   })
