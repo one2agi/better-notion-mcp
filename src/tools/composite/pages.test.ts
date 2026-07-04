@@ -1423,7 +1423,7 @@ describe('pages', () => {
         parent: { type: 'database_id', database_id: 'db-1' },
         properties: {
           Name: { type: 'title', title: [{ plain_text: 'X' }] },
-          EmptyRel: { type: 'relation', relation: [] },           // drop
+          EmptyRel: { type: 'relation', relation: [] }, // drop
           NonEmptyRel: { type: 'relation', relation: [{ id: 'a' }] } // keep
         }
       }
@@ -1444,8 +1444,8 @@ describe('pages', () => {
       const createArgs = mockNotion.pages.create.mock.calls[0][0]
       // EmptyRel should be filtered out
       expect(createArgs.properties).not.toHaveProperty('EmptyRel')
-      // Non-empty preserved
-      expect(createArgs.properties.NonEmptyRel).toEqual({ type: 'relation', relation: [{ id: 'a' }] })
+      // Non-empty preserved (Bug #7 strips top-level `type`)
+      expect(createArgs.properties.NonEmptyRel).toEqual({ relation: [{ id: 'a' }] })
     })
 
     it('replicates official: duplicate page with omitted (no value) property succeeds', async () => {
@@ -1455,7 +1455,7 @@ describe('pages', () => {
         parent: { type: 'database_id', database_id: 'db-1' },
         properties: {
           Name: { type: 'title', title: [{ plain_text: 'X' }] },
-          OmittedField: { type: 'select' },  // no select field — omitted by Notion
+          OmittedField: { type: 'select' }, // no select field — omitted by Notion
           FormulaField: { type: 'formula', formula: { type: 'number', number: 42 } }
         }
       }
@@ -1478,6 +1478,136 @@ describe('pages', () => {
       expect(createArgs.properties).not.toHaveProperty('OmittedField')
       expect(createArgs.properties).not.toHaveProperty('FormulaField')
       expect(createArgs.properties.Name).toBeDefined()
+    })
+
+    // Bug #33 (NEW from real-Notion differential test on test page 2026-07-04):
+    // Notion API `blocks.children.append` rejects blocks that have nested
+    // children when those children are missing — e.g. a `table` block with
+    // `has_children: true` needs `table.children` populated with `table_row`s.
+    // populateDeepChildren now fetches nested children before appending, and
+    // the sanitize loop recursively strips metadata fields on nested blocks.
+    it('replicates official: duplicate page with nested-children blocks succeeds (Bug #33)', async () => {
+      const originalPage = {
+        id: 'src-page',
+        parent: { type: 'database_id', database_id: 'db-1' },
+        properties: {
+          Name: { type: 'title', title: [{ plain_text: 'X' }] }
+        }
+      }
+      // Top-level blocks.children.list returns the toggle/table blocks
+      // with `has_children: false` (children already populated by
+      // populateDeepChildren, which we simulate in this test by setting
+      // `has_children: false` so it doesn't try to re-fetch and clobber).
+      const tableBlock = {
+        id: 'table-1',
+        type: 'table',
+        has_children: false,
+        table: {
+          table_width: 2,
+          has_column_header: true,
+          has_row_header: false,
+          children: [
+            {
+              id: 'row-1',
+              type: 'table_row',
+              has_children: false,
+              parent: { type: 'block_id', block_id: 'table-1' },
+              created_time: '2026-01-01',
+              table_row: { cells: [[{ plain_text: 'A' }], [{ plain_text: 'B' }]] }
+            }
+          ]
+        }
+      }
+      const paraBlock = {
+        id: 'para-1',
+        type: 'paragraph',
+        has_children: false,
+        paragraph: { rich_text: [{ plain_text: 'hi' }] }
+      }
+      mockNotion.pages.retrieve.mockResolvedValue(originalPage)
+      mockNotion.databases.retrieve.mockRejectedValue(new Error('not used'))
+      // Top-level fetch returns the two blocks with nested children already
+      // populated (simulating what populateDeepChildren does in production).
+      // Sub-block fetches return empty to avoid infinite recursion in the mock.
+      mockNotion.blocks.children.list.mockImplementation(async (args: any) => {
+        if (args?.block_id === 'src-page') {
+          return { results: [paraBlock, tableBlock], next_cursor: null }
+        }
+        return { results: [], next_cursor: null }
+      })
+      mockNotion.pages.create.mockResolvedValue({
+        id: 'dup-page',
+        url: 'https://notion.so/dup-page'
+      })
+
+      await pages(mockNotion as any, { action: 'duplicate', page_id: 'src-page' })
+
+      // The append payload must contain the table block WITH its children,
+      // and the child row must have metadata stripped (id/parent/created_time gone).
+      const appendArgs = mockNotion.blocks.children.append.mock.calls[0][0]
+      expect(appendArgs.children).toHaveLength(2)
+      const sentTable = appendArgs.children[1]
+      expect(sentTable.table.children).toHaveLength(1)
+      const sentRow = sentTable.table.children[0]
+      expect(sentRow.id).toBeUndefined()
+      expect(sentRow.parent).toBeUndefined()
+      expect(sentRow.created_time).toBeUndefined()
+      expect(sentRow.table_row.cells).toEqual([[{ plain_text: 'A' }], [{ plain_text: 'B' }]])
+    })
+
+    // Bug #34 (NEW from real-Notion differential test on test page 2026-07-04):
+    // Notion API `blocks.children.append` rejects child_page and child_database
+    // blocks outright (no type field is accepted). These have to be created via
+    // separate pages.create calls. For duplicate, we drop them — the original
+    // child pages still exist at their own URLs and can be duplicated
+    // separately if needed.
+    it('replicates official: duplicate drops child_page/child_database (Bug #34)', async () => {
+      const originalPage = {
+        id: 'src-page',
+        parent: { type: 'database_id', database_id: 'db-1' },
+        properties: {
+          Name: { type: 'title', title: [{ plain_text: 'X' }] }
+        }
+      }
+      const paraBlock = {
+        id: 'para-1',
+        type: 'paragraph',
+        has_children: false,
+        paragraph: { rich_text: [{ plain_text: 'hi' }] }
+      }
+      const childPageBlock = {
+        id: 'child-page-1',
+        type: 'child_page',
+        has_children: false,
+        child_page: { title: 'Sub page' }
+      }
+      const childDbBlock = {
+        id: 'child-db-1',
+        type: 'child_database',
+        has_children: false,
+        child_database: { title: 'Sub DB' }
+      }
+      mockNotion.pages.retrieve.mockResolvedValue(originalPage)
+      mockNotion.databases.retrieve.mockRejectedValue(new Error('not used'))
+      mockNotion.blocks.children.list.mockImplementation(async (args: any) => {
+        if (args?.block_id === 'src-page') {
+          return { results: [paraBlock, childPageBlock, childDbBlock], next_cursor: null }
+        }
+        return { results: [], next_cursor: null }
+      })
+      mockNotion.pages.create.mockResolvedValue({
+        id: 'dup-page',
+        url: 'https://notion.so/dup-page'
+      })
+
+      await pages(mockNotion as any, { action: 'duplicate', page_id: 'src-page' })
+
+      const appendArgs = mockNotion.blocks.children.append.mock.calls[0][0]
+      // Only the paragraph should make it through — child_page/child_database dropped
+      expect(appendArgs.children).toHaveLength(1)
+      expect(appendArgs.children[0].type).toBe('paragraph')
+      expect(appendArgs.children.find((b: any) => b.type === 'child_page')).toBeUndefined()
+      expect(appendArgs.children.find((b: any) => b.type === 'child_database')).toBeUndefined()
     })
   })
 

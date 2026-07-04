@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { buildSchemaMap, convertToNotionProperties, extractPageProperties, filterToSchemaKeys, findTitleColumnName, normalizeBlockProperties, READONLY_PROPERTY_TYPES, readPropertyValue, sanitizeReadonlyProperties } from './properties'
+import {
+  buildSchemaMap,
+  convertToNotionProperties,
+  extractPageProperties,
+  filterToSchemaKeys,
+  findTitleColumnName,
+  normalizeBlockProperties,
+  READONLY_PROPERTY_TYPES,
+  readPropertyValue,
+  sanitizeReadonlyProperties
+} from './properties'
 
 const richText = (content: string) => ({
   type: 'text',
@@ -847,18 +857,12 @@ describe('property helpers', () => {
 
   describe('filterToSchemaKeys', () => {
     it('drops keys not in the schema', () => {
-      const out = filterToSchemaKeys(
-        { Name: 'X', Status: 'Active' },
-        { Title: 'title', Status: 'select' }
-      )
+      const out = filterToSchemaKeys({ Name: 'X', Status: 'Active' }, { Title: 'title', Status: 'select' })
       expect(out).toEqual({ Status: 'Active' })
     })
 
     it('preserves keys whose names match the schema even if values are not schema-shaped', () => {
-      const out = filterToSchemaKeys(
-        { Status: { select: { name: 'Active' } }, Other: 'foo' },
-        { Status: 'select' }
-      )
+      const out = filterToSchemaKeys({ Status: { select: { name: 'Active' } }, Other: 'foo' }, { Status: 'select' })
       expect(out).toEqual({ Status: { select: { name: 'Active' } } })
     })
 
@@ -927,7 +931,21 @@ describe('property helpers', () => {
         Verify: { type: 'verification' }
       }
       const out = sanitizeReadonlyProperties(input)
-      const expectedKept = ['Name', 'Status', 'Tags', 'Score', 'Done', 'Date', 'URL', 'Email', 'Phone', 'Files', 'People', 'StatusType', 'Relation']
+      const expectedKept = [
+        'Name',
+        'Status',
+        'Tags',
+        'Score',
+        'Done',
+        'Date',
+        'URL',
+        'Email',
+        'Phone',
+        'Files',
+        'People',
+        'StatusType',
+        'Relation'
+      ]
       expect(Object.keys(out).sort()).toEqual(expectedKept.sort())
     })
   })
@@ -982,11 +1000,66 @@ describe('property helpers', () => {
       const out = sanitizeReadonlyProperties(input)
       expect(Object.keys(out).sort()).toEqual(['HasStatus', 'HasValue'])
     })
+
+    // Bug #30 (NEW from differential test on 任务管理器 DB 2026-07-04):
+    // `button` properties exist in schema but POST /v1/pages rejects them —
+    // Notion returns `{ type: 'button' }` or `{ type: 'button', button: null }`,
+    // and Notion API says all 16 typed fields "should be defined, instead was
+    // `undefined`" because forwarding `{}` leaves it ambiguous. Must drop
+    // the entire prop, not strip its `type`.
+    it('drops button properties entirely (Bug #30)', () => {
+      const input = {
+        Name: { type: 'title', title: [{ plain_text: 'A' }] },
+        StartBtn: { type: 'button' },
+        DoneBtn: { type: 'button', button: null }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(out).toEqual({ Name: { title: [{ plain_text: 'A' }] } })
+    })
+
+    // Bug #7 incomplete (NEW from differential test on 任务管理器 DB 2026-07-04):
+    // Notion API POST /v1/pages wants status/select as `{ status: {name: '...'} }`
+    // — preserve the `status`/`select` wrapper (Notion needs it to identify the
+    // type), but strip readonly sub-fields (`id`, `color`). Sending flat
+    // `{name: '...'}` is rejected as "no type discriminator"; sending
+    // `{status: {id, name}}` is rejected because `id` is readonly.
+    it('strips id+color from status/select sub-wrapper (Bug #7 fix)', () => {
+      const input = {
+        Status: { type: 'status', status: { id: 'opt-1', name: 'In Progress', color: 'default' } },
+        Priority: { type: 'select', select: { id: 'opt-2', name: 'High', color: 'red' } }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(out).toEqual({
+        Status: { status: { name: 'In Progress' } },
+        Priority: { select: { name: 'High' } }
+      })
+    })
+
+    // Bug #32 (NEW from differential test on 任务管理器 DB 2026-07-04):
+    // Notion API GET returns `{ type: 'checkbox', checkbox: true, id: '...' }`
+    // (with schema `id` at top level). Stripping only `type` leaves the readonly
+    // `id` which Notion POST rejects as malformed. Must strip both `type` AND
+    // `id` from writable types (Bug #32).
+    it('strips top-level id (property schema id) from writable types (Bug #32)', () => {
+      const input = {
+        // Real Notion GET shape: type + id + sub-field
+        Done: { id: 'GSwA', type: 'checkbox', checkbox: true },
+        Date: { id: 'abc', type: 'date', date: { start: '2026-07-04' } },
+        Name: { id: 'title', type: 'title', title: [{ plain_text: 'X' }] }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(out).toEqual({
+        Done: { checkbox: true },
+        Date: { date: { start: '2026-07-04' } },
+        Name: { title: [{ plain_text: 'X' }] }
+      })
+    })
   })
 
   describe('READONLY_PROPERTY_TYPES', () => {
-    it('contains exactly the 8 known readonly types including verification', () => {
+    it('contains exactly the 9 known readonly types including button + verification', () => {
       expect([...READONLY_PROPERTY_TYPES].sort()).toEqual([
+        'button',
         'created_by',
         'created_time',
         'formula',
@@ -1006,7 +1079,12 @@ describe('property helpers', () => {
 
 describe('normalizeBlockProperties', () => {
   it('converts string[][] cells to RichText[][] for table_row', () => {
-    const out = normalizeBlockProperties('table_row', { cells: [['A', 'B'], ['C', 'D']] })
+    const out = normalizeBlockProperties('table_row', {
+      cells: [
+        ['A', 'B'],
+        ['C', 'D']
+      ]
+    })
     // Notion API: cells is RichText[][] — each cell is itself an array of RichText
     expect(out.cells).toHaveLength(2)
     expect(out.cells[0]).toHaveLength(2)
@@ -1039,9 +1117,7 @@ describe('normalizeBlockProperties', () => {
 
   it('link_to_page requires exactly one target', () => {
     expect(() => normalizeBlockProperties('link_to_page', {})).toThrow(/exactly one/)
-    expect(() => normalizeBlockProperties('link_to_page', { page_id: 'p', database_id: 'd' })).toThrow(
-      /exactly one/
-    )
+    expect(() => normalizeBlockProperties('link_to_page', { page_id: 'p', database_id: 'd' })).toThrow(/exactly one/)
     expect(normalizeBlockProperties('link_to_page', { page_id: 'p' })).toEqual({ page_id: 'p' })
   })
 
