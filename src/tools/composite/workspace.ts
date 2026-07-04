@@ -4,7 +4,8 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
+import { throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
+import { parseMaybeJSON } from '../helpers/json-input.js'
 import { autoPaginate } from '../helpers/pagination.js'
 
 export interface WorkspaceInfoResult {
@@ -93,21 +94,23 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
 
       case 'search': {
         // Query is optional - empty query returns all accessible pages
+        const parsedFilter = parseMaybeJSON<NonNullable<WorkspaceInput['filter']>>(input.filter, 'filter')
         const searchParams: any = {
           query: input.query || ''
         }
 
-        if (input.filter?.object) {
+        if (parsedFilter?.object) {
           searchParams.filter = {
-            value: input.filter.object,
+            value: parsedFilter.object,
             property: 'object'
           }
         }
 
-        if (input.sort) {
+        const parsedSort = parseMaybeJSON<NonNullable<WorkspaceInput['sort']>>(input.sort, 'sort')
+        if (parsedSort) {
           searchParams.sort = {
-            direction: input.sort.direction || 'descending',
-            timestamp: input.sort.timestamp || 'last_edited_time'
+            direction: parsedSort.direction || 'descending',
+            timestamp: parsedSort.timestamp || 'last_edited_time'
           }
         }
 

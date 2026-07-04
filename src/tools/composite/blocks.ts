@@ -5,6 +5,7 @@
 
 import type { Client } from '@notionhq/client'
 import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
+import { parseMaybeJSON } from '../helpers/json-input.js'
 import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren } from '../helpers/pagination.js'
 import { normalizeBlockProperties } from '../helpers/properties.js'
@@ -328,7 +329,7 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
         'Provide markdown content that parses to this block type'
       )
     }
-    const normalized = normalizeBlockProperties(blockType, input.properties!)
+    const normalized = normalizeBlockProperties(blockType, parseMaybeJSON(input.properties!, 'properties'))
     updatePayload = { [blockType]: normalized }
   }
 

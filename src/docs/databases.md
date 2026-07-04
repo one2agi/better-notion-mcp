@@ -7,6 +7,23 @@ Database operations: create, get, query, **aggregate**, **group_by**, create_pag
 - **Database** = container holding one or more data sources
 - **Data Source** = has schema (properties) and rows (pages)
 
+## Input format
+Nested-object / array parameters (`properties`, `page_properties`, `pages`,
+`filters`, `sorts`, `aggregations`, `group_by`) accept either a parsed
+object/array **or** a JSON stringification of one. Pass the string form when
+the calling MCP client serializes arguments as XML (e.g. Claude Code) — XML
+serialization drops nested content, so the JSON-string workaround is required
+in that environment.
+
+Example:
+```json
+{
+  "action": "query",
+  "database_id": "xxx",
+  "filters": "{\"property\":\"Status\",\"select\":{\"equals\":\"Active\"}}"
+}
+```
+
 ## Workflow
 1. create -> Creates database + initial data source
 2. get -> Retrieves data_source_id

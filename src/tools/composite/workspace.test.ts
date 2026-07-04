@@ -1,11 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { type WorkspaceResult, workspace } from './workspace.js'
+import { type WorkspaceInput, type WorkspaceResult, workspace } from './workspace.js'
 
 const mockNotion = {
   users: {
     retrieve: vi.fn()
   },
-  search: vi.fn()
+  search: vi.fn(),
+  request: vi.fn()
 }
 
 describe('workspace', () => {
@@ -278,6 +279,60 @@ describe('workspace', () => {
       await expect(workspace(mockNotion as any, { action: 'delete' as any })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR'
       })
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // JSON-string fallback (Claude Code XML serialization workaround)
+  // ---------------------------------------------------------------------------
+  describe('JSON-string input fallback (Claude Code XML serialization workaround)', () => {
+    it('search accepts filter as JSON-stringified object', async () => {
+      mockNotion.search.mockResolvedValueOnce({
+        results: [],
+        has_more: false,
+        next_cursor: null
+      })
+
+      await workspace(mockNotion as any, {
+        action: 'search',
+        query: 'foo',
+        filter: '{"object":"page"}' as unknown as WorkspaceInput['filter']
+      })
+
+      expect(mockNotion.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: { value: 'page', property: 'object' }
+        })
+      )
+    })
+
+    it('search accepts sort as JSON-stringified object', async () => {
+      mockNotion.search.mockResolvedValueOnce({
+        results: [],
+        has_more: false,
+        next_cursor: null
+      })
+
+      await workspace(mockNotion as any, {
+        action: 'search',
+        query: 'foo',
+        sort: '{"direction":"ascending","timestamp":"created_time"}' as unknown as WorkspaceInput['sort']
+      })
+
+      expect(mockNotion.search).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sort: { direction: 'ascending', timestamp: 'created_time' }
+        })
+      )
+    })
+
+    it('throws NotionMCPError on malformed filter JSON', async () => {
+      await expect(
+        workspace(mockNotion as any, {
+          action: 'search',
+          filter: '{not-valid' as unknown as WorkspaceInput['filter']
+        })
+      ).rejects.toThrow(/Failed to parse JSON string/)
     })
   })
 })

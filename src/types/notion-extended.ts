@@ -17,9 +17,7 @@ import type { UpdatePageParameters } from '@notionhq/client/build/src/api-endpoi
  * `UpdatePageParameters` does not include it. Local workaround.
  */
 export type UpdatePageWithParentParameters = UpdatePageParameters & {
-  parent:
-    | { type: 'page_id'; page_id: string }
-    | { type: 'data_source_id'; data_source_id: string }
+  parent: { type: 'page_id'; page_id: string } | { type: 'data_source_id'; data_source_id: string }
 }
 
 /**

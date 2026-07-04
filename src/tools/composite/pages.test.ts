@@ -1914,4 +1914,71 @@ describe('pages', () => {
       )
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // JSON-string fallback (XML-based MCP clients like Claude Code drop nested
+  // objects silently — accepting a JSON-string-encoded version is the
+  // workaround. See helpers/json-input.ts.)
+  // ---------------------------------------------------------------------------
+  describe('JSON-string input fallback (Claude Code XML serialization workaround)', () => {
+    it('update accepts properties as JSON-stringified object', async () => {
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'page-1',
+        parent: { type: 'database_id', database_id: 'db-1' }
+      })
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-1',
+        data_sources: [{ id: 'ds-1', name: 'DB' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-1',
+        properties: { 数字: { type: 'number', id: 'pn' } }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      // Pass properties as a JSON string (mimics XML client surviving serialization)
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        properties: '{"数字":42}' as unknown as Record<string, any>
+      })
+
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      // Server should parse JSON and convert to Notion format
+      expect(callArgs.properties).toEqual({ 数字: { number: 42 } })
+    })
+
+    it('update throws NotionMCPError on malformed properties JSON', async () => {
+      await expect(
+        pages(mockNotion as any, {
+          action: 'update',
+          page_id: 'page-1',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: intentionally invalid JSON for test
+          properties: '{not-valid' as unknown as Record<string, any>
+        })
+      ).rejects.toThrow(/Failed to parse JSON string/)
+    })
+
+    it('update_content accepts updates as JSON-stringified array', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValue({})
+
+      await pages(mockNotion as any, {
+        action: 'update_content',
+        page_id: 'page-1',
+        updates: '[{"old_str":"old","new_str":"new"}]' as unknown as Array<{
+          old_str: string
+          new_str: string
+        }>
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'page-1',
+        type: 'update_content',
+        update_content: {
+          content_updates: [{ old_str: 'old', new_str: 'new' }],
+          allow_deleting_content: false
+        }
+      })
+    })
+  })
 })

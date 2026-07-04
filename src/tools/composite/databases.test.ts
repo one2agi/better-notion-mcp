@@ -1413,9 +1413,15 @@ describe('databases', () => {
       mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
       mockNotion.dataSources.query.mockResolvedValueOnce({
         results: [
-          { id: 'p1', properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'urgent' } } } },
+          {
+            id: 'p1',
+            properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'urgent' } } }
+          },
           { id: 'p2', properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'low' } } } },
-          { id: 'p3', properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'urgent' } } } }
+          {
+            id: 'p3',
+            properties: { PriorityLabel: { type: 'formula', formula: { type: 'string', string: 'urgent' } } }
+          }
         ],
         next_cursor: null,
         has_more: false
@@ -1542,6 +1548,115 @@ describe('databases', () => {
           aggregations: [{ type: 'count' }]
         })
       ).rejects.toThrow('group_by required for group_by action')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // JSON-string fallback (Claude Code XML serialization workaround)
+  // ---------------------------------------------------------------------------
+  describe('JSON-string input fallback (Claude Code XML serialization workaround)', () => {
+    it('create_database accepts properties as JSON-stringified object', async () => {
+      mockNotion.databases.create.mockResolvedValue({
+        id: 'db-new',
+        data_sources: [{ id: 'ds-new' }]
+      })
+
+      await databases(mockNotion as any, {
+        action: 'create',
+        parent_id: 'parent-page',
+        title: 'JSON Test DB',
+        properties: '{"Name":{"title":{}},"Status":{"select":{}}}' as unknown as Record<string, any>
+      })
+
+      const callArgs = mockNotion.databases.create.mock.calls[0][0]
+      // API 2025-09-03: properties live under initial_data_source
+      expect(callArgs.initial_data_source.properties).toEqual({
+        Name: { title: {} },
+        Status: { select: {} }
+      })
+    })
+
+    it('create_page accepts page_properties as JSON-stringified object', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-1',
+        data_sources: [{ id: 'ds-1' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-1',
+        properties: { 数字: { type: 'number', id: 'pn' } }
+      })
+      mockNotion.pages.create.mockResolvedValue({ id: 'new-page' })
+
+      await databases(mockNotion as any, {
+        action: 'create_page',
+        database_id: 'db-1',
+        page_properties: '{"数字":99}' as unknown as Record<string, any>
+      })
+
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(callArgs.properties).toEqual({ 数字: { number: 99 } })
+    })
+
+    it('query accepts filters as JSON-stringified object', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({ results: [], has_more: false, next_cursor: null })
+
+      await databases(mockNotion as any, {
+        action: 'query',
+        database_id: 'db-1',
+        filters: '{"property":"Status","select":{"equals":"Active"}}'
+      })
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: { property: 'Status', select: { equals: 'Active' } }
+        })
+      )
+    })
+
+    it('aggregate accepts aggregations as JSON-stringified array', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-1',
+        data_sources: [{ id: 'ds-1' }]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({ results: [], has_more: false, next_cursor: null })
+
+      await databases(mockNotion as any, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: '[{"type":"count","alias":"total"}]' as unknown as Parameters<typeof databases>[1]['aggregations']
+      })
+
+      expect(mockNotion.dataSources.query.mock.calls[0][0].filter).toBeUndefined()
+    })
+
+    it('group_by accepts group_by as JSON-stringified object', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-1',
+        data_sources: [{ id: 'ds-1' }]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({ results: [], has_more: false, next_cursor: null })
+
+      await databases(mockNotion as any, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: '{"property":"Owner"}' as unknown as Parameters<typeof databases>[1]['group_by'],
+        aggregations: '[{"type":"count"}]' as unknown as Parameters<typeof databases>[1]['aggregations']
+      })
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalled()
+    })
+
+    it('throws NotionMCPError on malformed JSON string', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      await expect(
+        databases(mockNotion as any, {
+          action: 'query',
+          database_id: 'db-1',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: intentionally invalid JSON for test
+          filters: '{not-valid'
+        })
+      ).rejects.toThrow(/Failed to parse JSON string/)
     })
   })
 })

@@ -985,4 +985,47 @@ describe('Blocks Tool', () => {
       )
     })
   })
+
+  // ---------------------------------------------------------------------------
+  // JSON-string fallback (Claude Code XML serialization workaround)
+  // ---------------------------------------------------------------------------
+  describe('JSON-string input fallback (Claude Code XML serialization workaround)', () => {
+    it('update accepts properties as JSON-stringified object', async () => {
+      mockNotion.blocks.retrieve.mockResolvedValueOnce({
+        id: 'block-1',
+        type: 'heading_1',
+        heading_1: { rich_text: [] }
+      })
+      mockNotion.blocks.update.mockResolvedValue({ id: 'block-1' })
+
+      await blocks(mockNotion as any, {
+        action: 'update',
+        block_id: 'block-1',
+        properties: '{"color":"blue","is_toggleable":true}' as unknown as Record<string, any>
+      })
+
+      expect(mockNotion.blocks.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          heading_1: expect.objectContaining({ color: 'blue', is_toggleable: true })
+        })
+      )
+    })
+
+    it('throws NotionMCPError on malformed properties JSON', async () => {
+      mockNotion.blocks.retrieve.mockResolvedValueOnce({
+        id: 'block-1',
+        type: 'heading_1',
+        heading_1: { rich_text: [] }
+      })
+
+      await expect(
+        blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: intentionally invalid JSON for test
+          properties: '{not-valid' as unknown as Record<string, any>
+        })
+      ).rejects.toThrow(/Failed to parse JSON string/)
+    })
+  })
 })

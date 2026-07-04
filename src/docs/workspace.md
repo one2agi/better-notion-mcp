@@ -3,6 +3,13 @@
 ## Overview
 Workspace: info, search.
 
+## Input format
+Nested-object parameters (`filter`, `sort`) accept either a parsed object
+**or** a JSON stringification of one. Pass the string form when the calling
+MCP client serializes arguments as XML (e.g. Claude Code) — XML serialization
+drops nested content, so the JSON-string workaround is required in that
+environment.
+
 ## Important
 - Search returns only content **shared with integration**
 - Use `filter.object = "data_source"` for databases
