@@ -71,6 +71,15 @@ export function sanitizeReadonlyProperties(properties: Record<string, any> | und
     // Skip non-objects (defensive: malformed input)
     if (!prop || typeof prop !== 'object') continue
 
+    // Detect readonly even when `type` is absent: a property whose only field
+    // is a readonly-typed key (e.g. `{ created_time: '...' }`) is also a
+    // readonly property. Mirror convertToNotionProperties' pass-through shape
+    // so callers can POST raw values without explicit `type` (Bug #35).
+    if (!propType) {
+      const keys = Object.keys(prop).filter((k) => k !== 'type' && k !== 'id')
+      if (keys.length === 1 && READONLY_PROPERTY_TYPES.has(keys[0])) continue
+    }
+
     // Skip properties whose value field exists but is empty — Notion API
     // rejects these on POST /v1/pages (Bug #23 + #29). Only check when
     // the value key is present; missing-value cases are passed through.

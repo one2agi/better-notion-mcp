@@ -567,7 +567,12 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
       // select-type fields become `{ select: { name } }`, etc. Without schema
       // we fall through to convertToNotionProperties' key-name heuristics.
       const converted = convertToNotionProperties(input.properties, schemaTypeMap)
-      updates.properties = { ...updates.properties, ...converted }
+      // Strip readonly types (created_time, formula, rollup, button, verification,
+      // unique_id, created_by, last_edited_by, last_edited_time) before forwarding
+      // to Notion API. Without this, the API returns 400 for any readonly key
+      // the caller mistakenly includes (Bug #35, mirrors pages.duplicate behavior).
+      const writable = sanitizeReadonlyProperties(converted)
+      updates.properties = { ...updates.properties, ...writable }
     }
   }
 
