@@ -760,6 +760,39 @@ describe('pages', () => {
       expect(callArgs.properties.Status).toEqual({ select: { name: 'Done' } })
     })
 
+    // Bug #35 (NEW from differential test on 任务管理器 DB 2026-07-04):
+    // pages.update calls convertToNotionProperties but NEVER sanitizes readonly
+    // types. If user supplies a readonly field (created_time, formula, rollup,
+    // button, verification, unique_id, created_by, last_edited_by), Notion API
+    // returns 400. Must call sanitizeReadonlyProperties on the converted input.
+    it('replicates official: pages.update strips read-only property types (Bug #35)', async () => {
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        properties: {
+          // Writable -- preserved
+          Status: { select: { name: 'Done' } },
+          // 9 readonly types -- must all be dropped before forwarding to Notion API
+          CreatedTime: { created_time: '2020-01-01T00:00:00Z' },
+          EditedTime: { last_edited_time: '2020-01-02T00:00:00Z' },
+          CreatedBy: { created_by: { id: 'u-1' } },
+          EditedBy: { last_edited_by: { id: 'u-1' } },
+          UID: { unique_id: { prefix: 'TASK', number: 1 } },
+          Formula: { formula: { type: 'number', number: 42 } },
+          Rollup: { rollup: { type: 'number', number: 7 } },
+          Verify: { verification: {} },
+          Button: { button: null }
+        }
+      })
+
+      const callArgs = mockNotion.pages.update.mock.calls[0][0]
+      expect(callArgs.properties).toEqual({
+        Status: { select: { name: 'Done' } }
+      })
+    })
+
     it('uses schema title column when database title is not named "title" (no hardcoding)', async () => {
       // Page in a database whose title column is "Subject" (not "title").
       // Current code hardcodes `properties.title` which would 400 in real Notion.

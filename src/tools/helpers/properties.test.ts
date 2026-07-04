@@ -1035,6 +1035,30 @@ describe('property helpers', () => {
       })
     })
 
+    // Bug #35 (NEW from differential test on 任务管理器 DB 2026-07-04):
+    // Detect readonly types even when input lacks `type` field, e.g.
+    // `{ created_time: '...' }` (raw convertToNotionProperties pass-through).
+    // Notion API still returns 400 if forwarded, so sanitize must catch it.
+    it('detects readonly types by single-key shape when type field is absent (Bug #35)', () => {
+      const input = {
+        // Writable
+        Status: { select: { name: 'A' } },
+        Name: { title: [{ plain_text: 'X' }] },
+        // Readonly inferred from shape (no `type` field)
+        Created: { created_time: '2026-01-01T00:00:00Z' },
+        UID: { unique_id: { prefix: 'TASK', number: 1 } },
+        Formula: { formula: { type: 'number', number: 42 } },
+        Rollup: { rollup: { type: 'number', number: 7 } },
+        Verify: { verification: {} },
+        Button: { button: null },
+        Author: { created_by: { id: 'u-1' } },
+        Editor: { last_edited_by: { id: 'u-1' } },
+        Edited: { last_edited_time: '2026-01-02T00:00:00Z' }
+      }
+      const out = sanitizeReadonlyProperties(input)
+      expect(Object.keys(out).sort()).toEqual(['Name', 'Status'])
+    })
+
     // Bug #32 (NEW from differential test on 任务管理器 DB 2026-07-04):
     // Notion API GET returns `{ type: 'checkbox', checkbox: true, id: '...' }`
     // (with schema `id` at top level). Stripping only `type` leaves the readonly
