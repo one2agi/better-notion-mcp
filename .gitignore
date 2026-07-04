@@ -50,3 +50,6 @@ scripts/.notion_cf_token*
 
 # Deploy-time wrangler config with REAL account/KV IDs (cf:deploy, deploy_cf.py)
 wrangler.deploy.jsonc
+
+# npm pack output (`bun run build:pack` or `npm pack`) — local artifact, never commit
+*.tgz
