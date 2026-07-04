@@ -20,7 +20,8 @@ export const READONLY_PROPERTY_TYPES: ReadonlySet<string> = new Set([
   'created_by',
   'last_edited_by',
   'unique_id',
-  'verification'
+  'verification',
+  'button'
 ])
 
 /**
@@ -58,9 +59,7 @@ export function filterToSchemaKeys(
  * Used when duplicating pages — these fields are computed by Notion
  * and cannot be set via POST /v1/pages.
  */
-export function sanitizeReadonlyProperties(
-  properties: Record<string, any> | undefined
-): Record<string, any> {
+export function sanitizeReadonlyProperties(properties: Record<string, any> | undefined): Record<string, any> {
   const result: Record<string, any> = {}
   if (!properties) return result
   for (const [key, prop] of Object.entries(properties)) {
@@ -88,13 +87,28 @@ export function sanitizeReadonlyProperties(
       if (!(propType in prop) || prop[propType] === null) continue
     }
 
-    // Strip the top-level `type` field — Notion API GET returns properties in
-    // the shape `{ type: '<type>', <type>: {...} }`, but POST /v1/pages expects
-    // only `{ <type>: {...} }` (no top-level `type`). Forwarding the GET shape
-    // directly causes Notion to reject with "type should be not present"
-    // (Bug #7 — discovered via real-Notion differential testing).
-    if (propType && 'type' in prop) {
-      const { type: _, ...rest } = prop as Record<string, any>
+    // Strip the top-level `type` and `id` fields — both are readonly on POST.
+    // - `type` is the property type discriminator (Bug #7 — Notion rejects it
+    //   when forwarded from GET shape, e.g. `type: 'status' should be not present`).
+    // - `id` is the property's schema ID (also readonly on POST).
+    //
+    // For status/select specifically, the GET shape is
+    // `{ type: 'status', status: {id, name, color} }` but POST wants
+    // `{ status: { name: '...' } }` — preserve the `status` wrapper (Notion
+    // requires it to identify the type), but drop `id` and `color` from the
+    // sub-object (both readonly). Sending `{name: '...'}` flat (no wrapper)
+    // is rejected as "no type discriminator"; sending `{status: {id, name}}`
+    // is rejected because the `id` is readonly.
+    if (propType === 'status' || propType === 'select') {
+      const sub = (prop as any)[propType]
+      if (sub && typeof sub === 'object' && 'name' in sub) {
+        result[key] = { [propType]: { name: sub.name } }
+      } else if (sub && typeof sub === 'object' && 'id' in sub) {
+        result[key] = { [propType]: { id: sub.id } }
+      }
+      // else: no usable sub-value — drop the prop
+    } else if (propType && ('type' in prop || 'id' in prop)) {
+      const { type: _t, id: _i, ...rest } = prop as Record<string, any>
       result[key] = rest
     } else {
       result[key] = prop

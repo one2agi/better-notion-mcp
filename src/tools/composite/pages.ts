@@ -4,13 +4,19 @@
  */
 
 import type { Client, PageObjectResponse } from '@notionhq/client'
+import { updatePageWithParent } from '../../types/notion-extended.js'
 import { formatCover } from '../helpers/covers.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
 import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
-import { convertToNotionProperties, extractPageProperties, filterToSchemaKeys, findTitleColumnName, sanitizeReadonlyProperties } from '../helpers/properties.js'
-import { updatePageWithParent } from '../../types/notion-extended.js'
+import {
+  convertToNotionProperties,
+  extractPageProperties,
+  filterToSchemaKeys,
+  findTitleColumnName,
+  sanitizeReadonlyProperties
+} from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
 import { getDataSourceSchema, resolveDataSourceId } from './databases.js'
 
@@ -742,6 +748,15 @@ async function duplicatePage(notion: Client, input: PagesInput): Promise<Duplica
         )
       ])
 
+      // Bug #33: Notion API `blocks.children.append` requires nested children
+      // to be inlined for has_children blocks (tables, toggles, columns, ...).
+      // autoPaginate above only fetches the top level — recursively fetch
+      // nested children so the append payload matches what Notion expects.
+      // (Discovered via real-Notion differential test on test page
+      // 3924f4cfc8e280aba43fcbb4ede3631e — table block at children[13] had
+      // `table.children should be defined, instead was undefined`.)
+      await populateDeepChildren(notion, originalBlocks as any)
+
       // Sanitize parent - API response may include extra fields that
       // the create endpoint rejects (e.g. database_id in data_source parent)
       const rawParent = originalPage.parent
@@ -771,9 +786,20 @@ async function duplicatePage(notion: Client, input: PagesInput): Promise<Duplica
         })
       )
 
-      // Copy content — strip read-only fields that the create endpoint rejects
+      // Copy content — strip read-only fields that the create endpoint rejects.
+      // Recurses into nested children so nested blocks (table rows, toggle
+      // paragraphs, etc.) are also sanitized — they have the same metadata
+      // fields (id/parent/created_time/...) that POST rejects.
+      //
+      // Bug #34: child_page and child_database blocks are NOT creatable via
+      // blocks.children.append — Notion rejects them with "X should be defined"
+      // for every type field. They're created via pages.create separately.
+      // For duplicate, we drop them (they live as their own pages, not part of
+      // the parent's body). Discovered via real-Notion differential test on
+      // test page 3924f4cfc8e280aba43fcbb4ede3631e, 2026-07-04.
+      const BLOCKS_DROP_ON_DUPLICATE = new Set(['child_page', 'child_database'])
       if (originalBlocks.length > 0) {
-        const sanitizedBlocks = originalBlocks.map((block: any) => {
+        const sanitizeBlock = (block: any): any | null => {
           const {
             id,
             parent,
@@ -788,6 +814,8 @@ async function duplicatePage(notion: Client, input: PagesInput): Promise<Duplica
             object,
             ...rest
           } = block
+          // Drop block types that POST /v1/blocks/{id}/children rejects outright
+          if (BLOCKS_DROP_ON_DUPLICATE.has(rest.type)) return null
           // Strip null values inside block type data (e.g., paragraph.icon: null)
           // Notion API rejects null where it expects object or undefined
           const blockType = rest.type
@@ -797,15 +825,23 @@ async function duplicatePage(notion: Client, input: PagesInput): Promise<Duplica
                 delete rest[blockType][key]
               }
             }
+            // Recurse into nested children (tables, toggles, columns, ...)
+            const nestedChildren = rest[blockType].children
+            if (Array.isArray(nestedChildren)) {
+              rest[blockType].children = nestedChildren.map(sanitizeBlock).filter((b: any) => b !== null)
+            }
           }
           return rest
-        })
-        await retryWithBackoff(() =>
-          notion.blocks.children.append({
-            block_id: duplicatedPage.id,
-            children: sanitizedBlocks as any
-          })
-        )
+        }
+        const sanitizedBlocks = (originalBlocks as any[]).map(sanitizeBlock).filter((b: any) => b !== null)
+        if (sanitizedBlocks.length > 0) {
+          await retryWithBackoff(() =>
+            notion.blocks.children.append({
+              block_id: duplicatedPage.id,
+              children: sanitizedBlocks as any
+            })
+          )
+        }
       }
 
       return {
