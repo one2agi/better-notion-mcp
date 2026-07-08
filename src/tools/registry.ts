@@ -287,6 +287,12 @@ const TOOLS = [
         },
         block_id: { type: 'string', description: 'Block ID' },
         content: { type: 'string', description: 'Markdown content (for append/update)' },
+        blocks: {
+          type: 'array',
+          items: { type: 'object' },
+          description:
+            'Direct block JSON array for structural types (synced_block, link_to_page, table, table_row, column, column_list). Mutually exclusive with content.'
+        },
         position: {
           type: 'string',
           enum: ['start', 'end', 'after_block'],

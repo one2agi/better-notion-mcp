@@ -17,7 +17,7 @@ describe('Blocks Tool', () => {
     mockNotion = {
       blocks: {
         retrieve: vi.fn(),
-        update: vi.fn(),
+        update: vi.fn().mockResolvedValue({ type: 'paragraph' }),
         delete: vi.fn(),
         children: {
           list: vi.fn(),
@@ -139,9 +139,9 @@ describe('Blocks Tool', () => {
       })
     })
 
-    it('should throw without content', async () => {
+    it('should throw without content or blocks', async () => {
       await expect(blocks(mockNotion as any, { action: 'append', block_id: 'block-1' })).rejects.toThrow(
-        'content required for append'
+        'content or blocks required for append'
       )
     })
 
@@ -276,6 +276,91 @@ describe('Blocks Tool', () => {
       const call = mockNotion.blocks.children.append.mock.calls[0][0]
       expect(call.position).toBeUndefined()
     })
+
+    // ========== Direct blocks[] input (structural types) ==========
+
+    it('should accept blocks array with synced_block', async () => {
+      mockNotion.blocks.children.append.mockResolvedValue({})
+
+      const syncedBlock = {
+        type: 'synced_block',
+        synced_block: { synced_from: { block_id: 'src' } }
+      }
+
+      const result = await blocks(mockNotion as any, {
+        action: 'append',
+        block_id: 'b',
+        blocks: [syncedBlock]
+      })
+
+      expect(result.action).toBe('append')
+      expect((result as any).appended_count).toBe(1)
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith({
+        block_id: 'b',
+        children: [syncedBlock]
+      })
+    })
+
+    it('should accept blocks array with link_to_page', async () => {
+      mockNotion.blocks.children.append.mockResolvedValue({})
+
+      const linkToPage = {
+        type: 'link_to_page',
+        link_to_page: { type: 'page_id', page_id: 'target' }
+      }
+
+      const result = await blocks(mockNotion as any, {
+        action: 'append',
+        block_id: 'b',
+        blocks: [linkToPage]
+      })
+
+      expect(result.action).toBe('append')
+      expect((result as any).appended_count).toBe(1)
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith({
+        block_id: 'b',
+        children: [linkToPage]
+      })
+    })
+
+    it('should accept blocks array with table_row', async () => {
+      mockNotion.blocks.children.append.mockResolvedValue({})
+
+      const tableRow = {
+        type: 'table_row',
+        table_row: { cells: [[{ type: 'text', text: { content: 'A' } }], [{ type: 'text', text: { content: 'B' } }]] }
+      }
+
+      const result = await blocks(mockNotion as any, {
+        action: 'append',
+        block_id: 'b',
+        blocks: [tableRow]
+      })
+
+      expect(result.action).toBe('append')
+      expect((result as any).appended_count).toBe(1)
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith({
+        block_id: 'b',
+        children: [tableRow]
+      })
+    })
+
+    it('should throw when both content and blocks provided', async () => {
+      await expect(
+        blocks(mockNotion as any, {
+          action: 'append',
+          block_id: 'b',
+          content: 'some markdown',
+          blocks: [{ type: 'synced_block', synced_block: { synced_from: { block_id: 'src' } } }]
+        })
+      ).rejects.toThrow('Provide either content or blocks, not both')
+    })
+
+    it('should throw when neither content nor blocks provided', async () => {
+      await expect(blocks(mockNotion as any, { action: 'append', block_id: 'b' })).rejects.toThrow(
+        'content or blocks required'
+      )
+    })
   })
 
   describe('update', () => {
@@ -304,7 +389,7 @@ describe('Blocks Tool', () => {
       expect(mockNotion.blocks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           block_id: 'block-1',
-          paragraph: { rich_text: expect.any(Array) }
+          paragraph: expect.objectContaining({ rich_text: expect.any(Array) })
         })
       )
     })
@@ -334,19 +419,17 @@ describe('Blocks Tool', () => {
       expect(mockNotion.blocks.update).toHaveBeenCalledWith(
         expect.objectContaining({
           block_id: 'block-1',
-          heading_1: { rich_text: expect.any(Array) }
+          heading_1: expect.objectContaining({ rich_text: expect.any(Array) })
         })
       )
     })
 
     it('should throw for unsupported block type', async () => {
-      mockNotion.blocks.retrieve.mockResolvedValue({
-        id: 'block-1',
-        type: 'image',
-        has_children: false,
-        archived: false,
-        image: { type: 'external', external: { url: 'https://example.com/img.png' } }
-      })
+      // Without pre-fetch, blocks.update is called and Notion API returns validation_error
+      const apiError = new Error("Block type 'image' cannot be updated")
+      ;(apiError as any).code = 'validation_error'
+      ;(apiError as any).message = 'block type cannot be changed'
+      mockNotion.blocks.update.mockRejectedValue(apiError)
 
       await expect(
         blocks(mockNotion as any, {
@@ -354,7 +437,7 @@ describe('Blocks Tool', () => {
           block_id: 'block-1',
           content: 'Some text'
         })
-      ).rejects.toThrow("Block type 'image' cannot be updated")
+      ).rejects.toThrow('Block type cannot be updated')
     })
 
     it('should throw without content or properties', async () => {
@@ -364,13 +447,11 @@ describe('Blocks Tool', () => {
     })
 
     it('should throw when content type does not match block type', async () => {
-      mockNotion.blocks.retrieve.mockResolvedValue({
-        id: 'block-1',
-        type: 'paragraph',
-        has_children: false,
-        archived: false,
-        paragraph: { rich_text: [] }
-      })
+      // Without pre-fetch, type mismatch is detected by Notion API response
+      const apiError = new Error('Block type mismatch: expected paragraph, got heading_1')
+      ;(apiError as any).code = 'validation_error'
+      ;(apiError as any).message = 'type mismatch'
+      mockNotion.blocks.update.mockRejectedValue(apiError)
 
       await expect(
         blocks(mockNotion as any, {
@@ -378,7 +459,7 @@ describe('Blocks Tool', () => {
           block_id: 'block-1',
           content: '# New Heading'
         })
-      ).rejects.toThrow('Block type mismatch')
+      ).rejects.toThrow('Block type cannot be updated')
     })
 
     it('should update to_do block with checked state', async () => {
@@ -442,6 +523,7 @@ describe('Blocks Tool', () => {
     })
 
     it('should throw when content given for structural type like table', async () => {
+      // Mock pre-fetch returns table block; structural type check throws before API call
       mockNotion.blocks.retrieve.mockResolvedValue({
         id: 'block-1',
         type: 'table',
@@ -450,8 +532,6 @@ describe('Blocks Tool', () => {
         table: { table_width: 2, has_column_header: false, has_row_header: false }
       })
 
-      // 'plain text' parses to paragraph, not table - so we expect the
-      // "use properties" hint since the block is a structural type
       await expect(
         blocks(mockNotion as any, {
           action: 'update',
@@ -491,7 +571,7 @@ describe('Blocks Tool', () => {
           archived: false,
           toggle: { rich_text: [], color: 'default' }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'toggle' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -542,7 +622,7 @@ describe('Blocks Tool', () => {
           archived: false,
           template: { rich_text: [] }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'template' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -620,7 +700,7 @@ describe('Blocks Tool', () => {
           archived: false,
           table: { table_width: 2, has_column_header: false, has_row_header: false }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'table' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -645,7 +725,7 @@ describe('Blocks Tool', () => {
           archived: false,
           table_row: { cells: [[], []] }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'table_row' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -717,7 +797,7 @@ describe('Blocks Tool', () => {
           archived: false,
           column: { width_ratio: 0.5 }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'column' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -760,7 +840,7 @@ describe('Blocks Tool', () => {
           archived: false,
           synced_block: { synced_from: null }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'synced_block' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -785,7 +865,7 @@ describe('Blocks Tool', () => {
           archived: false,
           synced_block: { synced_from: { block_id: 'src-block-id', type: 'block_id' } }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'synced_block' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -837,7 +917,7 @@ describe('Blocks Tool', () => {
           archived: false,
           link_to_page: { type: 'database_id', database_id: 'old-db-id' }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'link_to_page' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -862,7 +942,7 @@ describe('Blocks Tool', () => {
           archived: false,
           link_to_page: { type: 'comment_id', comment_id: 'old-comment-id' }
         })
-        mockNotion.blocks.update.mockResolvedValue({})
+        mockNotion.blocks.update.mockResolvedValue({ type: 'link_to_page' })
 
         const result = await blocks(mockNotion as any, {
           action: 'update',
@@ -918,22 +998,30 @@ describe('Blocks Tool', () => {
         ).rejects.toThrow('Provide either content or properties, not both')
       })
 
-      it('should throw when properties given for text-only type', async () => {
+      it('should update paragraph via properties (for color/style updates)', async () => {
+        // Paragraph blocks accept properties for color/style updates (same as heading_2)
         mockNotion.blocks.retrieve.mockResolvedValue({
           id: 'block-1',
           type: 'paragraph',
           has_children: false,
           archived: false,
-          paragraph: { rich_text: [] }
+          paragraph: { rich_text: [], color: 'default' }
+        })
+        mockNotion.blocks.update.mockResolvedValue({ type: 'paragraph' })
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          properties: { color: 'blue' }
         })
 
-        await expect(
-          blocks(mockNotion as any, {
-            action: 'update',
+        expect((result as any).type).toBe('paragraph')
+        expect(mockNotion.blocks.update).toHaveBeenCalledWith(
+          expect.objectContaining({
             block_id: 'block-1',
-            properties: { rich_text: [] }
+            paragraph: { color: 'blue' }
           })
-        ).rejects.toThrow("Block type 'paragraph' cannot be updated via properties")
+        )
       })
 
       it('should throw when properties given for unsupported type', async () => {
@@ -944,6 +1032,11 @@ describe('Blocks Tool', () => {
           archived: false,
           image: { type: 'external', external: { url: 'https://example.com/img.png' } }
         })
+        // Fix #13: pre-check is removed; the Notion API now rejects properties for unsupported types.
+        const apiError = new Error('Block type cannot be updated')
+        ;(apiError as any).code = 'validation_error'
+        ;(apiError as any).message = 'block type'
+        mockNotion.blocks.update.mockRejectedValue(apiError)
 
         await expect(
           blocks(mockNotion as any, {
@@ -951,7 +1044,159 @@ describe('Blocks Tool', () => {
             block_id: 'block-1',
             properties: { url: 'https://new.com/img.png' }
           })
-        ).rejects.toThrow("Block type 'image' cannot be updated")
+        ).rejects.toThrow('Block type cannot be updated')
+      })
+    })
+
+    // ========== F group: media / divider / equation via content (Fix #14) ==========
+    describe('F group: media/divider/equation via content', () => {
+      it('should update image block via content', async () => {
+        const { markdownToBlocks } = await import('../helpers/markdown.js')
+        vi.mocked(markdownToBlocks).mockReturnValueOnce({
+          blocks: [
+            {
+              type: 'image',
+              image: { type: 'external', external: { url: 'https://new.com' }, caption: [] }
+            }
+          ],
+          warnings: []
+        } as any)
+
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'image',
+          has_children: false,
+          archived: false,
+          image: { type: 'external', external: { url: 'https://old.com/img.png' } }
+        })
+        mockNotion.blocks.update.mockResolvedValue({ type: 'image' })
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          content: '![](https://new.com)'
+        })
+
+        expect(result).toEqual({
+          action: 'update',
+          block_id: 'block-1',
+          type: 'image',
+          updated: true
+        })
+        expect(mockNotion.blocks.update).toHaveBeenCalledWith({
+          block_id: 'block-1',
+          image: {
+            external: { url: 'https://new.com' },
+            caption: []
+          }
+        })
+      })
+
+      it('should update bookmark block via content', async () => {
+        const { markdownToBlocks } = await import('../helpers/markdown.js')
+        vi.mocked(markdownToBlocks).mockReturnValueOnce({
+          blocks: [
+            {
+              type: 'bookmark',
+              bookmark: { url: 'https://new.com', caption: [] }
+            }
+          ],
+          warnings: []
+        } as any)
+
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'bookmark',
+          has_children: false,
+          archived: false,
+          bookmark: { url: 'https://old.com', caption: [] }
+        })
+        mockNotion.blocks.update.mockResolvedValue({ type: 'bookmark' })
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          content: '[label](https://new.com)'
+        })
+
+        expect(result).toEqual({
+          action: 'update',
+          block_id: 'block-1',
+          type: 'bookmark',
+          updated: true
+        })
+        expect(mockNotion.blocks.update).toHaveBeenCalledWith({
+          block_id: 'block-1',
+          bookmark: { url: 'https://new.com', caption: [] }
+        })
+      })
+
+      it('should update divider block via content', async () => {
+        const { markdownToBlocks } = await import('../helpers/markdown.js')
+        vi.mocked(markdownToBlocks).mockReturnValueOnce({
+          blocks: [{ type: 'divider', divider: {} }],
+          warnings: []
+        } as any)
+
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'divider',
+          has_children: false,
+          archived: false,
+          divider: {}
+        })
+        mockNotion.blocks.update.mockResolvedValue({ type: 'divider' })
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          content: '---'
+        })
+
+        expect(result).toEqual({
+          action: 'update',
+          block_id: 'block-1',
+          type: 'divider',
+          updated: true
+        })
+        expect(mockNotion.blocks.update).toHaveBeenCalledWith({
+          block_id: 'block-1',
+          divider: {}
+        })
+      })
+
+      it('should update equation block via content', async () => {
+        const { markdownToBlocks } = await import('../helpers/markdown.js')
+        vi.mocked(markdownToBlocks).mockReturnValueOnce({
+          blocks: [{ type: 'equation', equation: { expression: 'E=mc^2' } }],
+          warnings: []
+        } as any)
+
+        mockNotion.blocks.retrieve.mockResolvedValue({
+          id: 'block-1',
+          type: 'equation',
+          has_children: false,
+          archived: false,
+          equation: { expression: 'x = 0' }
+        })
+        mockNotion.blocks.update.mockResolvedValue({ type: 'equation' })
+
+        const result = await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          content: '$$\nE=mc^2\n$$'
+        })
+
+        expect(result).toEqual({
+          action: 'update',
+          block_id: 'block-1',
+          type: 'equation',
+          updated: true
+        })
+        expect(mockNotion.blocks.update).toHaveBeenCalledWith({
+          block_id: 'block-1',
+          equation: { expression: 'E=mc^2' }
+        })
       })
     })
   })
