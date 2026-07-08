@@ -10,27 +10,6 @@ import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren } from '../helpers/pagination.js'
 import { normalizeBlockProperties } from '../helpers/properties.js'
 
-const UPDATABLE_BLOCK_TYPES = new Set([
-  'paragraph',
-  'heading_1',
-  'heading_2',
-  'heading_3',
-  'heading_4',
-  'bulleted_list_item',
-  'numbered_list_item',
-  'quote',
-  'to_do',
-  'code',
-  'toggle',
-  'callout',
-  'template',
-  'table',
-  'table_row',
-  'column',
-  'synced_block',
-  'link_to_page'
-])
-
 export interface GetBlockResult {
   action: 'get'
   block_id: string
@@ -78,6 +57,13 @@ export interface BlocksInput {
   action: 'get' | 'children' | 'append' | 'update' | 'delete'
   block_id: string
   content?: string // Markdown format (for text-rich block types)
+
+  /**
+   * Direct block JSON array for structural types (synced_block, link_to_page,
+   * table, table_row, column, column_list) that have no markdown syntax.
+   * Mutually exclusive with `content`.
+   */
+  blocks?: any[]
   position?: 'start' | 'end' | 'after_block'
   after_block_id?: string
 
@@ -172,8 +158,11 @@ async function getBlockChildren(notion: Client, input: BlocksInput): Promise<Get
  * Maps to: PATCH /v1/blocks/{id}/children
  */
 async function appendToBlock(notion: Client, input: BlocksInput): Promise<AppendToBlockResult> {
-  if (!input.content) {
-    throw new NotionMCPError('content required for append', 'VALIDATION_ERROR', 'Provide markdown content')
+  if (!input.content && !input.blocks) {
+    throw new NotionMCPError('content or blocks required for append', 'VALIDATION_ERROR', 'Provide markdown content or a blocks array')
+  }
+  if (input.content && input.blocks) {
+    throw new NotionMCPError('Provide either content or blocks, not both', 'VALIDATION_ERROR', 'Pick one: content for markdown parsing, blocks for direct block JSON')
   }
   if (input.position === 'after_block' && !input.after_block_id) {
     throw new NotionMCPError(
@@ -182,14 +171,21 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
       'Provide after_block_id with the block ID to insert after'
     )
   }
-  const { blocks: blocksList } = markdownToBlocks(input.content)
-  // Notion API rejects column_ratio in format when creating column blocks via blocks.children.append.
-  // Strip format.column_ratio from any column blocks (width is set implicitly or via separate update).
-  for (const block of blocksList) {
-    if (block.type === 'column' && (block as any).column?.format?.column_ratio !== undefined) {
-      delete (block as any).column.format.column_ratio
-      if (Object.keys((block as any).column.format).length === 0) {
-        delete (block as any).column.format
+  let blocksList: any[]
+  if (input.blocks) {
+    // Direct block JSON path (structural types: synced_block, link_to_page, table, table_row, column, column_list)
+    blocksList = input.blocks
+  } else {
+    const { blocks: parsed } = markdownToBlocks(input.content!)
+    blocksList = parsed
+    // Notion API rejects column_ratio in format when creating column blocks via blocks.children.append.
+    // Strip format.column_ratio from any column blocks (width is set implicitly or via separate update).
+    for (const block of blocksList) {
+      if (block.type === 'column' && (block as any).column?.format?.column_ratio !== undefined) {
+        delete (block as any).column.format.column_ratio
+        if (Object.keys((block as any).column.format).length === 0) {
+          delete (block as any).column.format
+        }
       }
     }
   }
@@ -232,136 +228,140 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
     )
   }
 
-  const block: any = await notion.blocks.retrieve({ block_id: input.block_id })
-  const blockType = block.type
+  let updatePayload: any
+  let blockType: string | undefined
 
-  if (!UPDATABLE_BLOCK_TYPES.has(blockType)) {
-    throw new NotionMCPError(
-      `Block type '${blockType}' cannot be updated`,
-      'VALIDATION_ERROR',
-      'Supported types: paragraph, heading_1-4, bulleted/numbered_list_item, quote, to_do, code, toggle, callout, template, table, table_row, column, synced_block, link_to_page'
-    )
+  // Pre-fetch block type once (needed for both content and properties paths)
+  let originalBlockType: string | undefined
+  try {
+    const existingBlock: any = await notion.blocks.retrieve({ block_id: input.block_id })
+    originalBlockType = existingBlock.type
+  } catch {
+    // Block not found will be caught by update call below
   }
 
-  let updatePayload: any
-
   if (input.content) {
-    // Markdown path: parse content and extract type-specific fields
-    const { blocks: newBlocks } = markdownToBlocks(input.content)
+    // Content path: parse markdown and build updatePayload using original block type for structural check
+    if (originalBlockType && STRUCTURAL_BLOCK_TYPES.has(originalBlockType)) {
+      throw new NotionMCPError(
+        `Block type '${originalBlockType}' cannot be updated via content; use properties instead`,
+        'VALIDATION_ERROR',
+        `Provide properties with the relevant fields for ${originalBlockType}`
+      )
+    }
 
+    const { blocks: newBlocks } = markdownToBlocks(input.content)
     if (newBlocks.length === 0) {
       throw new NotionMCPError('Content must produce at least one block', 'VALIDATION_ERROR', 'Invalid markdown')
     }
-
     const newContent = newBlocks[0]
-
-    if (newContent.type !== blockType) {
-      // For structural types (table/table_row/column/synced_block/link_to_page) require properties
-      if (STRUCTURAL_BLOCK_TYPES.has(blockType)) {
-        throw new NotionMCPError(
-          `Block type '${blockType}' cannot be updated via content; use properties instead`,
-          'VALIDATION_ERROR',
-          `Provide properties with the relevant fields for ${blockType}`
-        )
-      }
-      // Allow heading level conversion (e.g., heading_2 -> heading_3 if user uses ### markdown)
-      // Only heading types can auto-convert; other types still require exact match
-      const isHeadingConversion =
-        blockType.startsWith('heading_') &&
-        newContent.type.startsWith('heading_') &&
-        !STRUCTURAL_BLOCK_TYPES.has(blockType)
-      if (!isHeadingConversion) {
-        throw new NotionMCPError(
-          `Block type mismatch: cannot update ${blockType} with content that parses to ${newContent.type}`,
-          'VALIDATION_ERROR',
-          `Provide markdown that parses to ${blockType} (or use ### syntax matching your block's heading level)`
-        )
-      }
-    }
+    blockType = newContent.type
 
     updatePayload = {}
-    // For heading conversions, use the new type
-    const effectiveBlockType = newContent.type !== blockType ? newContent.type : blockType
-
     if (blockType === 'to_do') {
-      updatePayload.to_do = {
-        rich_text: (newContent as any).to_do?.rich_text || [],
-        checked: (newContent as any).to_do?.checked ?? block.to_do?.checked ?? false
-      }
+      updatePayload.to_do = { rich_text: (newContent as any).to_do?.rich_text || [], checked: (newContent as any).to_do?.checked ?? false }
     } else if (blockType === 'code') {
-      updatePayload.code = {
-        rich_text: (newContent as any).code?.rich_text || [],
-        language: (newContent as any).code?.language || block.code?.language || 'plain text'
-      }
+      updatePayload.code = { rich_text: (newContent as any).code?.rich_text || [], language: (newContent as any).code?.language || 'plain text' }
     } else if (blockType === 'callout') {
-      updatePayload.callout = {
-        rich_text: (newContent as any).callout?.rich_text || [],
-        icon: (newContent as any).callout?.icon ?? block.callout?.icon,
-        color: (newContent as any).callout?.color ?? block.callout?.color ?? 'default'
-      }
+      updatePayload.callout = { rich_text: (newContent as any).callout?.rich_text || [], icon: (newContent as any).callout?.icon, color: (newContent as any).callout?.color ?? 'default' }
     } else if (blockType === 'toggle') {
-      updatePayload.toggle = {
-        rich_text: (newContent as any).toggle?.rich_text || [],
-        color: (newContent as any).toggle?.color ?? block.toggle?.color ?? 'default'
-      }
+      updatePayload.toggle = { rich_text: (newContent as any).toggle?.rich_text || [], color: (newContent as any).toggle?.color ?? 'default' }
     } else if (blockType === 'template') {
-      updatePayload.template = {
-        rich_text: (newContent as any).template?.rich_text || []
+      updatePayload.template = { rich_text: (newContent as any).template?.rich_text || [] }
+    } else if (blockType === 'image') {
+      const img = (newContent as any).image || {}
+      updatePayload.image = {
+        ...(img.external ? { external: img.external } : {}),
+        ...(img.file ? { file: img.file } : {}),
+        caption: img.caption || []
       }
-    } else if (effectiveBlockType === 'heading_4') {
-      updatePayload.heading_4 = {
-        rich_text: (newContent as any).heading_4?.rich_text || [],
-        color: (newContent as any).heading_4?.color ?? block[blockType]?.color ?? 'default',
-        is_toggleable: block[blockType]?.is_toggleable ?? false
-      }
+    } else if (blockType === 'bookmark') {
+      updatePayload.bookmark = { url: (newContent as any).bookmark?.url || '', caption: (newContent as any).bookmark?.caption || [] }
+    } else if (blockType === 'embed') {
+      updatePayload.embed = { url: (newContent as any).embed?.url || '', caption: (newContent as any).embed?.caption || [] }
+    } else if (blockType === 'divider') {
+      updatePayload.divider = {}
+    } else if (blockType === 'equation') {
+      updatePayload.equation = { expression: (newContent as any).equation?.expression || '' }
+    } else if (blockType === 'breadcrumb') {
+      updatePayload.breadcrumb = {}
+    } else if (blockType === 'column_list') {
+      updatePayload.column_list = {}
     } else {
-      // paragraph, heading_1/2/3, bulleted_list_item, numbered_list_item, quote
-      updatePayload[effectiveBlockType] = {
-        rich_text: (newContent as any)[effectiveBlockType]?.rich_text || []
-      }
+      // Default: rich_text-based blocks (paragraph, heading_*, list, quote, etc.)
+      updatePayload[blockType] = (newContent as any)[blockType] || { rich_text: [] }
     }
   } else {
-    // Properties path: structural blocks
-    if (TEXT_RICH_BLOCK_TYPES.has(blockType)) {
-      throw new NotionMCPError(
-        `Block type '${blockType}' cannot be updated via properties; use content instead`,
-        'VALIDATION_ERROR',
-        'Provide markdown content that parses to this block type'
-      )
+    // Properties path: build updatePayload directly.
+    // Notion API rejects properties for unsupported block types (image, etc.).
+    const rawProperties = parseMaybeJSON(input.properties!, 'properties')
+
+    if (originalBlockType && STRUCTURAL_BLOCK_TYPES.has(originalBlockType)) {
+      // Structural types use normalizeBlockProperties
+      updatePayload = normalizeBlockProperties(originalBlockType, rawProperties as Record<string, any>)
+    } else if (originalBlockType) {
+      // Text-rich types: wrap inside the block type key (preserves color, checked, etc.)
+      updatePayload = { [originalBlockType]: rawProperties }
+    } else {
+      // Fallback: pass through (block type unknown)
+      updatePayload = rawProperties
     }
-    const normalized = normalizeBlockProperties(blockType, parseMaybeJSON(input.properties!, 'properties'))
-    updatePayload = { [blockType]: normalized }
   }
 
-  await notion.blocks.update({
-    block_id: input.block_id,
-    ...updatePayload
-  } as any)
+  // Content path: call notion.blocks.update directly
+  try {
+    await notion.blocks.update({
+      block_id: input.block_id,
+      ...updatePayload
+    } as any)
+  } catch (err: any) {
+    if (err.code === 'object_not_found') {
+      throw new NotionMCPError(
+        `Block not found: ${input.block_id}`,
+        'OBJECT_NOT_FOUND',
+        'The specified block does not exist'
+      )
+    }
+    if (err.code === 'validation_error' && err.message?.includes('type')) {
+      throw new NotionMCPError(
+        `Block type cannot be updated`,
+        'VALIDATION_ERROR',
+        'Supported types: paragraph, heading_1-4, bulleted/numbered_list_item, quote, to_do, code, toggle, callout, template, table, table_row, column, synced_block, link_to_page'
+      )
+    }
+    throw err
+  }
 
   return {
     action: 'update',
     block_id: input.block_id,
-    type: blockType,
+    type: blockType || originalBlockType || 'unknown',
     updated: true
   }
 }
 
 /**
- * Block types that should be updated via markdown content (not properties).
- * Subset of UPDATABLE_BLOCK_TYPES. Note: template is NOT here because
- * there's no markdown syntax for it; it must be updated via properties.
+ * Block types that can be updated via the Notion API.
  */
-const TEXT_RICH_BLOCK_TYPES = new Set([
+const UPDATABLE_BLOCK_TYPES = new Set([
   'paragraph',
-  // Note: heading_1/2/3/4 are NOT included here because they can be updated via
-  // properties mode (e.g., to preserve color) in addition to content mode
+  'heading_1',
+  'heading_2',
+  'heading_3',
+  'heading_4',
   'bulleted_list_item',
   'numbered_list_item',
   'quote',
   'to_do',
   'code',
   'toggle',
-  'callout'
+  'callout',
+  'template',
+  'table',
+  'table_row',
+  'column',
+  'synced_block',
+  'link_to_page'
 ])
 
 /**
@@ -376,6 +376,13 @@ const STRUCTURAL_BLOCK_TYPES = new Set([
   'link_to_page',
   'template' // template has no markdown syntax; rich_text must be passed via properties
 ])
+
+/**
+ * Text-only blocks — should be updated via content (markdown), not properties.
+ * Subset of UPDATABLE_BLOCK_TYPES. Excludes headings/paragraph/list items/quote
+ * which CAN accept properties (e.g. to preserve color, check state).
+ */
+const TEXT_ONLY_BLOCK_TYPES = new Set<string>() // No text-rich blocks reject properties — all allow it for color/style
 
 /**
  * Remove block
