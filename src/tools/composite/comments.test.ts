@@ -84,37 +84,42 @@ describe('commentsManage', () => {
       expect(result.results).toEqual([])
     })
 
-    it('should throw COMMENTS_LIST_UNAVAILABLE when Notion returns object_not_found but page exists', async () => {
+    it('should throw COMMENTS_LIST_UNAVAILABLE when OAuth token and Notion returns object_not_found', async () => {
       const notFoundError = new Error('Not found')
       ;(notFoundError as any).code = 'object_not_found'
       mockNotion.comments.list.mockRejectedValue(notFoundError)
-      mockNotion.blocks.retrieve.mockResolvedValue({ id: 'page-1' })
 
-      await expect(
-        commentsManage(mockNotion as any, {
-          action: 'list',
-          page_id: 'page-1'
+      // Set OAuth env var so the code knows it's in OAuth mode
+      const originalVal = process.env.NOTION_OAUTH_CLIENT_ID
+      process.env.NOTION_OAUTH_CLIENT_ID = 'test-client-id'
+      try {
+        await expect(
+          commentsManage(mockNotion as any, {
+            action: 'list',
+            page_id: 'page-1'
+          })
+        ).rejects.toMatchObject({
+          code: 'COMMENTS_LIST_UNAVAILABLE'
         })
-      ).rejects.toMatchObject({
-        code: 'COMMENTS_LIST_UNAVAILABLE',
-        message: 'The comments.list API is currently unavailable for this page due to a known Notion OAuth limitation.'
-      })
-      expect(mockNotion.blocks.retrieve).toHaveBeenCalledWith({ block_id: 'page-1' })
+      } finally {
+        if (originalVal === undefined) delete process.env.NOTION_OAUTH_CLIENT_ID
+        else process.env.NOTION_OAUTH_CLIENT_ID = originalVal
+      }
     })
 
-    it('should re-throw object_not_found (wrapped as NOT_FOUND) if page itself does not exist', async () => {
+    it('should re-throw original error when not in OAuth mode', async () => {
       const notFoundError = new Error('Not found')
       ;(notFoundError as any).code = 'object_not_found'
       mockNotion.comments.list.mockRejectedValue(notFoundError)
-      mockNotion.blocks.retrieve.mockRejectedValue(notFoundError)
-
+      // NOTION_OAUTH_CLIENT_ID not set → re-throw enhanced error (mapNotionError → NOT_FOUND)
       await expect(
         commentsManage(mockNotion as any, {
           action: 'list',
           page_id: 'page-1'
         })
       ).rejects.toMatchObject({
-        code: 'NOT_FOUND'
+        code: 'NOT_FOUND',
+        message: 'Page or database not found'
       })
     })
 
@@ -278,6 +283,7 @@ describe('commentsManage', () => {
     })
 
     it('should throw when Notion API returns an error', async () => {
+      // enhanceError wraps via mapGenericError → preserves original message
       mockNotion.comments.retrieve.mockRejectedValue(new Error('Retrieve failed'))
 
       await expect(
@@ -285,7 +291,10 @@ describe('commentsManage', () => {
           action: 'get',
           comment_id: 'comment-1'
         })
-      ).rejects.toThrow('Retrieve failed')
+      ).rejects.toMatchObject({
+        message: 'Retrieve failed',
+        code: 'UNKNOWN_ERROR'
+      })
     })
   })
 
@@ -333,15 +342,21 @@ describe('commentsManage', () => {
     })
 
     it('should throw when Notion API returns an error', async () => {
-      mockNotion.comments.create.mockRejectedValue(new Error('Create failed'))
+      // Use UNAUTHORIZED code so retryWithBackoff throws immediately without delay
+      const err = new Error('Create failed')
+      ;(err as any).code = 'UNAUTHORIZED'
+      mockNotion.comments.create.mockRejectedValue(err)
 
+      // UNAUTHORIZED is wrapped via mapNotionError → "Invalid or missing Notion API token"
       await expect(
         commentsManage(mockNotion as any, {
           action: 'create',
           page_id: 'page-1',
           content: 'Hello'
         })
-      ).rejects.toThrow('Create failed')
+      ).rejects.toMatchObject({
+        code: 'UNAUTHORIZED'
+      })
     })
   })
 
@@ -385,41 +400,6 @@ describe('commentsManage', () => {
     })
   })
 
-  describe('verifyBlockExists', () => {
-    it('should throw non-object_not_found errors during block retrieve', async () => {
-      const notFoundError = new Error('Not found')
-      ;(notFoundError as any).code = 'object_not_found'
-      mockNotion.comments.list.mockRejectedValue(notFoundError)
-
-      const rateLimitError = new Error('Rate limited')
-      ;(rateLimitError as any).code = 'rate_limited'
-      mockNotion.blocks.retrieve.mockRejectedValue(rateLimitError)
-
-      await expect(
-        commentsManage(mockNotion as any, {
-          action: 'list',
-          page_id: 'page-1'
-        })
-      ).rejects.toMatchObject({
-        code: 'RATE_LIMITED',
-        message: 'Too many requests to Notion API'
-      })
-    })
-
-    it('should throw generic errors during block retrieve', async () => {
-      const notFoundError = new Error('Not found')
-      ;(notFoundError as any).code = 'object_not_found'
-      mockNotion.comments.list.mockRejectedValue(notFoundError)
-
-      const genericError = new Error('Generic error')
-      mockNotion.blocks.retrieve.mockRejectedValue(genericError)
-
-      await expect(
-        commentsManage(mockNotion as any, {
-          action: 'list',
-          page_id: 'page-1'
-        })
-      ).rejects.toThrow('Generic error')
-    })
-  })
+  // Note: verifyBlockExists was removed — its logic is no longer needed
+  // since the code now directly re-throws the original error on object_not_found
 })

@@ -4,7 +4,7 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { autoPaginate } from '../helpers/pagination.js'
 import * as RichText from '../helpers/richtext.js'
 
@@ -14,23 +14,6 @@ export interface CommentsManageInput {
   discussion_id?: string
   action: 'list' | 'get' | 'create'
   content?: string // For create action
-}
-
-/**
- * Verifies if a block exists by attempting to retrieve it.
- * Returns true if the block exists, false if it returns object_not_found.
- * Throws other errors.
- */
-async function verifyBlockExists(notion: Client, blockId: string): Promise<boolean> {
-  try {
-    await notion.blocks.retrieve({ block_id: blockId })
-    return true
-  } catch (error: any) {
-    if (error.code === 'object_not_found') {
-      return false
-    }
-    throw error
-  }
 }
 
 /**
@@ -68,12 +51,16 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
             }))
           }
         } catch (error: any) {
-          if (error.code === 'object_not_found' && (await verifyBlockExists(notion, input.page_id))) {
-            // If retrieve succeeds, it's the known API limitation
-            throw new NotionMCPError(
-              'The comments.list API is currently unavailable for this page due to a known Notion OAuth limitation.',
-              'COMMENTS_LIST_UNAVAILABLE'
-            )
+          if (error.code === 'object_not_found') {
+            // OAuth tokens (detected via NOTION_OAUTH_CLIENT_ID env) hit a known
+            // Notion API bug where comments.list returns object_not_found even for
+            // accessible pages. Internal tokens get the raw error.
+            if (process.env.NOTION_OAUTH_CLIENT_ID) {
+              throw new NotionMCPError(
+                'Comments are not available via the Notion OAuth integration due to a known Notion API limitation. Use an Internal Integration token to access comments.',
+                'COMMENTS_LIST_UNAVAILABLE'
+              )
+            }
           }
           throw error
         }
@@ -133,7 +120,7 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
           }
         }
 
-        const comment = await notion.comments.create(createParams)
+        const comment = await retryWithBackoff(() => notion.comments.create(createParams), { maxRetries: 3 })
 
         return {
           action: 'create',
