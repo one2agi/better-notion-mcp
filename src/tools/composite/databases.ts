@@ -576,7 +576,10 @@ async function createDatabasePages(notion: Client, input: DatabasesInput): Promi
 
       const page = await retryWithBackoff(async () =>
         notion.pages.create({
-          parent: { type: 'database_id', database_id: databaseId },
+          // Bug #11: Notion API 2025-09-03 rejects `database_id` parent when the
+          // database has 2+ data sources ("multiple_data_sources_for_database").
+          // Use `data_source_id` instead — works for both single- and multi-source DBs.
+          parent: { type: 'data_source_id', data_source_id: dataSourceId },
           properties
         } as any)
       )
@@ -705,6 +708,52 @@ async function deleteDatabasePages(notion: Client, input: DatabasesInput): Promi
 }
 
 /**
+ * Normalize property schema options: converts array-style multi_select/select/status
+ * (e.g. { multi_select: [...] }) to the object-style format Notion expects
+ * ({ multi_select: { options: [...] } }).
+ */
+function normalizePropertyOptions(schema: Record<string, any>): Record<string, any> {
+  const typesWithOptions = ['multi_select', 'select', 'status'] as const
+  const result: Record<string, any> = {}
+  for (const [key, value] of Object.entries(schema)) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      // Recurse into nested property objects (e.g. { multi_select: { ... } })
+      result[key] = normalizePropertyOptions(value)
+    } else if (Array.isArray(value)) {
+      // Array-valued property — check if it matches a known option-carrier type
+      const lowerKey = key.toLowerCase()
+      if (typesWithOptions.some((t) => lowerKey === t)) {
+        result[key] = { options: value }
+      } else {
+        result[key] = value
+      }
+    } else {
+      result[key] = value
+    }
+  }
+  return result
+}
+
+/**
+ * Validate that a data source schema includes at least one title-type property.
+ * Notion requires every data source to have a title property.
+ */
+function validateTitleProperty(properties: Record<string, any>): void {
+  const values = Object.values(properties)
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i]
+    if (value && typeof value === 'object' && 'title' in value) {
+      return
+    }
+  }
+  throw new NotionMCPError(
+    'A data source schema must include a title property',
+    'VALIDATION_ERROR',
+    "Add a title property to your schema, e.g. { 'Name': { 'title': {} } } or { '名称': { 'title': {} } }. Title properties use the key 'title' inside the property definition."
+  )
+}
+
+/**
  * Create additional data source for existing database
  * Maps to: POST /v1/data_sources (API 2025-09-03)
  */
@@ -717,10 +766,16 @@ async function createDataSource(notion: Client, input: DatabasesInput): Promise<
     )
   }
 
+  const rawProperties = parseMaybeJSON(input.properties, 'properties')
+  const properties = normalizePropertyOptions(rawProperties ?? {})
+
+  // Notion requires at least one title-type property in the schema
+  validateTitleProperty(properties)
+
   const dataSourceData: any = {
     parent: { type: 'database_id', database_id: input.database_id },
     title: [RichText.text(input.title)],
-    properties: parseMaybeJSON(input.properties, 'properties')
+    properties
   }
 
   if (input.description) {
@@ -758,7 +813,8 @@ async function updateDataSource(notion: Client, input: DatabasesInput): Promise<
 
   const parsedProperties = parseMaybeJSON(input.properties, 'properties')
   if (parsedProperties) {
-    updates.properties = parsedProperties
+    const normalizedProps = normalizePropertyOptions(parsedProperties)
+    updates.properties = normalizedProps
   }
 
   if (Object.keys(updates).length === 0) {

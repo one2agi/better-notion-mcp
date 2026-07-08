@@ -1109,16 +1109,16 @@ describe('normalizeBlockProperties', () => {
         ['C', 'D']
       ]
     })
-    // Notion API: cells is RichText[][] — each cell is itself an array of RichText
-    expect(out.cells).toHaveLength(2)
-    expect(out.cells[0]).toHaveLength(2)
-    expect(out.cells[0][0]).toHaveLength(1)
-    expect(out.cells[0][0][0]).toMatchObject({ type: 'text' })
+    // Output wraps in { table_row: {...} } to match Notion API contract
+    expect(out.table_row.cells).toHaveLength(2)
+    expect(out.table_row.cells[0]).toHaveLength(2)
+    expect(out.table_row.cells[0][0]).toHaveLength(1)
+    expect(out.table_row.cells[0][0][0]).toMatchObject({ type: 'text' })
   })
 
   it('passes through RichText[][] cells', () => {
     const cells = [[{ type: 'text', text: { content: 'A' } }]]
-    expect(normalizeBlockProperties('table_row', { cells }).cells).toBe(cells)
+    expect(normalizeBlockProperties('table_row', { cells }).table_row.cells).toBe(cells)
   })
 
   it('throws on invalid table_row.cells', () => {
@@ -1126,12 +1126,14 @@ describe('normalizeBlockProperties', () => {
   })
 
   it('handles synced_block null (unlink)', () => {
-    expect(normalizeBlockProperties('synced_block', { synced_from: null })).toEqual({ synced_from: null })
+    expect(normalizeBlockProperties('synced_block', { synced_from: null })).toEqual({
+      synced_block: { synced_from: null }
+    })
   })
 
   it('handles synced_block { block_id } (link)', () => {
     expect(normalizeBlockProperties('synced_block', { synced_from: { block_id: 'x' } })).toEqual({
-      synced_from: { block_id: 'x' }
+      synced_block: { synced_from: { block_id: 'x' } }
     })
   })
 
@@ -1142,16 +1144,16 @@ describe('normalizeBlockProperties', () => {
   it('link_to_page requires exactly one target', () => {
     expect(() => normalizeBlockProperties('link_to_page', {})).toThrow(/exactly one/)
     expect(() => normalizeBlockProperties('link_to_page', { page_id: 'p', database_id: 'd' })).toThrow(/exactly one/)
-    expect(normalizeBlockProperties('link_to_page', { page_id: 'p' })).toEqual({ page_id: 'p' })
+    expect(normalizeBlockProperties('link_to_page', { page_id: 'p' })).toEqual({ link_to_page: { page_id: 'p' } })
   })
 
   it('column requires width_ratio in (0, 1]', () => {
     expect(() => normalizeBlockProperties('column', { width_ratio: 0 })).toThrow(/width_ratio/)
     expect(() => normalizeBlockProperties('column', { width_ratio: 2 })).toThrow(/width_ratio/)
-    expect(normalizeBlockProperties('column', { width_ratio: 0.5 })).toEqual({ width_ratio: 0.5 })
+    expect(normalizeBlockProperties('column', { width_ratio: 0.5 })).toEqual({ column: { width_ratio: 0.5 } })
   })
 
-  it('passes through unknown block types', () => {
+  it('passes through unknown block types (caller wraps)', () => {
     expect(normalizeBlockProperties('paragraph', { foo: 'bar' })).toEqual({ foo: 'bar' })
   })
 })

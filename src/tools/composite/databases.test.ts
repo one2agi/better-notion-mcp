@@ -512,9 +512,42 @@ describe('databases', () => {
 
       expect(mockNotion.pages.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          parent: { type: 'database_id', database_id: 'db-1' }
+          // Bug #11: must use data_source_id parent so multi-source databases work
+          // (Notion API 2025-09-03 rejects database_id parent when DB has 2+ data sources)
+          parent: { type: 'data_source_id', data_source_id: 'ds-1' }
         })
       )
+    })
+
+    it('should use data_source_id parent for multi-source databases (Bug #11 reverse test)', async () => {
+      // Reverse contract from real Notion API 400:
+      //   "Databases with multiple data sources are not supported in this API version."
+      //   additional_data.error_type = "multiple_data_sources_for_database"
+      // Root cause: bundle sent parent.database_id which Notion rejects when the
+      // database has 2+ data sources. Fix uses parent.data_source_id — works for
+      // both single- and multi-source DBs.
+      mockNotion.pages.create.mockResolvedValueOnce({
+        id: 'new-page-multi',
+        url: 'https://notion.so/new-page-multi'
+      })
+
+      const result = (await databases(notion, {
+        action: 'create_page',
+        database_id: 'db-1',
+        page_properties: { Name: 'Multi-source DB page' }
+      })) as CreateDatabasePageResponse
+
+      expect(result.processed).toBe(1)
+      // The key assertion: parent MUST be data_source_id, not database_id.
+      // If we ever regress, this catches it before users hit the 400 in prod.
+      expect(mockNotion.pages.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parent: { type: 'data_source_id', data_source_id: 'ds-1' }
+        })
+      )
+      // And we must NOT send the wrong parent type.
+      const callArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(callArgs.parent.database_id).toBeUndefined()
     })
 
     it('should create multiple pages with pages array', async () => {
