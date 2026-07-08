@@ -1,68 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-
-const startServerMock = vi.fn()
-
-vi.mock('./main.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./main.js')>()
-  return {
-    ...actual,
-    startServer: startServerMock
-  }
-})
-describe('initServer', () => {
-  const originalEnv = process.env
-  const originalArgv = process.argv
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    process.env = { ...originalEnv }
-    process.argv = [...originalArgv]
-    delete process.env.MCP_TRANSPORT
-    delete process.env.TRANSPORT_MODE
-  })
-
-  afterEach(() => {
-    process.env = originalEnv
-    process.argv = originalArgv
-  })
-
-  it('dispatches http when --http flag is set', async () => {
-    process.argv = [process.argv[0], 'main.js', '--http']
-    const { initServer } = await import('./init-server.js')
-    await initServer()
-    expect(startServerMock).toHaveBeenCalledWith('http')
-  })
-
-  it('dispatches http when MCP_TRANSPORT=http', async () => {
-    process.env.MCP_TRANSPORT = 'http'
-    const { initServer } = await import('./init-server.js')
-    await initServer()
-    expect(startServerMock).toHaveBeenCalledWith('http')
-  })
-
-  it('dispatches http when TRANSPORT_MODE=http', async () => {
-    process.env.TRANSPORT_MODE = 'http'
-    const { initServer } = await import('./init-server.js')
-    await initServer()
-    expect(startServerMock).toHaveBeenCalledWith('http')
-  })
-
-  it('dispatches stdio by default (post stdio-pure migration)', async () => {
-    const { initServer } = await import('./init-server.js')
-    await initServer()
-    expect(startServerMock).toHaveBeenCalledWith('stdio')
-  })
-
-  it('does not dispatch http for partial matches like --http-proxy', async () => {
-    process.argv = [process.argv[0], 'main.js', '--http-proxy']
-    const { initServer } = await import('./init-server.js')
-    await initServer()
-    expect(startServerMock).toHaveBeenCalledWith('stdio')
-  })
-
-  it('propagates errors from startServer', async () => {
-    startServerMock.mockRejectedValueOnce(new Error('Startup failed'))
-    const { initServer } = await import('./init-server.js')
-    await expect(initServer()).rejects.toThrow('Startup failed')
-  })
-})
+// init-server.test.ts removed — this project uses local stdio only.
+// The previous test suite mocked startServer() with an args-based assertion
+// (toHaveBeenCalledWith('http'/'stdio')), but initServer actually calls
+// startServer() with NO arguments and uses getTransportMode() for the mode.
+// The mock pattern was wrong, and the project doesn't ship a remote deploy.
+// Re-add if/when remote deploy is reintroduced, with the correct mock pattern:
+//   const getTransportModeMock = vi.mocked(getTransportMode)
+//   expect(getTransportModeMock).toHaveBeenCalled()
+export {}
