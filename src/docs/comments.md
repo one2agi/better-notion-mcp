@@ -7,6 +7,10 @@ Comments: list, get, create.
 - Use `page_id` for new discussion
 - Use `discussion_id` (from list) for replies
 
+## Required Capabilities
+
+Your Notion integration must have the **Read comments** and **Insert comments** capabilities enabled at [notion.so/my-integrations](https://www.notion.so/my-integrations). Without these, all `comments` actions return "Integration does not have access to this resource".
+
 ## Actions
 
 ### list

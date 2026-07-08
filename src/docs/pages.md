@@ -3,6 +3,18 @@
 ## Overview
 Page lifecycle: create, get, get_property, update, move, archive, restore, duplicate.
 
+## Input format
+
+The `properties`, `updates`, `filters`, and any other nested-object parameters accept either a parsed object/array **or** a JSON stringification of one. Pass the string form when the calling MCP client serializes arguments as XML (e.g. Claude Code) — XML serialization drops nested content, so `'{"Name":"Task"}'` is the supported workaround. Primitive values (strings, numbers, booleans) and enums are passed as-is.
+
+Example — these are equivalent:
+```json
+{"action": "create", "parent_id": "x", "title": "T", "properties": {"Name": "T", "Count": 42}}
+```
+```json
+{"action": "create", "parent_id": "x", "title": "T", "properties": "{\"Name\":\"T\",\"Count\":42}"}
+```
+
 ## Important
 - **parent_id required** for create (cannot create workspace-level pages)
 - Returns **markdown content** for get action
