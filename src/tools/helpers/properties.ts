@@ -419,11 +419,13 @@ export function normalizeBlockProperties(blockType: string, raw: Record<string, 
       if (cells[0].length > 0 && typeof cells[0][0] === 'string') {
         // string[][] -> RichText[][]
         return {
-          cells: (cells as string[][]).map((row) => row.map((cell) => parseRichText(cell)))
+          table_row: {
+            cells: (cells as string[][]).map((row) => row.map((cell) => parseRichText(cell)))
+          }
         }
       }
       // already RichText[][] - pass through
-      return { cells }
+      return { table_row: { cells } }
     }
     throw new NotionMCPError(
       'table_row.properties.cells must be string[][] or RichText[][]',
@@ -435,10 +437,10 @@ export function normalizeBlockProperties(blockType: string, raw: Record<string, 
   if (blockType === 'synced_block') {
     // Accept { synced_from: null } (unlink) or { synced_from: { block_id } } (link)
     if (raw.synced_from === null) {
-      return { synced_from: null }
+      return { synced_block: { synced_from: null } }
     }
     if (raw.synced_from && typeof raw.synced_from === 'object' && typeof raw.synced_from.block_id === 'string') {
-      return { synced_from: { block_id: raw.synced_from.block_id } }
+      return { synced_block: { synced_from: { block_id: raw.synced_from.block_id } } }
     }
     throw new NotionMCPError(
       'synced_block.properties.synced_from must be null or { block_id: string }',
@@ -456,7 +458,13 @@ export function normalizeBlockProperties(blockType: string, raw: Record<string, 
         'Provide e.g. { page_id: "<page-id>" } or { database_id: "<db-id>" }'
       )
     }
-    return { [targets[0]]: raw[targets[0]] }
+    return { link_to_page: { [targets[0]]: raw[targets[0]] } }
+  }
+
+  if (blockType === 'template') {
+    // Template block has no markdown syntax — caller passes rich_text via properties.
+    // Wrap into { template: {...} } to match Notion API contract.
+    return { template: raw }
   }
 
   if (blockType === 'column') {
@@ -468,10 +476,16 @@ export function normalizeBlockProperties(blockType: string, raw: Record<string, 
         'Provide a positive number up to 1 (e.g. 0.5 for half-width column)'
       )
     }
-    return { width_ratio: ratio }
+    return { column: { width_ratio: ratio } }
   }
 
-  // table: pass-through (has_column_header / has_row_header are already bool)
+  // table: wrap into { table: {...} } to match Notion API contract
+  if (blockType === 'table') {
+    return { table: raw }
+  }
+
+  // For other block types (text-rich like paragraph/heading), pass-through.
+  // The caller (blocks.ts updateBlock) wraps under the block type key itself.
   return raw
 }
 

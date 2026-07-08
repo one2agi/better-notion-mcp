@@ -300,7 +300,10 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
   let schemaForConvert: Record<string, string> | undefined
   try {
     const { databaseId, dataSourceId } = await resolveDataSourceId(notion, normalizedId)
-    parent = { type: 'database_id', database_id: databaseId }
+    // Bug #11: Notion API 2025-09-03 rejects `database_id` parent when the
+    // database has 2+ data sources ("multiple_data_sources_for_database").
+    // Use `data_source_id` instead — works for both single- and multi-source DBs.
+    parent = { type: 'data_source_id', data_source_id: dataSourceId }
 
     // Fetch schema so convertToNotionProperties handles non-English column names correctly.
     const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
@@ -330,7 +333,10 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
   // Convert user-provided properties using schema. If user did not supply a title field,
   // locate the schema's title column dynamically and set it from input.title.
   let properties: Record<string, any> = {}
-  if (parent.database_id) {
+  // Both `data_source_id` and `database_id` parents indicate a database-backed page.
+  // (Bug #11: we now prefer `data_source_id` for API 2025-09-03 compatibility
+  // with multi-source databases.)
+  if (parent.data_source_id || parent.database_id) {
     properties = convertToNotionProperties(parseMaybeJSON(input.properties, 'properties') || {}, schemaForConvert)
 
     if (schemaForConvert) {
@@ -585,68 +591,42 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
     })
   }
 
-  // Handle content updates
+  // Handle content updates using efficient server-side markdown API (SDK v5.22+)
   // Decision matrix:
-  //   content present + replace=true   → delete all blocks, then append parsed content
-  //   content present + replace=false  → append parsed content only (default)
-  //   content empty/omitted + replace=true → delete all blocks (clear page), no append
-  //   append_content present           → append parsed append_content only (replace=false implicit)
-  if (input.content) {
-    if (input.replace) {
-      // Delete existing content only if replace: true is explicitly set
-      const existingBlocks = await autoPaginate((cursor) =>
-        notion.blocks.children.list({
-          block_id: input.page_id!,
-          page_size: 100,
-          start_cursor: cursor
-        })
-      )
+  //   content present + replace=true   → updateMarkdown replace_content (1 API call)
+  //   content present + replace=false  → updateMarkdown insert_content at end (1 API call)
+  //   append_content present           → updateMarkdown insert_content at end (1 API call)
+  //   content empty/omitted + replace=true → updateMarkdown replace_content with empty string (1 API call)
+  const mdApi = notion.pages as unknown as PageMarkdownAPI
 
-      if (existingBlocks.length > 0) {
-        await processBatches(
-          existingBlocks,
-          async (block) => {
-            await retryWithBackoff(() => notion.blocks.delete({ block_id: block.id }))
-          },
-          { batchSize: 5, concurrency: 3 }
-        )
-      }
-    }
-
-    const { blocks: newBlocks } = markdownToBlocks(input.content)
-    if (newBlocks.length > 0) {
-      await notion.blocks.children.append({
-        block_id: input.page_id,
-        children: newBlocks as any
-      })
-    }
+  if (input.content && input.replace) {
+    // Replace entire page content — single API call
+    await mdApi.updateMarkdown({
+      page_id: input.page_id,
+      type: 'replace_content',
+      replace_content: { new_str: input.content, allow_deleting_content: true }
+    })
+  } else if (input.content && !input.replace) {
+    // Append content at end — single API call
+    await mdApi.updateMarkdown({
+      page_id: input.page_id,
+      type: 'insert_content',
+      insert_content: { content: input.content, position: { type: 'end' } }
+    })
   } else if (input.append_content) {
-    const { blocks } = markdownToBlocks(input.append_content)
-    if (blocks.length > 0) {
-      await notion.blocks.children.append({
-        block_id: input.page_id,
-        children: blocks as any
-      })
-    }
+    // Append append_content at end — single API call
+    await mdApi.updateMarkdown({
+      page_id: input.page_id,
+      type: 'insert_content',
+      insert_content: { content: input.append_content, position: { type: 'end' } }
+    })
   } else if (input.replace) {
-    // Boundary: replace=true with empty/omitted content = clear page (delete all, no append)
-    const existingBlocks = await autoPaginate((cursor) =>
-      notion.blocks.children.list({
-        block_id: input.page_id!,
-        page_size: 100,
-        start_cursor: cursor
-      })
-    )
-
-    if (existingBlocks.length > 0) {
-      await processBatches(
-        existingBlocks,
-        async (block) => {
-          await retryWithBackoff(() => notion.blocks.delete({ block_id: block.id }))
-        },
-        { batchSize: 5, concurrency: 3 }
-      )
-    }
+    // Clear page: replace with empty string — single API call
+    await mdApi.updateMarkdown({
+      page_id: input.page_id,
+      type: 'replace_content',
+      replace_content: { new_str: '', allow_deleting_content: true }
+    })
   }
 
   return {
