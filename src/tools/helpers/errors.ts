@@ -189,7 +189,7 @@ const NOTION_ERROR_MAP: Record<string, { message: string; code: string; suggesti
     message: 'Integration does not have access to this resource',
     code: 'RESTRICTED_RESOURCE',
     suggestion:
-      'Share the page/database with your integration in Notion settings. For users/list: try the from_workspace action instead (extracts users from accessible pages).'
+      'For comments: enable the "Read/Insert comments" capabilities on your integration in Notion settings — sharing the page alone is not enough. For other resources: share the page/database with your integration. For users/list: try the from_workspace action instead (extracts users from accessible pages).'
   },
   object_not_found: {
     message: 'Page or database not found',
