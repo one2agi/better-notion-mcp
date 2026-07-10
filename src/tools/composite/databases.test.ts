@@ -25,6 +25,7 @@ const mockNotion = {
   },
   pages: {
     create: vi.fn(),
+    retrieve: vi.fn(),
     update: vi.fn()
   },
   dataSources: {
@@ -1691,5 +1692,64 @@ describe('databases', () => {
         })
       ).rejects.toThrow(/Failed to parse JSON string/)
     })
+  })
+})
+
+describe('update_page schema injection (RC-1)', () => {
+  beforeEach(() => {
+    schemaCache.clear()
+    resolutionCache.clear()
+    vi.clearAllMocks()
+  })
+
+  it('wraps a rich_text string value using the row schema', async () => {
+    mockNotion.pages.retrieve.mockResolvedValue({
+      id: 'page-1',
+      parent: { type: 'data_source_id', data_source_id: 'ds-1', database_id: 'db-1' }
+    })
+    mockNotion.databases.retrieve.mockResolvedValue({ id: 'db-1', data_sources: [{ id: 'ds-1' }] })
+    mockNotion.dataSources.retrieve.mockResolvedValue({
+      id: 'ds-1',
+      properties: {
+        文本: { id: 'aVcE', type: 'rich_text', rich_text: {} },
+        名称: { id: 'title', type: 'title', title: {} }
+      }
+    })
+    mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+    await databases(notion, { action: 'update_page', page_id: 'page-1', page_properties: { 文本: '新值' } })
+
+    expect(mockNotion.pages.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page_id: 'page-1',
+        properties: { 文本: { rich_text: [expect.objectContaining({ text: { content: '新值', link: null } })] } }
+      })
+    )
+  })
+
+  it('strips readonly properties (e.g. formula) before update', async () => {
+    mockNotion.pages.retrieve.mockResolvedValue({
+      id: 'page-1',
+      parent: { type: 'data_source_id', data_source_id: 'ds-1', database_id: 'db-1' }
+    })
+    mockNotion.databases.retrieve.mockResolvedValue({ id: 'db-1', data_sources: [{ id: 'ds-1' }] })
+    mockNotion.dataSources.retrieve.mockResolvedValue({
+      id: 'ds-1',
+      properties: {
+        名称: { id: 'title', type: 'title', title: {} },
+        公式: { id: 'f1', type: 'formula', formula: {} }
+      }
+    })
+    mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+    await databases(notion, {
+      action: 'update_page',
+      page_id: 'page-1',
+      page_properties: { 名称: '标题', 公式: { type: 'formula', formula: { expression: '1' } } }
+    })
+
+    const passed = (mockNotion.pages.update.mock.calls[0][0] as any).properties
+    expect(passed).not.toHaveProperty('公式')
+    expect(passed).toHaveProperty('名称')
   })
 })

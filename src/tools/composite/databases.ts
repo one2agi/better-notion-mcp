@@ -14,7 +14,8 @@ import {
   buildSchemaMap,
   convertToNotionProperties,
   extractPageProperties,
-  readPropertyValue
+  readPropertyValue,
+  sanitizeReadonlyProperties
 } from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
 
@@ -634,7 +635,30 @@ async function updateDatabasePages(notion: Client, input: DatabasesInput): Promi
         throw new NotionMCPError('page_id required for each item', 'VALIDATION_ERROR', 'Provide page_id')
       }
 
-      const properties = convertToNotionProperties(item.properties)
+      // Mirror create_page: fetch the row's data-source schema so string/array/object
+      // values are wrapped per their real property type (RC-1). The DB-row parent on
+      // Notion API 2025-09-03 is `{ type:'data_source_id', database_id, data_source_id }`
+      // — `database_id` is present for both parent shapes, so resolve via it.
+      let schemaTypeMap: Record<string, string> | undefined
+      try {
+        const page: any = await notion.pages.retrieve({ page_id: item.page_id })
+        const parent = page?.parent
+        if (parent?.database_id) {
+          const { dataSourceId } = await resolveDataSourceId(notion, String(parent.database_id).replace(/-/g, ''))
+          const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
+          if (schemaProperties) {
+            schemaTypeMap = {}
+            for (const name of Object.keys(schemaProperties)) {
+              schemaTypeMap[name] = schemaProperties[name]?.type ?? 'rich_text'
+            }
+          }
+        }
+      } catch {
+        // Schema lookup failed — fall back to no schema (historical behavior).
+      }
+
+      const converted = convertToNotionProperties(item.properties, schemaTypeMap)
+      const properties = sanitizeReadonlyProperties(converted)
 
       await retryWithBackoff(async () =>
         notion.pages.update({
