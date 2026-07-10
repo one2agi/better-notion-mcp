@@ -159,10 +159,18 @@ async function getBlockChildren(notion: Client, input: BlocksInput): Promise<Get
  */
 async function appendToBlock(notion: Client, input: BlocksInput): Promise<AppendToBlockResult> {
   if (!input.content && !input.blocks) {
-    throw new NotionMCPError('content or blocks required for append', 'VALIDATION_ERROR', 'Provide markdown content or a blocks array')
+    throw new NotionMCPError(
+      'content or blocks required for append',
+      'VALIDATION_ERROR',
+      'Provide markdown content or a blocks array'
+    )
   }
   if (input.content && input.blocks) {
-    throw new NotionMCPError('Provide either content or blocks, not both', 'VALIDATION_ERROR', 'Pick one: content for markdown parsing, blocks for direct block JSON')
+    throw new NotionMCPError(
+      'Provide either content or blocks, not both',
+      'VALIDATION_ERROR',
+      'Pick one: content for markdown parsing, blocks for direct block JSON'
+    )
   }
   if (input.position === 'after_block' && !input.after_block_id) {
     throw new NotionMCPError(
@@ -259,13 +267,26 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
 
     updatePayload = {}
     if (blockType === 'to_do') {
-      updatePayload.to_do = { rich_text: (newContent as any).to_do?.rich_text || [], checked: (newContent as any).to_do?.checked ?? false }
+      updatePayload.to_do = {
+        rich_text: (newContent as any).to_do?.rich_text || [],
+        checked: (newContent as any).to_do?.checked ?? false
+      }
     } else if (blockType === 'code') {
-      updatePayload.code = { rich_text: (newContent as any).code?.rich_text || [], language: (newContent as any).code?.language || 'plain text' }
+      updatePayload.code = {
+        rich_text: (newContent as any).code?.rich_text || [],
+        language: (newContent as any).code?.language || 'plain text'
+      }
     } else if (blockType === 'callout') {
-      updatePayload.callout = { rich_text: (newContent as any).callout?.rich_text || [], icon: (newContent as any).callout?.icon, color: (newContent as any).callout?.color ?? 'default' }
+      updatePayload.callout = {
+        rich_text: (newContent as any).callout?.rich_text || [],
+        icon: (newContent as any).callout?.icon,
+        color: (newContent as any).callout?.color ?? 'default'
+      }
     } else if (blockType === 'toggle') {
-      updatePayload.toggle = { rich_text: (newContent as any).toggle?.rich_text || [], color: (newContent as any).toggle?.color ?? 'default' }
+      updatePayload.toggle = {
+        rich_text: (newContent as any).toggle?.rich_text || [],
+        color: (newContent as any).toggle?.color ?? 'default'
+      }
     } else if (blockType === 'template') {
       updatePayload.template = { rich_text: (newContent as any).template?.rich_text || [] }
     } else if (blockType === 'image') {
@@ -276,9 +297,15 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
         caption: img.caption || []
       }
     } else if (blockType === 'bookmark') {
-      updatePayload.bookmark = { url: (newContent as any).bookmark?.url || '', caption: (newContent as any).bookmark?.caption || [] }
+      updatePayload.bookmark = {
+        url: (newContent as any).bookmark?.url || '',
+        caption: (newContent as any).bookmark?.caption || []
+      }
     } else if (blockType === 'embed') {
-      updatePayload.embed = { url: (newContent as any).embed?.url || '', caption: (newContent as any).embed?.caption || [] }
+      updatePayload.embed = {
+        url: (newContent as any).embed?.url || '',
+        caption: (newContent as any).embed?.caption || []
+      }
     } else if (blockType === 'divider') {
       updatePayload.divider = {}
     } else if (blockType === 'equation') {
