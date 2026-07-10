@@ -223,6 +223,20 @@ export function convertToNotionProperties(
         converted[key] = toRelation(value)
         continue
       }
+      if (schemaType === 'people') {
+        converted[key] = {
+          people: value.map((v) => (typeof v === 'object' && v !== null && 'id' in v ? v : { id: extractPageId(v) }))
+        }
+        continue
+      }
+      if (schemaType === 'files') {
+        converted[key] = {
+          files: value.map((v) =>
+            typeof v === 'object' && v !== null ? v : { name: String(v), external: { url: String(v) } }
+          )
+        }
+        continue
+      }
       // Could be multi_select, relation, people, files
       // Only assume multi_select if all elements are strings
       if (value.length > 0 && value.every((v) => typeof v === 'string')) {
@@ -237,8 +251,14 @@ export function convertToNotionProperties(
         converted[key] = value
       }
     } else if (typeof value === 'object') {
-      // Already in Notion format or date/complex object
-      converted[key] = value
+      const schemaType = schema?.[key]
+      if (schemaType === 'date' && value !== null && 'start' in value && !('date' in value)) {
+        // Bare {start,end} object for a date column — wrap with the `date` type key.
+        converted[key] = { date: value }
+      } else {
+        // Already in Notion format or date/complex object
+        converted[key] = value
+      }
     } else {
       converted[key] = value
     }

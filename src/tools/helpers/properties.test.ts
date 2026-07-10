@@ -1232,3 +1232,44 @@ describe('buildSchemaMap', () => {
     expect(buildSchemaMap(undefined)).toEqual({})
   })
 })
+
+describe('convertToNotionProperties schema-aware array & object conversion (RC-2/RC-3)', () => {
+  it('wraps string array as people when schema type is people', () => {
+    const result = convertToNotionProperties({ 人员: ['27dd872b-594c-81c3-af22-000219f4599f'] }, { 人员: 'people' })
+    expect(result).toEqual({
+      人员: { people: [{ id: '27dd872b-594c-81c3-af22-000219f4599f' }] }
+    })
+  })
+
+  it('wraps string array as files when schema type is files', () => {
+    const result = convertToNotionProperties({ 文件: ['https://example.com/a.txt'] }, { 文件: 'files' })
+    expect(result).toEqual({
+      文件: { files: [{ name: 'https://example.com/a.txt', external: { url: 'https://example.com/a.txt' } }] }
+    })
+  })
+
+  it('keeps object array elements for people as-is', () => {
+    const result = convertToNotionProperties({ 人员: [{ id: 'u1' }] }, { 人员: 'people' })
+    expect(result).toEqual({ 人员: { people: [{ id: 'u1' }] } })
+  })
+
+  it('wraps bare {start,end} object as date when schema type is date', () => {
+    const result = convertToNotionProperties({ 日期: { start: '2026-07-10', end: '2026-07-11' } }, { 日期: 'date' })
+    expect(result).toEqual({ 日期: { date: { start: '2026-07-10', end: '2026-07-11' } } })
+  })
+
+  it('leaves already-wrapped {date:{...}} untouched', () => {
+    const result = convertToNotionProperties({ 日期: { date: { start: '2026-07-10' } } }, { 日期: 'date' })
+    expect(result).toEqual({ 日期: { date: { start: '2026-07-10' } } })
+  })
+
+  it('still wraps string array as multi_select when no schema (regression)', () => {
+    const result = convertToNotionProperties({ 多选: ['X', 'Y'] })
+    expect(result).toEqual({ 多选: { multi_select: [{ name: 'X' }, { name: 'Y' }] } })
+  })
+
+  it('still wraps string array as relation when schema type is relation (regression)', () => {
+    const result = convertToNotionProperties({ 关联: ['abc'] }, { 关联: 'relation' })
+    expect(result).toEqual({ 关联: { relation: [{ id: 'abc' }] } })
+  })
+})
