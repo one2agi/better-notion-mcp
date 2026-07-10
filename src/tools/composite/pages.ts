@@ -191,7 +191,7 @@ export interface PagesInput {
   replace?: boolean
 
   // Markdown-native actions (Notion SDK v5.22+ markdown endpoints)
-  /** Markdown body for replace_content / insert_markdown / replace_content_range */
+  /** Markdown body for replace_content / insert_markdown. For replace_content_range use `content` (this `new_str` is accepted as an alias). */
   new_str?: string
   /** Markdown content to insert */
   content_range?: string
@@ -545,8 +545,11 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
     try {
       const page = (await notion.pages.retrieve({ page_id: input.page_id })) as PageObjectResponse
       const parent = page.parent
-      if (parent?.type === 'database_id' && parent.database_id) {
-        const dbId = parent.database_id.replace(/-/g, '')
+      // API 2025-09-03: DB-row parent is `data_source_id` but still carries `database_id`.
+      // Guard on `database_id` presence so both parent shapes resolve the schema (RC-1).
+      const parentAny = parent as any
+      if (parentAny?.database_id) {
+        const dbId = String(parentAny.database_id).replace(/-/g, '')
         const { dataSourceId } = await resolveDataSourceId(notion, dbId)
         const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
         if (schemaProperties) {
@@ -985,18 +988,21 @@ async function replacePageContentRange(notion: Client, input: PagesInput): Promi
       'Provide page_id'
     )
   }
-  if (input.content === undefined || input.content === null || !input.content_range) {
+  // `new_str` is accepted as an alias for `content` so callers using the same
+  // naming convention as `replace_content` / `update_content` get a uniform API.
+  const rangeBody = input.content ?? input.new_str
+  if (rangeBody === undefined || rangeBody === null || !input.content_range) {
     throw new NotionMCPError(
-      'content and content_range required for replace_content_range action',
+      'content (or new_str) and content_range required for replace_content_range action',
       'VALIDATION_ERROR',
-      'Provide both content (new markdown) and content_range (existing range to replace)'
+      'Provide both content/new_str (new markdown) and content_range (existing range to replace)'
     )
   }
   const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
     page_id: input.page_id,
     type: 'replace_content_range',
     replace_content_range: {
-      content: input.content,
+      content: rangeBody,
       content_range: input.content_range,
       allow_deleting_content: input.allow_deleting_content ?? false
     }

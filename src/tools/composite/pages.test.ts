@@ -1117,6 +1117,59 @@ describe('pages', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // pages update schema for data_source_id parent (RC-1, Task 5a)
+  //
+  // Notion API 2025-09-03 returns DB-row parent as
+  //   { type: 'data_source_id', database_id, data_source_id }
+  // The guard must look at `database_id` presence (which both parent shapes
+  // carry) instead of `parent.type === 'database_id'`.
+  // ---------------------------------------------------------------------------
+  describe('pages update schema for data_source_id parent (RC-1)', () => {
+    beforeEach(() => {
+      schemaCache.clear()
+      resolutionCache.clear()
+      vi.clearAllMocks()
+      vi.spyOn(console, 'error').mockImplementation(() => {})
+    })
+
+    it('wraps rich_text string when row parent is data_source_id', async () => {
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'page-1',
+        parent: { type: 'data_source_id', data_source_id: 'ds-1', database_id: 'db-1' }
+      })
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-1',
+        data_sources: [{ id: 'ds-1' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-1',
+        properties: {
+          文本: { id: 'aVcE', type: 'rich_text', rich_text: {} },
+          名称: { id: 'title', type: 'title', title: {} }
+        }
+      })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        properties: { 文本: '新值' }
+      })
+
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page_id: 'page-1',
+          properties: expect.objectContaining({
+            文本: {
+              rich_text: [expect.objectContaining({ text: { content: '新值', link: null } })]
+            }
+          })
+        })
+      )
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // move
   // ---------------------------------------------------------------------------
   describe('move', () => {
@@ -1903,8 +1956,36 @@ describe('pages', () => {
 
     it('throws without content or content_range', async () => {
       await expect(pages(mockNotion as any, { action: 'replace_content_range', page_id: 'p1' })).rejects.toThrow(
-        'content and content_range required for replace_content_range action'
+        'content (or new_str) and content_range required for replace_content_range action'
       )
+    })
+
+    // RC-7: `new_str` is accepted as an alias for the replacement body.
+    it('accepts new_str as the replacement body (RC-7)', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'replace_content_range',
+        page_id: 'p1',
+        new_str: '替换正文',
+        content_range: '旧正文'
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'replace_content_range',
+        replace_content_range: {
+          content: '替换正文',
+          content_range: '旧正文',
+          allow_deleting_content: false
+        }
+      })
     })
   })
 
