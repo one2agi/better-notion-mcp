@@ -72,7 +72,7 @@ describe('enhanceError', () => {
 
       expect(result.code).toBe('RESTRICTED_RESOURCE')
       expect(result.message).toContain('does not have access')
-      expect(result.suggestion).toContain('Share')
+      expect(result.suggestion).toContain('share the page/database')
     })
 
     it('should handle object_not_found error', () => {
@@ -513,5 +513,12 @@ describe('findClosestMatch', () => {
 
   it('should return the match with the highest score', () => {
     expect(findClosestMatch('test', ['testing', 'tent'])).toBe('testing')
+  })
+})
+
+describe('restricted_resource suggestion (RC-6)', () => {
+  it('mentions comment capabilities, not only page sharing', () => {
+    const result = enhanceError({ code: 'restricted_resource', message: 'Insufficient permissions for this endpoint.' })
+    expect(result.suggestion).toMatch(/capabilit/i)
   })
 })
