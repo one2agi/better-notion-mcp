@@ -75,13 +75,18 @@ function formatEmojiIcon(value: string): { type: 'emoji'; emoji: string } {
  * - External URL: "https://..." -> { type: "external", external: { url } }
  * - Notion built-in shorthand: "document:gray" -> { type: "external", external: { url: "https://www.notion.so/icons/document_gray.svg" } }
  */
-export function formatIcon(value: string): { type: string; [key: string]: any } {
+export function formatIcon(value: string): { type: string; [key: string]: any } | null {
   if (!value || typeof value !== 'string') {
     throw new NotionMCPError(
-      'Icon value must be a non-empty string. Provide an emoji, a valid URL, or a built-in shorthand (name:color).',
+      'Icon value must be a non-empty string. Provide an emoji, a valid URL, a built-in shorthand (name:color), or "none" to clear.',
       'VALIDATION_ERROR',
-      'Provide an emoji, an http/https URL, or a Notion icon shorthand like "document:gray"'
+      'Provide an emoji, an http/https URL, a Notion icon shorthand like "document:gray", or "none" to remove the icon'
     )
+  }
+
+  // "none" clears the icon — callers assign the null through to Notion (icon: null).
+  if (value.toLowerCase() === 'none') {
+    return null
   }
 
   return formatHttpIcon(value) ?? formatShorthandIcon(value) ?? formatEmojiIcon(value)
