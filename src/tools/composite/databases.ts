@@ -889,7 +889,18 @@ async function updateDatabaseContainer(notion: Client, input: DatabasesInput): P
   }
 
   if (input.icon) {
-    updates.icon = formatIcon(input.icon)
+    const icon = formatIcon(input.icon)
+    if (icon === null) {
+      // Notion's Update-a-Database API cannot clear an icon: its `icon` request type is
+      // PageIconRequest (no null/empty variant), unlike pages which accept `icon: null`.
+      // Sending null yields a 400. Fail loudly with the actual contract instead.
+      throw new NotionMCPError(
+        'Notion does not support clearing a database icon via the API',
+        'VALIDATION_ERROR',
+        'A database icon can only be changed to another emoji/URL — it cannot be removed (Notion API limitation: icon has no null/empty request variant; the same applies to cover). Page icons CAN be cleared with icon="none". To remove a database icon, do it manually in the Notion app.'
+      )
+    }
+    updates.icon = icon
   }
 
   if (input.cover) updates.cover = formatCover(input.cover)

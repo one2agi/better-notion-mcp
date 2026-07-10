@@ -1753,3 +1753,26 @@ describe('update_page schema injection (RC-1)', () => {
     expect(passed).toHaveProperty('名称')
   })
 })
+
+describe('update_database icon clear is unsupported by Notion (RC-8)', () => {
+  beforeEach(() => {
+    schemaCache.clear()
+    resolutionCache.clear()
+    vi.clearAllMocks()
+  })
+
+  it('throws a clear error instead of sending icon:null to databases.update', async () => {
+    await expect(databases(notion, { action: 'update_database', database_id: 'db-1', icon: 'none' })).rejects.toThrow(
+      /does not support clearing a database icon/i
+    )
+    expect(mockNotion.databases.update).not.toHaveBeenCalled()
+  })
+
+  it('still sets a real emoji icon on the database', async () => {
+    mockNotion.databases.update.mockResolvedValue({})
+    await databases(notion, { action: 'update_database', database_id: 'db-1', icon: '🧪' })
+    expect(mockNotion.databases.update).toHaveBeenCalledWith(
+      expect.objectContaining({ icon: { type: 'emoji', emoji: '🧪' } })
+    )
+  })
+})
