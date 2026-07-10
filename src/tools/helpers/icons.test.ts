@@ -144,4 +144,26 @@ describe('formatIcon', () => {
       expect(() => formatIcon(123 as any)).toThrow(/Icon value must be a non-empty string/)
     })
   })
+
+  describe('formatIcon clear support (RC-8)', () => {
+    it('returns null for "none" so callers can send icon:null', () => {
+      expect(formatIcon('none')).toBeNull()
+    })
+
+    it('is case-insensitive for none', () => {
+      expect(formatIcon('None')).toBeNull()
+      expect(formatIcon('NONE')).toBeNull()
+    })
+
+    it('still formats emoji normally', () => {
+      expect(formatIcon('🧪')).toEqual({ type: 'emoji', emoji: '🧪' })
+    })
+
+    it('still formats https URL normally', () => {
+      expect(formatIcon('https://example.com/i.png')).toEqual({
+        type: 'external',
+        external: { url: 'https://example.com/i.png' }
+      })
+    })
+  })
 })
