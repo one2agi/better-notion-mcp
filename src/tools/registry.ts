@@ -423,7 +423,7 @@ const TOOLS = [
   {
     name: 'file_uploads',
     description:
-      'Upload files to Notion.\n\nActions (required params -> optional):\n- create (filename -> content_type, mode="single"|"multi_part", number_of_parts)\n- send (file_upload_id, file_content -> part_number): base64-encoded content\n- complete (file_upload_id)\n- retrieve (file_upload_id)\n- list (-> limit)\n\nMax 20MB direct, multi-part for larger files.',
+      'Upload files to Notion.\n\nActions (required params -> optional):\n- create (filename -> content_type, mode="single"|"multi_part", number_of_parts)\n- send (file_upload_id, file_content -> part_number): base64-encoded content; single-part auto-finalizes to status=uploaded\n- complete (file_upload_id): idempotent; required only for multi_part, no-op for already-uploaded single-part\n- retrieve (file_upload_id)\n- list (-> limit)\n\nMax 20MB direct, multi-part for larger files.',
     annotations: {
       title: 'File Uploads',
       readOnlyHint: false,
