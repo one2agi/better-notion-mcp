@@ -175,7 +175,14 @@ async function sendFileUpload(notion: Client, input: FileUploadsInput): Promise<
 }
 
 /**
- * Complete a file upload session
+ * Complete a file upload session.
+ *
+ * Idempotent and mode-aware: Notion's `complete` endpoint is multi-part-only.
+ * Single-part uploads auto-finalize to `status='uploaded'` inside `send()`,
+ * so calling `complete()` afterwards returns 400 from the live API. We
+ * retrieve current state first and short-circuit when the upload is already
+ * finalized.
+ *
  * Maps to: POST /v1/file_uploads/{id}/complete
  */
 async function completeFileUpload(notion: Client, input: FileUploadsInput): Promise<any> {
@@ -187,16 +194,41 @@ async function completeFileUpload(notion: Client, input: FileUploadsInput): Prom
     )
   }
 
-  const response: any = await notion.fileUploads.complete({
+  // Step 1: check current status so we don't call SDK when not needed.
+  const current: any = await notion.fileUploads.retrieve({
     file_upload_id: input.file_upload_id
   })
 
-  return {
-    action: 'complete',
-    file_upload_id: input.file_upload_id,
-    status: response.status || 'uploaded',
-    completed: true
+  // Step 2: already finalized by single-part send() — synthetic success.
+  if (current.status === 'uploaded') {
+    return {
+      action: 'complete',
+      file_upload_id: input.file_upload_id,
+      status: 'uploaded',
+      completed: true,
+      note: 'Upload already finalized by send(); complete() is multi-part-only.'
+    }
   }
+
+  // Step 3: still in progress and multi-part — finalize via SDK.
+  if (current.status === 'pending' && current.mode === 'multi_part') {
+    const response: any = await notion.fileUploads.complete({
+      file_upload_id: input.file_upload_id
+    })
+    return {
+      action: 'complete',
+      file_upload_id: input.file_upload_id,
+      status: response.status || 'uploaded',
+      completed: true
+    }
+  }
+
+  // Step 4: any other state (failed, expired, single-pending, ...) is not safe to finalize.
+  throw new NotionMCPError(
+    `Cannot complete upload in status '${current.status}'`,
+    'UNEXPECTED_STATE',
+    'Check upload status with retrieve() and verify mode is multi_part if needed.'
+  )
 }
 
 /**

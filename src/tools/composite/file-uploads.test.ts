@@ -191,7 +191,13 @@ describe('fileUploads', () => {
   })
 
   describe('complete', () => {
-    it('should complete a file upload', async () => {
+    it('should complete a multi-part pending upload', async () => {
+      // pending + multi_part => must hit SDK complete()
+      mockNotion.fileUploads.retrieve.mockResolvedValue({
+        id: 'upload-123',
+        status: 'pending',
+        mode: 'multi_part'
+      })
       mockNotion.fileUploads.complete.mockResolvedValue({ status: 'uploaded' })
 
       const result = await fileUploads(mockNotion as any, {
@@ -205,9 +211,70 @@ describe('fileUploads', () => {
         status: 'uploaded',
         completed: true
       })
+      expect(mockNotion.fileUploads.retrieve).toHaveBeenCalledWith({
+        file_upload_id: 'upload-123'
+      })
+      expect(mockNotion.fileUploads.complete).toHaveBeenCalledTimes(1)
       expect(mockNotion.fileUploads.complete).toHaveBeenCalledWith({
         file_upload_id: 'upload-123'
       })
+    })
+
+    it('should be a no-op when upload is already finalized by send()', async () => {
+      // Live Notion API: single-part send() auto-finalizes status='uploaded'.
+      // complete() is multi-part-only per current Notion API; calling it on an
+      // already-uploaded session returns 400. Wrapper must short-circuit.
+      mockNotion.fileUploads.retrieve.mockResolvedValue({
+        id: 'upload-123',
+        status: 'uploaded'
+      })
+
+      const result = await fileUploads(mockNotion as any, {
+        action: 'complete',
+        file_upload_id: 'upload-123'
+      })
+
+      expect(result.completed).toBe(true)
+      expect(result.status).toBe('uploaded')
+      expect(result.file_upload_id).toBe('upload-123')
+      expect(result.action).toBe('complete')
+      expect(result.note).toMatch(/already finalized/i)
+      // SDK complete() must NEVER be called when status is already 'uploaded'
+      expect(mockNotion.fileUploads.complete).not.toHaveBeenCalled()
+    })
+
+    it('should not throw and skip SDK call when status is already uploaded (live Notion 400 contract)', async () => {
+      // Mirrors the live Notion API contract:
+      //   POST /v1/file_uploads/{id}/complete on an already-uploaded session
+      //   returns 400. The wrapper must NOT propagate that error.
+      mockNotion.fileUploads.retrieve.mockResolvedValue({
+        id: 'upload-456',
+        status: 'uploaded'
+      })
+
+      await expect(
+        fileUploads(mockNotion as any, {
+          action: 'complete',
+          file_upload_id: 'upload-456'
+        })
+      ).resolves.toMatchObject({ completed: true, status: 'uploaded' })
+
+      expect(mockNotion.fileUploads.complete).not.toHaveBeenCalled()
+    })
+
+    it('should throw UNEXPECTED_STATE on status other than uploaded or pending+multi_part', async () => {
+      mockNotion.fileUploads.retrieve.mockResolvedValue({
+        id: 'upload-789',
+        status: 'failed'
+      })
+
+      await expect(
+        fileUploads(mockNotion as any, {
+          action: 'complete',
+          file_upload_id: 'upload-789'
+        })
+      ).rejects.toThrow(/Cannot complete upload in status 'failed'/)
+      expect(mockNotion.fileUploads.complete).not.toHaveBeenCalled()
     })
 
     it('should throw without file_upload_id', async () => {
