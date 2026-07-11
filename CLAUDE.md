@@ -63,7 +63,7 @@ mise run fix                # bun run check:fix
 
 - Conventional Commits. Tag format: `v{version}` (config: `semantic-release.toml`)
 - CD: workflow_dispatch, chon beta/stable
-- Pipeline: PSR v10 -> npm publish (`@n24q02m/better-notion-mcp`) -> Docker multi-arch (amd64 + arm64) -> DockerHub + GHCR -> MCP Registry
+- Pipeline: PSR v10 -> npm publish (`@faize/better-notion-mcp`) -> Docker multi-arch (amd64 + arm64) -> DockerHub + GHCR -> MCP Registry
 - OCI VM deploy: Docker Compose + Watchtower. Prod `:latest` 0.125G, Staging `:beta` 0.0625G
 - Cloudflare deploy (canonical, manual via wrangler): `notion.n24q02m.com` (Worker + Container + KV). Legacy OCI VM: `better-notion-mcp.n24q02m.com` (prod) / `better-notion-mcp-staging.n24q02m.com` (staging) — fallback until decommission.
 

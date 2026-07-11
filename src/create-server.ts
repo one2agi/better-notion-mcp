@@ -31,7 +31,7 @@ function getVersion(): string {
  */
 export function createMCPServer(notionClientFactory: () => Client): Server {
   const server = new Server(
-    { name: '@n24q02m/better-notion-mcp', version: getVersion() },
+    { name: '@faize/better-notion-mcp', version: getVersion() },
     { capabilities: { tools: {}, resources: {} } }
   )
   registerTools(server, notionClientFactory)

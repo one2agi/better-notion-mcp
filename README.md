@@ -1,15 +1,15 @@
 # Better Notion MCP
 
-mcp-name: io.github.n24q02m/better-notion-mcp
+mcp-name: io.github.faize/better-notion-mcp
 
 **Markdown-first Notion for AI agents -- pages, databases, blocks, and comments in one call.**
 
 <!-- Badge Row 1: Status -->
-[![CI](https://github.com/n24q02m/better-notion-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/n24q02m/better-notion-mcp/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/n24q02m/better-notion-mcp/graph/badge.svg?token=D7FSDVVTAN)](https://codecov.io/gh/n24q02m/better-notion-mcp)
-[![npm](https://img.shields.io/npm/v/@n24q02m/better-notion-mcp?logo=npm&logoColor=white)](https://www.npmjs.com/package/@n24q02m/better-notion-mcp)
-[![Docker](https://img.shields.io/docker/v/n24q02m/better-notion-mcp?label=docker&logo=docker&logoColor=white&sort=semver)](https://hub.docker.com/r/n24q02m/better-notion-mcp)
-[![License: MIT](https://img.shields.io/github/license/n24q02m/better-notion-mcp)](LICENSE)
+[![CI](https://github.com/faize/better-notion-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/faize/better-notion-mcp/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/faize/better-notion-mcp/graph/badge.svg?token=D7FSDVVTAN)](https://codecov.io/gh/faize/better-notion-mcp)
+[![npm](https://img.shields.io/npm/v/@faize/better-notion-mcp?logo=npm&logoColor=white)](https://www.npmjs.com/package/@faize/better-notion-mcp)
+[![Docker](https://img.shields.io/docker/v/faize/better-notion-mcp?label=docker&logo=docker&logoColor=white&sort=semver)](https://hub.docker.com/r/faize/better-notion-mcp)
+[![License: MIT](https://img.shields.io/github/license/faize/better-notion-mcp)](LICENSE)
 
 <!-- Badge Row 2: Tech -->
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](#)
@@ -27,7 +27,7 @@ mcp-name: io.github.n24q02m/better-notion-mcp
 | [better-code-review-graph](https://github.com/n24q02m/better-code-review-graph) | Knowledge graph for token-efficient code reviews -- semantic search and call-... | MCP |
 | [better-email-mcp](https://github.com/n24q02m/better-email-mcp) | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP |
 | [better-godot-mcp](https://github.com/n24q02m/better-godot-mcp) | Composite MCP server for Godot Engine -- 17 composite tools for AI-assisted g... | MCP |
-| [better-notion-mcp](https://github.com/n24q02m/better-notion-mcp) | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP |
+| [better-notion-mcp](https://github.com/faize/better-notion-mcp) | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP |
 | [better-telegram-mcp](https://github.com/n24q02m/better-telegram-mcp) | Telegram for AI agents -- messages, chats, media, and contacts across both bo... | MCP |
 | [claude-plugins](https://github.com/n24q02m/claude-plugins) | Claude Code plugin marketplace for the n24q02m MCP servers -- install web sea... | Marketplace |
 | [imagine-mcp](https://github.com/n24q02m/imagine-mcp) | Image and video understanding + generation for AI agents -- across Gemini, Op... | MCP |
@@ -60,8 +60,8 @@ mcp-name: io.github.n24q02m/better-notion-mcp
 
 
 
-<a href="https://glama.ai/mcp/servers/n24q02m/better-notion-mcp">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/n24q02m/better-notion-mcp/badge" alt="Better Notion MCP server" />
+<a href="https://glama.ai/mcp/servers/faize/better-notion-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/faize/better-notion-mcp/badge" alt="Better Notion MCP server" />
 </a>
 
 ## Features
@@ -82,7 +82,7 @@ Run with `npx` (Node.js >= 24) and a Notion integration token from <https://www.
   "mcpServers": {
     "better-notion-mcp": {
       "command": "npx",
-      "args": ["--yes", "@n24q02m/better-notion-mcp@latest"],
+      "args": ["--yes", "@faize/better-notion-mcp@latest"],
       "env": { "NOTION_TOKEN": "ntn_your_token_here" }
     }
   }
@@ -92,7 +92,7 @@ Run with `npx` (Node.js >= 24) and a Notion integration token from <https://www.
 Or run the published Docker image (stdio):
 
 ```bash
-docker run --rm -i -e NOTION_TOKEN=ntn_your_token_here n24q02m/better-notion-mcp:latest
+docker run --rm -i -e NOTION_TOKEN=ntn_your_token_here faize/better-notion-mcp:latest
 ```
 
 See the [Documentation](#documentation) section for per-client setup (Claude Code, Codex, Gemini CLI, Cursor, Windsurf) and HTTP/OAuth mode.
@@ -195,18 +195,18 @@ docker run -p 8080:8080 \
   -e PUBLIC_URL=https://your-domain.com \
   -e NOTION_OAUTH_CLIENT_ID=your-client-id \
   -e NOTION_OAUTH_CLIENT_SECRET=your-client-secret \
-  n24q02m/better-notion-mcp:latest
+  faize/better-notion-mcp:latest
 ```
 
 ## Deploy to Cloudflare
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/n24q02m/better-notion-mcp)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/faize/better-notion-mcp)
 
 Run your own multi-user better-notion-mcp serverless on Cloudflare (Worker + Container + KV).
 
 **Prerequisites:** a Cloudflare account on the **Workers Paid plan** — required for Containers (the Cloudflare free tier does not include Containers) — and the `wrangler` CLI.
 
-1. `git clone https://github.com/n24q02m/better-notion-mcp && cd better-notion-mcp`
+1. `git clone https://github.com/faize/better-notion-mcp && cd better-notion-mcp`
 2. `wrangler login`
 3. Provision the KV namespace and paste its id into `wrangler.jsonc`:
    ```
@@ -255,7 +255,7 @@ How better-notion-mcp stacks up against direct competitors in each pillar:
 ## Build from Source
 
 ```bash
-git clone https://github.com/n24q02m/better-notion-mcp.git
+git clone https://github.com/faize/better-notion-mcp.git
 cd better-notion-mcp
 bun install
 bun run dev
