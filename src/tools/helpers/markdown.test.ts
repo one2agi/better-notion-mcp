@@ -742,6 +742,36 @@ describe('markdownToBlocks', () => {
       expect(blocks[1].type).toBe('bulleted_list_item')
     })
   })
+
+  // BUG #5: silent markdown degradation. When the parser cannot match a construct
+  // (unclosed code fence, unclosed <details> toggle, unrecognized markdown that
+  // falls through to paragraph), it currently emits no warning. The caller has no
+  // signal that the round-trip will lose information.
+  describe('MALFORMED_BLOCK warnings (BUG #5)', () => {
+    it('should emit MALFORMED_BLOCK warning when code fence is never closed', () => {
+      const { blocks, warnings } = markdownToBlocks('```js\nconst x = 1\n')
+      // Parser still produces a code block (graceful degrade)
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('code')
+      // But emits a warning so the caller knows the fence was unclosed
+      const codeWarnings = warnings.filter((w) => w.code === 'MALFORMED_BLOCK' && w.message.includes('code fence'))
+      expect(codeWarnings).toHaveLength(1)
+      expect(codeWarnings[0].original_line).toBe('```js')
+    })
+
+    it('should emit MALFORMED_BLOCK warning when <details> toggle is never closed', () => {
+      const { blocks, warnings } = markdownToBlocks('<details><summary>Title</summary>\nbody content without close')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('toggle')
+      const toggleWarnings = warnings.filter((w) => w.code === 'MALFORMED_BLOCK' && w.message.includes('<details>'))
+      expect(toggleWarnings).toHaveLength(1)
+    })
+
+    it('should NOT emit warnings for valid input', () => {
+      const { warnings } = markdownToBlocks('# Title\n\nSome paragraph\n\n- list item')
+      expect(warnings).toHaveLength(0)
+    })
+  })
 })
 
 // ============================================================

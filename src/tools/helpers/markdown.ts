@@ -208,6 +208,9 @@ class MarkdownParser {
     // Toggle <details><summary>Title</summary>
     if (trimmedLine === '<details>' || trimmedLine.startsWith('<details>')) {
       const toggleData = parseToggle(this.lines, i)
+      if (toggleData.unclosed) {
+        this.addWarning('MALFORMED_BLOCK', `Unclosed <details> toggle starting at line ${i + 1}`, line)
+      }
       this.blocks.push(createToggle(toggleData.title, toggleData.children))
       return toggleData.endIndex
     }
@@ -242,6 +245,9 @@ class MarkdownParser {
     // Code block
     else if (line.startsWith('```')) {
       const codeData = parseCodeBlock(this.lines, i, line)
+      if (codeData.warning) {
+        this.addWarning('MALFORMED_BLOCK', codeData.warning, line)
+      }
       this.blocks.push(codeData.block)
       return codeData.endIndex
     }
@@ -778,7 +784,7 @@ function parseCalloutBlock(lines: string[], startIndex: number, match: RegExpMat
   return { block: createCallout(calloutContent || calloutType, icon, color), endIndex: i }
 }
 
-function parseCodeBlock(lines: string[], startIndex: number, line: string): ParseResult {
+function parseCodeBlock(lines: string[], startIndex: number, line: string): ParseResult & { warning?: string } {
   const language = line.slice(3).trim()
   const codeLines: string[] = []
   let i = startIndex + 1
@@ -786,7 +792,8 @@ function parseCodeBlock(lines: string[], startIndex: number, line: string): Pars
     codeLines.push(lines[i])
     i++
   }
-  return { block: createCodeBlock(codeLines.join('\n'), language), endIndex: i }
+  const warning = i >= lines.length ? `Unclosed code fence starting with \`${line}\`` : undefined
+  return { block: createCodeBlock(codeLines.join('\n'), language), endIndex: i, warning }
 }
 
 function parseEquationBlock(lines: string[], startIndex: number, trimmedLine: string): ParseResult {
@@ -886,6 +893,7 @@ interface ToggleParseResult {
   title: string
   children: NotionBlock[]
   endIndex: number
+  unclosed: boolean
 }
 
 function parseToggle(lines: string[], startIndex: number): ToggleParseResult {
@@ -911,7 +919,7 @@ function parseToggle(lines: string[], startIndex: number): ToggleParseResult {
       }
       const childContent = childLines.join('\n').trim()
       const children = childContent ? markdownToBlocks(childContent).blocks : []
-      return { title, children, endIndex: i }
+      return { title, children, endIndex: i, unclosed: false }
     }
 
     // Inline summary but content continues on subsequent lines
@@ -935,6 +943,7 @@ function parseToggle(lines: string[], startIndex: number): ToggleParseResult {
 
   // Collect content until matching </details>, tracking nesting depth
   let depth = 1
+  let unclosed = false
   while (i < lines.length && depth > 0) {
     const trimmed = lines[i].trim()
 
@@ -953,11 +962,17 @@ function parseToggle(lines: string[], startIndex: number): ToggleParseResult {
     i++
   }
 
+  // If we exited the loop because i hit lines.length without depth returning to 0,
+  // the toggle is unclosed. Caller surfaces this as a MALFORMED_BLOCK warning.
+  if (depth > 0) {
+    unclosed = true
+  }
+
   // Convert child content to blocks
   const childContent = childLines.join('\n').trim()
   const children = childContent ? markdownToBlocks(childContent).blocks : []
 
-  return { title, children, endIndex: i }
+  return { title, children, endIndex: i, unclosed }
 }
 
 // ============================================================

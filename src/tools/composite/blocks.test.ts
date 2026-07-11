@@ -361,6 +361,28 @@ describe('Blocks Tool', () => {
         'content or blocks required'
       )
     })
+
+    // BUG #5: blocks.append silently degrades malformed markdown without surfacing warnings
+    // to the caller. The parser knows something went wrong (unclosed <details>, unclosed
+    // code fence, unrecognized markdown → paragraph) but the dispatcher discards the
+    // warnings from markdownToBlocks. After the fix, append surfaces warnings[] when
+    // markdown degrades so callers can decide whether to retry or fall back.
+    it('should surface warnings[] when input markdown degrades (unclosed <details>)', async () => {
+      mockNotion.blocks.children.append.mockResolvedValue({})
+
+      const result = await blocks(mockNotion as any, {
+        action: 'append',
+        block_id: 'block-1',
+        content: '<details><summary>Title</summary>\nbody content without closing'
+      })
+
+      // Append still succeeds (parser degrades gracefully), but warnings reach the caller
+      expect((result as any).action).toBe('append')
+      expect((result as any).appended_count).toBe(1)
+      expect((result as any).warnings).toBeDefined()
+      expect((result as any).warnings.length).toBeGreaterThan(0)
+      expect((result as any).warnings.some((w: any) => w.code === 'MALFORMED_BLOCK')).toBe(true)
+    })
   })
 
   describe('update', () => {
@@ -447,10 +469,10 @@ describe('Blocks Tool', () => {
     })
 
     it('should throw when content type does not match block type', async () => {
-      // Without pre-fetch, type mismatch is detected by Notion API response
+      // Without pre-fetch, type mismatch is detected by Notion API response.
       const apiError = new Error('Block type mismatch: expected paragraph, got heading_1')
       ;(apiError as any).code = 'validation_error'
-      ;(apiError as any).message = 'type mismatch'
+      ;(apiError as any).message = 'block type cannot be updated via this endpoint'
       mockNotion.blocks.update.mockRejectedValue(apiError)
 
       await expect(
@@ -460,6 +482,38 @@ describe('Blocks Tool', () => {
           content: '# New Heading'
         })
       ).rejects.toThrow('Block type cannot be updated')
+    })
+
+    // BUG #1: the catch-all in blocks.ts:352-357 matches err.message?.includes('type') which is
+    // too broad — any validation_error whose message contains the substring "type"
+    // (e.g. "this block type does not support is_toggleable", "body.X.type is expected to be ...")
+    // gets relabelled as 'Block type cannot be updated', hiding the real Notion API contract
+    // from the caller. This test exercises that path: the message contains 'type' (so the
+    // catch-all fires today) but is NOT actually a whitelist mismatch (so we expect the
+    // original message to reach the caller after the fix).
+    it('should surface original Notion error when API rejects with non-whitelist validation_error mentioning type', async () => {
+      const apiError = new Error('Validation failed: this block type does not support property is_toggleable')
+      ;(apiError as any).code = 'validation_error'
+      ;(apiError as any).message = 'Validation failed: this block type does not support property is_toggleable'
+      ;(apiError as any).body = { message: 'this block type does not support property is_toggleable' }
+      mockNotion.blocks.update.mockRejectedValue(apiError)
+
+      let caught: any
+      try {
+        await blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          content: '# heading 1'
+        })
+      } catch (err) {
+        caught = err
+      }
+
+      expect(caught).toBeDefined()
+      // Original API message must reach the caller
+      expect(caught.message).toContain('does not support property is_toggleable')
+      // Must NOT be relabelled as the misleading whitelist error
+      expect(caught.message).not.toContain('Block type cannot be updated')
     })
 
     it('should update to_do block with checked state', async () => {
@@ -1035,7 +1089,7 @@ describe('Blocks Tool', () => {
         // Fix #13: pre-check is removed; the Notion API now rejects properties for unsupported types.
         const apiError = new Error('Block type cannot be updated')
         ;(apiError as any).code = 'validation_error'
-        ;(apiError as any).message = 'block type'
+        ;(apiError as any).message = "block type 'image' cannot be updated"
         mockNotion.blocks.update.mockRejectedValue(apiError)
 
         await expect(

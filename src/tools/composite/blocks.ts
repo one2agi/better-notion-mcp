@@ -31,6 +31,7 @@ export interface AppendToBlockResult {
   action: 'append'
   block_id: string
   appended_count: number
+  warnings?: import('../helpers/markdown.js').MarkdownWarning[]
 }
 
 export interface UpdateBlockResult {
@@ -180,12 +181,14 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
     )
   }
   let blocksList: any[]
+  let markdownWarnings: import('../helpers/markdown.js').MarkdownWarning[] | undefined
   if (input.blocks) {
     // Direct block JSON path (structural types: synced_block, link_to_page, table, table_row, column, column_list)
     blocksList = input.blocks
   } else {
-    const { blocks: parsed } = markdownToBlocks(input.content!)
+    const { blocks: parsed, warnings } = markdownToBlocks(input.content!)
     blocksList = parsed
+    markdownWarnings = warnings
     // Notion API rejects column_ratio in format when creating column blocks via blocks.children.append.
     // Strip format.column_ratio from any column blocks (width is set implicitly or via separate update).
     for (const block of blocksList) {
@@ -207,11 +210,17 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
     appendParams.position = { type: 'after_block', after_block: { id: input.after_block_id } }
   }
   await notion.blocks.children.append(appendParams)
-  return {
+  const result: AppendToBlockResult = {
     action: 'append',
     block_id: input.block_id,
     appended_count: blocksList.length
   }
+  // BUG #5: surface parser warnings to the caller so silent markdown degradation
+  // (unclosed code fence, unclosed <details> toggle) is visible at the API boundary.
+  if (markdownWarnings && markdownWarnings.length > 0) {
+    result.warnings = markdownWarnings
+  }
+  return result
 }
 
 /**
@@ -349,7 +358,19 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
         'The specified block does not exist'
       )
     }
-    if (err.code === 'validation_error' && err.message?.includes('type')) {
+    // BUG #1: only relabel validation_errors that look like an actual whitelist mismatch
+    // ("block type X cannot be updated/created"). Loose substring match on "type" used to
+    // swallow unrelated field-level errors (e.g. "this block type does not support
+    // property is_toggleable") and hide the real Notion API contract from the caller.
+    const bodyMessage: string = err.body?.message || err.message || ''
+    // Phrasings observed in real Notion API responses:
+    //   "Block type 'image' cannot be updated."
+    //   "block type 'foo' is not supported"
+    //   "body block type 'foo' cannot be created"
+    const isWhitelistMismatch =
+      /block type .*?(cannot|can't|is not|not) be (updated|created|changed|modified)/i.test(bodyMessage) ||
+      /block type .*?(not |un)(supported|allowed|changeable|changeable|updatable|changeable)/i.test(bodyMessage)
+    if (err.code === 'validation_error' && isWhitelistMismatch) {
       throw new NotionMCPError(
         `Block type cannot be updated`,
         'VALIDATION_ERROR',
