@@ -522,3 +522,19 @@ describe('restricted_resource suggestion (RC-6)', () => {
     expect(result.suggestion).toMatch(/capabilit/i)
   })
 })
+
+// BUG #2 RED TEST: mapper must surface notionhq_client_invalid_path_parameter as a clean
+// VALIDATION_ERROR with UUID guidance, instead of falling through to UNKNOWN_ERROR.
+describe('mapper: InvalidPathParameterError (BUG #2)', () => {
+  it('should map notionhq_client_invalid_path_parameter to VALIDATION_ERROR with UUID guidance', () => {
+    const result = enhanceError({
+      status: 400,
+      code: 'notionhq_client_invalid_path_parameter',
+      message: 'Invalid path parameter: invalid-uuid'
+    })
+
+    expect(result.code).toBe('VALIDATION_ERROR')
+    expect(result.message).toMatch(/Invalid.*(ID|UUID|format)/i)
+    expect(result.suggestion).toMatch(/UUID/i)
+  })
+})

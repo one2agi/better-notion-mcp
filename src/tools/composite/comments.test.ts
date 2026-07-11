@@ -84,34 +84,31 @@ describe('commentsManage', () => {
       expect(result.results).toEqual([])
     })
 
-    it('should throw COMMENTS_LIST_UNAVAILABLE when OAuth token and Notion returns object_not_found', async () => {
+    it('should throw COMMENTS_404_OAUTH_BUG for any 404 from comments.list regardless of code', async () => {
+      // BUG #2: previously gated on NOTION_OAUTH_CLIENT_ID env var; now driven by
+      // HTTP status (404) + tool context. This test covers the Notion-documented
+      // object_not_found shape (no explicit status field).
       const notFoundError = new Error('Not found')
+      ;(notFoundError as any).status = 404
       ;(notFoundError as any).code = 'object_not_found'
       mockNotion.comments.list.mockRejectedValue(notFoundError)
 
-      // Set OAuth env var so the code knows it's in OAuth mode
-      const originalVal = process.env.NOTION_OAUTH_CLIENT_ID
-      process.env.NOTION_OAUTH_CLIENT_ID = 'test-client-id'
-      try {
-        await expect(
-          commentsManage(mockNotion as any, {
-            action: 'list',
-            page_id: 'page-1'
-          })
-        ).rejects.toMatchObject({
-          code: 'COMMENTS_LIST_UNAVAILABLE'
+      await expect(
+        commentsManage(mockNotion as any, {
+          action: 'list',
+          page_id: 'page-1'
         })
-      } finally {
-        if (originalVal === undefined) delete process.env.NOTION_OAUTH_CLIENT_ID
-        else process.env.NOTION_OAUTH_CLIENT_ID = originalVal
-      }
+      ).rejects.toMatchObject({
+        code: 'COMMENTS_404_OAUTH_BUG'
+      })
     })
 
-    it('should re-throw original error when not in OAuth mode', async () => {
+    it('should re-throw as NOT_FOUND when the error has no HTTP status', async () => {
       const notFoundError = new Error('Not found')
       ;(notFoundError as any).code = 'object_not_found'
+      // No status → fall through to NOT_FOUND mapping (preserves prior behaviour
+      // for SDKs that don't expose HTTP status).
       mockNotion.comments.list.mockRejectedValue(notFoundError)
-      // NOTION_OAUTH_CLIENT_ID not set → re-throw enhanced error (mapNotionError → NOT_FOUND)
       await expect(
         commentsManage(mockNotion as any, {
           action: 'list',
@@ -398,6 +395,76 @@ describe('commentsManage', () => {
         code: 'VALIDATION_ERROR'
       })
     })
+  })
+
+  // BUG #2 RED TESTS: comments wrapper must surface OAuth 404 disambiguation
+  // via HTTP status, not just code. Tests below must FAIL before the fix and
+  // PASS after.
+  describe('OAuth 404 disambiguation (HTTP-status based, no env gate)', () => {
+    it('list: should report COMMENTS_404_OAUTH_BUG when status=404 even with NOTION_OAUTH_CLIENT_ID UNSET', async () => {
+      const oauthBugError = Object.assign(new Error('404 Not Found'), {
+        status: 404,
+        code: 'object_not_found'
+      })
+      mockNotion.comments.list.mockRejectedValue(oauthBugError)
+
+      const originalVal = process.env.NOTION_OAUTH_CLIENT_ID
+      delete process.env.NOTION_OAUTH_CLIENT_ID
+      try {
+        await expect(
+          commentsManage(mockNotion as any, {
+            action: 'list',
+            page_id: 'page-1'
+          })
+        ).rejects.toMatchObject({
+          code: 'COMMENTS_404_OAUTH_BUG',
+          suggestion: expect.stringMatching(/action="get".*comment_id|action="create".*discussion_id/s)
+        })
+      } finally {
+        if (originalVal !== undefined) process.env.NOTION_OAUTH_CLIENT_ID = originalVal
+      }
+    })
+
+    it('create: should report COMMENTS_404_OAUTH_BUG when status=404 (any code, e.g. restricted_resource)', async () => {
+      // Use NOT_FOUND code so retryWithBackoff short-circuits on attempt 1.
+      // status=404 + tool=comments still drives the new HTTP-status-based mapper path.
+      const oauthBugError = Object.assign(new Error('404 Not Found'), {
+        status: 404,
+        code: 'NOT_FOUND'
+      })
+      mockNotion.comments.create.mockRejectedValue(oauthBugError)
+
+      await expect(
+        commentsManage(mockNotion as any, {
+          action: 'create',
+          page_id: 'page-1',
+          content: 'Hello'
+        })
+      ).rejects.toMatchObject({
+        code: 'COMMENTS_404_OAUTH_BUG',
+        suggestion: expect.stringMatching(/action="get".*comment_id|action="create".*discussion_id/s)
+      })
+    })
+
+    it('create: surfaces 404 disambiguation for arbitrary codes (retried path)', async () => {
+      // restricted_resource is NOT in the retry stop-list, so retryWithBackoff will retry.
+      // The test asserts the wrapper still emits COMMENTS_404_OAUTH_BUG after retries exhaust.
+      const oauthBugError = Object.assign(new Error('404 Not Found'), {
+        status: 404,
+        code: 'restricted_resource'
+      })
+      mockNotion.comments.create.mockRejectedValue(oauthBugError)
+
+      await expect(
+        commentsManage(mockNotion as any, {
+          action: 'create',
+          page_id: 'page-1',
+          content: 'Hello'
+        })
+      ).rejects.toMatchObject({
+        code: 'COMMENTS_404_OAUTH_BUG'
+      })
+    }, 10_000)
   })
 
   // Note: verifyBlockExists was removed — its logic is no longer needed

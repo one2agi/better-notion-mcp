@@ -211,18 +211,34 @@ const NOTION_ERROR_MAP: Record<string, { message: string; code: string; suggesti
     message: 'Notion API is temporarily unavailable',
     code: 'SERVICE_UNAVAILABLE',
     suggestion: 'Wait a moment and try again. Check https://status.notion.so for updates.'
+  },
+  notionhq_client_invalid_path_parameter: {
+    message: 'Invalid Notion resource ID format',
+    code: 'VALIDATION_ERROR',
+    suggestion: 'IDs must be 32-char UUIDs (with or without dashes)'
   }
 }
 
 /**
  * Map Notion API errors
  */
-function mapNotionError(error: any): NotionMCPError | null {
+function mapNotionError(error: any, context?: { tool?: string }): NotionMCPError | null {
   if (!error || typeof error !== 'object') return null
   if (!error.code) return null
 
   const validationError = mapValidationError(error)
   if (validationError) return validationError
+
+  // Status-based pre-check: the Notion SDK exposes HTTP status alongside `code`,
+  // and some errors only make sense when read together (e.g. the documented
+  // comments OAuth 404 bug where the SDK reports 404 with arbitrary `code`).
+  if (error.status === 404 && context?.tool === 'comments') {
+    return new NotionMCPError(
+      'Comments endpoint returned 404 — this is a known Notion API bug with OAuth tokens on API version 2025-09-03',
+      'COMMENTS_404_OAUTH_BUG',
+      'Workarounds: (1) use action="get" with a known comment_id, (2) use action="create" with discussion_id for replies'
+    )
+  }
 
   const code = error.code
   const message = error.message || 'Unknown Notion API error'
@@ -253,7 +269,7 @@ function mapGenericError(error: any): NotionMCPError {
 /**
  * Enhance Notion API error with helpful context
  */
-export function enhanceError(error: any): NotionMCPError {
+export function enhanceError(error: any, context?: { tool?: string }): NotionMCPError {
   // Already a NotionMCPError — pass through unchanged
   if (error instanceof NotionMCPError) return error
 
@@ -261,7 +277,7 @@ export function enhanceError(error: any): NotionMCPError {
   stripSensitiveFields(error)
 
   // Chain of responsibility: Notion -> Network -> Generic
-  return mapNotionError(error) || mapNetworkError(error) || mapGenericError(error)
+  return mapNotionError(error, context) || mapNetworkError(error) || mapGenericError(error)
 }
 
 /**
@@ -392,13 +408,14 @@ export function suggestFixes(error: NotionMCPError): string[] {
  * Wrap async function with error handling
  */
 export function withErrorHandling<Args extends unknown[], Return>(
-  fn: (...args: Args) => Promise<Return>
+  fn: (...args: Args) => Promise<Return>,
+  context?: { tool?: string }
 ): (...args: Args) => Promise<Return> {
   return async (...args: Args): Promise<Return> => {
     try {
       return await fn(...args)
     } catch (error) {
-      throw enhanceError(error)
+      throw enhanceError(error, context)
     }
   }
 }
@@ -413,9 +430,10 @@ export async function retryWithBackoff<T>(
     initialDelay?: number
     maxDelay?: number
     backoffMultiplier?: number
+    context?: { tool?: string }
   } = {}
 ): Promise<T> {
-  const { maxRetries = 3, initialDelay = 1000, maxDelay = 10000, backoffMultiplier = 2 } = options
+  const { maxRetries = 3, initialDelay = 1000, maxDelay = 10000, backoffMultiplier = 2, context } = options
 
   let lastError: any
   let delay = initialDelay
@@ -428,7 +446,7 @@ export async function retryWithBackoff<T>(
 
       // Don't retry on certain errors
       if (error.code === 'UNAUTHORIZED' || error.code === 'NOT_FOUND') {
-        throw enhanceError(error)
+        throw enhanceError(error, context)
       }
 
       // Last attempt
@@ -442,5 +460,5 @@ export async function retryWithBackoff<T>(
     }
   }
 
-  throw enhanceError(lastError)
+  throw enhanceError(lastError, context)
 }
