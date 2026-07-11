@@ -1,6 +1,6 @@
 {
-  "name": "@n24q02m/better-notion-mcp",
-  "mcpName": "io.github.n24q02m/better-notion-mcp",
+  "name": "@faize/better-notion-mcp",
+  "mcpName": "io.github.faize/better-notion-mcp",
   "keywords": [
     "notion",
     "api",
@@ -16,7 +16,7 @@
     "codex",
     "opencode"
   ],
-  "version": "2.36.0",
+  "version": "3.7.0",
   "license": "MIT",
   "type": "module",
   "packageManager": "bun@1.2.21",
@@ -39,9 +39,9 @@
     "check": "biome check . && bun run type-check",
     "check:fix": "biome check --write . && bun run type-check",
     "prepublishOnly": "bun run build",
-    "docker:build": "docker build -t n24q02m/better-notion-mcp:latest .",
-    "docker:push": "docker push n24q02m/better-notion-mcp:latest",
-    "docker:run": "docker run --rm -i -e NOTION_TOKEN n24q02m/better-notion-mcp:latest",
+    "docker:build": "docker build -t faize/better-notion-mcp:latest .",
+    "docker:push": "docker push faize/better-notion-mcp:latest",
+    "docker:run": "docker run --rm -i -e NOTION_TOKEN faize/better-notion-mcp:latest",
     "cf:dryrun": "node scripts/cf-deploy.mjs --dry-run",
     "cf:deploy": "node scripts/cf-deploy.mjs"
   },
@@ -81,11 +81,11 @@
   "main": "build/src/init-server.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/n24q02m/better-notion-mcp.git"
+    "url": "https://github.com/faize/better-notion-mcp.git"
   },
-  "author": "n24q02m",
+  "author": "faize",
   "bugs": {
-    "url": "https://github.com/n24q02m/better-notion-mcp/issues"
+    "url": "https://github.com/faize/better-notion-mcp/issues"
   },
-  "homepage": "https://github.com/n24q02m/better-notion-mcp#readme"
+  "homepage": "https://github.com/faize/better-notion-mcp#readme"
 }
