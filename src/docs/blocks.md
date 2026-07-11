@@ -28,7 +28,7 @@ The markdown converter supports these Notion block types:
 | Code block | `` ```language `` ... `` ``` `` |
 | Quote | `> text` |
 | Divider | `---` or `***` |
-| Callout | `> [!NOTE] text`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, `> [!INFO]`, `> [!SUCCESS]`, `> [!ERROR]`, `> [!DANGER]` (red_background, alias of ERROR). Multi-line: each line must start with `> `. Avoid CAUTION (emoji rejected by Notion). |
+| Callout | `> [!NOTE] text`, `> [!TIP]`, `> [!WARNING]`, `> [!IMPORTANT]`, `> [!INFO]`, `> [!SUCCESS]`, `> [!ERROR]`, `> [!DANGER]` (red_background, alias of ERROR). Multi-line: each line must start with `> `. Avoid CAUTION (emoji rejected by Notion). **Round-trip limitation**: `> [!DANGER]` and `> [!ERROR]` produce an identical Notion block (`❌` + `red_background`) — Notion's callout API has no structured `type` field, only `rich_text` + `icon` + `color`. On reverse (`blocks-to-markdown`), both round-trip as `> [!ERROR]`. The `CALLOUT_ICON_MAP` deliberately maps `❌ → ERROR` (canonical) instead of trying to heuristically detect DANGER from rich_text content. To preserve DANGER on a round-trip, do not pass through Notion — keep the markdown as-is, or use a non-conflicting icon (e.g., ☠️) by editing the block in Notion first. |
 | Toggle | `<details><summary>Title</summary>content</details>`. No nesting (toggle inside toggle fails). |
 | Table | Pipe-delimited `\| col1 \| col2 \|` with optional header separator |
 | Image | `![alt text](url)` — signed S3 URL (1h expiry), fetch to view content |

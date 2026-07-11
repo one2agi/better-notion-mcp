@@ -337,6 +337,26 @@ describe('markdownToBlocks', () => {
       expect(md).toContain('Danger zone')
     })
 
+    // KNOWN LIMITATION (see src/docs/blocks.md "Round-trip limitation"):
+    // DANGER and ERROR both serialize to the same Notion callout block (❌ + red_background)
+    // because Notion's callout API has no structured `type` field. The reverse parser's
+    // CALLOUT_ICON_MAP deliberately maps ❌ → ERROR (canonical). This test documents that
+    // contract so any future change is intentional, not accidental.
+    it('should round-trip DANGER as ERROR (documented Notion API limitation)', () => {
+      const { blocks } = markdownToBlocks('> [!DANGER] critical issue')
+      const md = blocksToMarkdown(blocks)
+      expect(md).toContain('[!ERROR]')
+      expect(md).not.toContain('[!DANGER]')
+      expect(md).toContain('critical issue')
+    })
+
+    it('should round-trip ERROR as ERROR (control case for the DANGER limitation)', () => {
+      const { blocks } = markdownToBlocks('> [!ERROR] something failed')
+      const md = blocksToMarkdown(blocks)
+      expect(md).toContain('[!ERROR]')
+      expect(md).toContain('something failed')
+    })
+
     it('should handle multi-line callout with continuation lines', () => {
       const md = '> [!NOTE] First line\n> Second line\n> Third line'
       const { blocks } = markdownToBlocks(md)
