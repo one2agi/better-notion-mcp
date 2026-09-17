@@ -59,15 +59,14 @@ function createMockNotion() {
   }
 }
 
-import { resolutionCache, schemaCache } from './databases.js'
+import { clearDataSourceCache } from '../helpers/data-source.js'
 
 let mockNotion: ReturnType<typeof createMockNotion>
 
 describe('pages', () => {
   beforeEach(() => {
     mockNotion = createMockNotion()
-    schemaCache.clear()
-    resolutionCache.clear()
+    clearDataSourceCache()
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -1328,8 +1327,7 @@ describe('pages', () => {
   // ---------------------------------------------------------------------------
   describe('pages update schema for data_source_id parent (RC-1)', () => {
     beforeEach(() => {
-      schemaCache.clear()
-      resolutionCache.clear()
+      clearDataSourceCache()
       vi.clearAllMocks()
       vi.spyOn(console, 'error').mockImplementation(() => {})
     })

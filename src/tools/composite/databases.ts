@@ -5,6 +5,15 @@
 
 import type { Client } from '@notionhq/client'
 import { formatCover } from '../helpers/covers.js'
+import {
+  clearDataSourceCache,
+  getDataSourceSchema,
+  getSchemaTypeMap,
+  resolutionCache,
+  resolveDataSourceId,
+  resolvePageSchema,
+  schemaCache
+} from '../helpers/data-source.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
 import { normalizeId } from '../helpers/id.js'
@@ -19,33 +28,14 @@ import {
 } from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
 
-// Cache for data source schema (properties)
-export const schemaCache = new Map<string, { properties: any; expiresAt: number }>()
-const SCHEMA_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-export const resolutionCache = new Map<string, { databaseId: string; dataSourceId: string; expiresAt: number }>()
-
-/**
- * Get data source properties with caching
- */
-export async function getDataSourceSchema(notion: Client, dataSourceId: string): Promise<any> {
-  const cached = schemaCache.get(dataSourceId)
-  if (cached && Date.now() < cached.expiresAt) {
-    return cached.properties
-  }
-
-  const dataSource: any = await notion.dataSources.retrieve({
-    data_source_id: dataSourceId
-  })
-  const properties = dataSource.properties
-
-  if (properties) {
-    schemaCache.set(dataSourceId, {
-      properties,
-      expiresAt: Date.now() + SCHEMA_CACHE_TTL
-    })
-  }
-
-  return properties
+export {
+  clearDataSourceCache,
+  getDataSourceSchema,
+  getSchemaTypeMap,
+  resolutionCache,
+  resolveDataSourceId,
+  resolvePageSchema,
+  schemaCache
 }
 
 /**
@@ -255,60 +245,6 @@ export type DatabasesResponse =
   | UpdateDataSourceResponse
   | UpdateDatabaseResponse
   | ListDataSourceTemplatesResponse
-
-/**
- * Smart ID resolution: accepts both database container ID and data_source ID
- * Tries database_id first; if NOT_FOUND, tries as data_source_id
- * Returns both IDs for downstream operations
- */
-export async function resolveDataSourceId(
-  notion: Client,
-  id: string
-): Promise<{ databaseId: string; dataSourceId: string }> {
-  const normalized = normalizeId(id)
-
-  const cached = resolutionCache.get(normalized)
-  if (cached && Date.now() < cached.expiresAt) {
-    return { databaseId: cached.databaseId, dataSourceId: cached.dataSourceId }
-  }
-
-  // Try as database container first
-  try {
-    const database: any = await notion.databases.retrieve({ database_id: normalized })
-    if (database.data_sources?.length > 0) {
-      const result = { databaseId: database.id, dataSourceId: database.data_sources[0].id }
-      resolutionCache.set(normalized, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
-      return result
-    }
-    throw new NotionMCPError(
-      'Database has no data sources',
-      'VALIDATION_ERROR',
-      'This database container has no data sources yet. Use create_data_source to add one.'
-    )
-  } catch (error: any) {
-    if (error instanceof NotionMCPError) throw error
-
-    // If NOT_FOUND, try interpreting as data_source_id
-    if (error.code === 'object_not_found') {
-      try {
-        const ds: any = await notion.dataSources.retrieve({ data_source_id: normalized })
-        const result = {
-          databaseId: ds.parent?.database_id || normalized,
-          dataSourceId: ds.id
-        }
-        resolutionCache.set(normalized, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
-        return result
-      } catch {
-        throw new NotionMCPError(
-          `ID "${id}" is not a valid database or data source`,
-          'NOT_FOUND',
-          'Use the database ID from the Notion URL (e.g., notion.so/<database_id>?...), or a data_source_id from workspace search. Try workspace/search with filter.object="data_source" to find available databases.'
-        )
-      }
-    }
-    throw error
-  }
-}
 
 /**
  * Unified databases tool - handles all database operations
@@ -635,27 +571,7 @@ async function updateDatabasePages(notion: Client, input: DatabasesInput): Promi
         throw new NotionMCPError('page_id required for each item', 'VALIDATION_ERROR', 'Provide page_id')
       }
 
-      // Mirror create_page: fetch the row's data-source schema so string/array/object
-      // values are wrapped per their real property type (RC-1). The DB-row parent on
-      // Notion API 2025-09-03 is `{ type:'data_source_id', database_id, data_source_id }`
-      // — `database_id` is present for both parent shapes, so resolve via it.
-      let schemaTypeMap: Record<string, string> | undefined
-      try {
-        const page: any = await notion.pages.retrieve({ page_id: item.page_id })
-        const parent = page?.parent
-        if (parent?.database_id) {
-          const { dataSourceId } = await resolveDataSourceId(notion, String(parent.database_id).replace(/-/g, ''))
-          const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
-          if (schemaProperties) {
-            schemaTypeMap = {}
-            for (const name of Object.keys(schemaProperties)) {
-              schemaTypeMap[name] = schemaProperties[name]?.type ?? 'rich_text'
-            }
-          }
-        }
-      } catch {
-        // Schema lookup failed — fall back to no schema (historical behavior).
-      }
+      const schemaTypeMap = await resolvePageSchema(notion, item.page_id)
 
       const converted = convertToNotionProperties(item.properties, schemaTypeMap)
       const properties = sanitizeReadonlyProperties(converted, { mode: 'update' })

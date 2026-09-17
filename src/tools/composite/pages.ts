@@ -6,6 +6,7 @@
 import type { Client, PageObjectResponse } from '@notionhq/client'
 import { updatePageWithParent } from '../../types/notion-extended.js'
 import { formatCover } from '../helpers/covers.js'
+import { getSchemaTypeMap, resolveDataSourceId, resolvePageSchema } from '../helpers/data-source.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
@@ -20,7 +21,6 @@ import {
   sanitizeReadonlyPropertiesWithFeedback
 } from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
-import { getDataSourceSchema, resolveDataSourceId } from './databases.js'
 
 export { sanitizeNotionMarkdown }
 
@@ -322,13 +322,7 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
     parent = { type: 'data_source_id', data_source_id: dataSourceId }
 
     // Fetch schema so convertToNotionProperties handles non-English column names correctly.
-    const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
-    if (schemaProperties) {
-      schemaForConvert = {}
-      for (const name of Object.keys(schemaProperties)) {
-        schemaForConvert[name] = schemaProperties[name]?.type ?? 'rich_text'
-      }
-    }
+    schemaForConvert = await getSchemaTypeMap(notion, dataSourceId)
   } catch (error: any) {
     // Only fall back to page_id when the ID doesn't resolve to any known parent.
     // resolveDataSourceId throws NotionMCPError('NOT_FOUND') when neither a database
@@ -617,29 +611,7 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
     // actual schema type (Bug #26). Falls back gracefully when the page is
     // not in a database or schema lookup fails — preserves the pre-fix
     // default behavior for page-only and workspace-level parents.
-    let schemaTypeMap: Record<string, string> | undefined
-    try {
-      const page = (await notion.pages.retrieve({ page_id: input.page_id })) as PageObjectResponse
-      const parent = page.parent
-      // API 2025-09-03: DB-row parent is `data_source_id` but still carries `database_id`.
-      // Guard on `database_id` presence so both parent shapes resolve the schema (RC-1).
-      const parentAny = parent as any
-      if (parentAny?.database_id) {
-        const dbId = String(parentAny.database_id).replace(/-/g, '')
-        const { dataSourceId } = await resolveDataSourceId(notion, dbId)
-        const schemaProperties = await getDataSourceSchema(notion, dataSourceId)
-        if (schemaProperties) {
-          schemaTypeMap = {}
-          for (const name of Object.keys(schemaProperties)) {
-            schemaTypeMap[name] = schemaProperties[name]?.type ?? 'rich_text'
-          }
-        }
-      }
-    } catch {
-      // Schema lookup failed — fall back to no schema. convertToNotionProperties
-      // will default unknown string fields to `{ select: { name } }`, which is
-      // the historical behavior for callers without database access.
-    }
+    const schemaTypeMap = await resolvePageSchema(notion, input.page_id)
 
     if (input.title) {
       // Default to "title" for non-database parents (page-only pages) where
