@@ -935,7 +935,7 @@ export interface GroupByDatabaseResponse {
  */
 async function fetchAllDataSourcePages(
   notion: Client,
-  databaseId: string,
+  _databaseId: string,
   dataSourceId: string,
   filter: any,
   search: string | undefined

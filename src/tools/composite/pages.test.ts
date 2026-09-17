@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   type ArchivePageResult,
-  clearPageTitleCache,
   type CreatePageResult,
+  clearPageTitleCache,
   type DuplicatePageResult,
   type GetPageMarkdownResult,
   type GetPagePropertyResult,
