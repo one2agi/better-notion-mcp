@@ -104,6 +104,22 @@ export function normalizeFilter(properties: Record<string, any> | undefined, fil
         }
         break
 
+      case 'people':
+        condition = {
+          property: propName,
+          people: { contains: String(value) }
+        }
+        break
+
+      case 'email':
+      case 'phone_number':
+      case 'url':
+        condition = {
+          property: propName,
+          [propType]: { equals: String(value) }
+        }
+        break
+
       default:
         condition = {
           property: propName,

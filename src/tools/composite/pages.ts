@@ -382,7 +382,11 @@ async function getPage(notion: Client, input: PagesInput): Promise<GetPageResult
   // Extract properties
   const properties = extractPageProperties(page.properties)
 
-  const shouldResolveRelations = input.resolve_relations === true || (input.resolve_relations as any) === 'true'
+  const shouldResolveRelations =
+    input.resolve_relations === true ||
+    (input.resolve_relations as any) === 'true' ||
+    input.resolve_titles === true ||
+    (input.resolve_titles as any) === 'true'
   if (shouldResolveRelations && page.properties) {
     for (const [key, prop] of Object.entries<any>(page.properties)) {
       if (prop.type === 'relation' && Array.isArray(properties[key])) {

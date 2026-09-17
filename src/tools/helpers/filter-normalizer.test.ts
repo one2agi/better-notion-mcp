@@ -11,7 +11,11 @@ describe('filter-normalizer', () => {
     PriorityScore: { id: 'number', type: 'number' },
     DueDate: { id: 'date', type: 'date' },
     RelatedProject: { id: 'relation', type: 'relation' },
-    Description: { id: 'rich_text', type: 'rich_text' }
+    Description: { id: 'rich_text', type: 'rich_text' },
+    Assignee: { id: 'people', type: 'people' },
+    ContactEmail: { id: 'email', type: 'email' },
+    Phone: { id: 'phone_number', type: 'phone_number' },
+    Website: { id: 'url', type: 'url' }
   }
 
   describe('isFlatFilter', () => {
@@ -104,6 +108,31 @@ describe('filter-normalizer', () => {
       expect(normalized).toEqual({
         property: 'Status',
         status: { equals: 'In Progress' }
+      })
+    })
+
+    it('maps people values to contains', () => {
+      const flat = { Assignee: 'user-uuid' }
+      const normalized = normalizeFilter(mockProperties, flat)
+      expect(normalized).toEqual({
+        property: 'Assignee',
+        people: { contains: 'user-uuid' }
+      })
+    })
+
+    it('maps email, phone_number, and url values to equals', () => {
+      const flat = {
+        ContactEmail: 'test@example.com',
+        Phone: '+1234567890',
+        Website: 'https://example.com'
+      }
+      const normalized = normalizeFilter(mockProperties, flat)
+      expect(normalized).toEqual({
+        and: [
+          { property: 'ContactEmail', email: { equals: 'test@example.com' } },
+          { property: 'Phone', phone_number: { equals: '+1234567890' } },
+          { property: 'Website', url: { equals: 'https://example.com' } }
+        ]
       })
     })
   })

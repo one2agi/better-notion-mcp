@@ -25,7 +25,8 @@ export interface GetPagePropertyInput {
   [key: string]: any
 }
 
-const pageTitleCache = new Map<string, string>()
+const TITLE_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+const pageTitleCache = new Map<string, { title: string; expiresAt: number }>()
 
 export function clearPageTitleCache(): void {
   pageTitleCache.clear()
@@ -33,8 +34,9 @@ export function clearPageTitleCache(): void {
 
 export async function resolvePageTitle(notion: Client, pageId: string): Promise<string> {
   if (!pageId) return 'Untitled'
-  if (pageTitleCache.has(pageId)) {
-    return pageTitleCache.get(pageId)!
+  const cached = pageTitleCache.get(pageId)
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.title
   }
 
   try {
@@ -55,7 +57,7 @@ export async function resolvePageTitle(notion: Client, pageId: string): Promise<
       const oldestKey = pageTitleCache.keys().next().value
       if (oldestKey) pageTitleCache.delete(oldestKey)
     }
-    pageTitleCache.set(pageId, title)
+    pageTitleCache.set(pageId, { title, expiresAt: Date.now() + TITLE_CACHE_TTL })
     return title
   } catch {
     return 'Untitled'
@@ -173,7 +175,13 @@ export async function getPageProperty(notion: Client, input: GetPagePropertyInpu
           relationIds.push(id)
         }
       }
-      if (input.resolve_titles === true || (input.resolve_titles as unknown) === 'true') {
+      const shouldResolve =
+        input.resolve_titles === true ||
+        (input.resolve_titles as unknown) === 'true' ||
+        input.resolve_relations === true ||
+        (input.resolve_relations as unknown) === 'true'
+
+      if (shouldResolve) {
         value = await Promise.all(
           relationIds.map(async (id) => ({
             id,
