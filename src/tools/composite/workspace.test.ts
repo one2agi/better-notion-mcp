@@ -410,6 +410,52 @@ describe('workspace', () => {
         suggestion: expect.stringMatching(/pages\.restore/)
       })
     })
+
+    it('does not throw when in_trash or archived is false or "false"', async () => {
+      mockNotion.search.mockResolvedValueOnce({
+        results: [],
+        has_more: false,
+        next_cursor: null
+      })
+
+      const res = await workspace(mockNotion as any, {
+        action: 'search',
+        query: 'active page',
+        in_trash: 'false' as any,
+        archived: false
+      })
+
+      expect(res.action).toBe('search')
+    })
+
+    it('filters search results by parent_id from a Notion URL', async () => {
+      mockNotion.search.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'page-1',
+            object: 'page',
+            properties: { title: { title: [{ plain_text: 'Child under URL folder' }] } },
+            url: 'https://notion.so/page-1',
+            last_edited_time: '2026-01-01',
+            parent: { type: 'page_id', page_id: '3de4f4cf-c8e2-80f9-acbd-dff14d6ec10e' }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = await workspace(mockNotion as any, {
+        action: 'search',
+        query: 'Child',
+        parent_id: 'https://app.notion.com/p/Folder-3de4f4cfc8e280f9acbddff14d6ec10e'
+      })
+
+      expect(res.action).toBe('search')
+      if (res.action === 'search') {
+        expect(res.results).toHaveLength(1)
+        expect(res.results[0].id).toBe('page-1')
+      }
+    })
   })
 
   describe('unknown action', () => {

@@ -344,7 +344,7 @@ export const TOOLS = [
         query: { type: 'string', description: 'Search query' },
         parent_id: {
           type: 'string',
-          description: 'Filter search results to children of a specific page or database ID'
+          description: 'Filter search results to direct children of a specific parent page or database ID'
         },
         filter: {
           type: 'object',

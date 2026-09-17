@@ -7,6 +7,7 @@ import type { Client } from '@notionhq/client'
 import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
 import { autoPaginate } from '../helpers/pagination.js'
+import { extractPageId } from '../helpers/property-codecs.js'
 
 export interface WorkspaceInfoResult {
   action: 'info'
@@ -100,7 +101,13 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
       }
 
       case 'search': {
-        if (input.in_trash || input.archived) {
+        const isTrashRequested =
+          input.in_trash === true ||
+          (input.in_trash as unknown) === 'true' ||
+          input.archived === true ||
+          (input.archived as unknown) === 'true'
+
+        if (isTrashRequested) {
           throw new NotionMCPError(
             'Notion REST API does not support searching deleted or archived pages in workspace.search',
             'VALIDATION_ERROR',
@@ -130,6 +137,9 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
         }
 
         // Fetch results with pagination
+        // If parent_id is specified, fetch candidates without limit to avoid starvation before in-memory filter
+        const paginationOpts = input.parent_id ? { maxPages: 3, pageSize: 100 } : { limit: input.limit }
+
         const results = await autoPaginate(
           (cursor, pageSize) =>
             notion.search({
@@ -137,18 +147,21 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
               start_cursor: cursor,
               page_size: pageSize
             }),
-          { limit: input.limit }
+          paginationOpts
         )
 
         let filteredResults = results
         if (input.parent_id) {
-          const targetParentId = input.parent_id.replace(/-/g, '').toLowerCase()
+          const targetParentId = extractPageId(input.parent_id).replace(/-/g, '').toLowerCase()
           filteredResults = results.filter((item: any) => {
             const p = item.parent
             if (!p) return false
             const itemParentId = (p.page_id || p.database_id || p.block_id || '').replace(/-/g, '').toLowerCase()
             return itemParentId === targetParentId
           })
+          if (input.limit && input.limit > 0) {
+            filteredResults = filteredResults.slice(0, input.limit)
+          }
         }
 
         const formattedResults = new Array(filteredResults.length)
