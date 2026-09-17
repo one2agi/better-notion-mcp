@@ -3,9 +3,11 @@
  * Convert between human-friendly and Notion API formats
  */
 
-import { NotionMCPError } from './errors.js'
-import { parseRichText } from './markdown.js'
+import { extractPageId, PAGE_ID_REGEX, PROPERTY_CODECS, type PropertyCodec, toRelation } from './property-codecs.js'
 import * as RichText from './richtext.js'
+
+export { normalizeBlockProperties } from './block-properties.js'
+export { extractPageId, PAGE_ID_REGEX, PROPERTY_CODECS, type PropertyCodec, toRelation }
 
 /**
  * Notion server-managed property types that POST /v1/pages rejects.
@@ -166,42 +168,6 @@ export function sanitizeReadonlyProperties(
   return sanitizeReadonlyPropertiesWithFeedback(properties, options).writable
 }
 
-const PAGE_ID_REGEX = /([a-f0-9]{32})/
-
-/** Extract a 32-char hex page ID from a Notion URL, or return the input as-is if it's already a raw ID */
-function extractPageId(value: any): string {
-  if (typeof value !== 'string') return String(value)
-  const match = value.match(PAGE_ID_REGEX)
-  if (match) return match[1]
-  // Also accept hyphenated UUIDs as-is
-  return value
-}
-
-/** Convert a single string or array value to Notion relation format */
-function toRelation(value: any): { relation: { id: string }[] } {
-  if (typeof value === 'string') {
-    if (value === '') return { relation: [] }
-    // Try parsing as JSON array (e.g. '["id1", "id2"]')
-    if (value.startsWith('[')) {
-      try {
-        const parsed = JSON.parse(value)
-        if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
-          return { relation: parsed.map((v: string) => ({ id: extractPageId(v) })) }
-        }
-      } catch {
-        // Not valid JSON, treat as single value
-      }
-    }
-    return { relation: [{ id: extractPageId(value) }] }
-  }
-  if (Array.isArray(value)) {
-    return {
-      relation: value.map((v: any) => (typeof v === 'object' && v !== null && 'id' in v ? v : { id: extractPageId(v) }))
-    }
-  }
-  return value
-}
-
 /**
  * Convert simple property values to Notion API format
  * Handles auto-detection of property types and conversion
@@ -235,18 +201,8 @@ export function convertToNotionProperties(
 
     if (value === null || value === undefined) {
       if (schemaType) {
-        if (
-          schemaType === 'relation' ||
-          schemaType === 'people' ||
-          schemaType === 'files' ||
-          schemaType === 'multi_select' ||
-          schemaType === 'rich_text' ||
-          schemaType === 'title'
-        ) {
-          converted[key] = { [schemaType]: [] }
-        } else {
-          converted[key] = { [schemaType]: null }
-        }
+        const codec = PROPERTY_CODECS[schemaType]
+        converted[key] = codec ? codec.toNotion(value, { schemaType, key }) : { [schemaType]: null }
       } else {
         converted[key] = value
       }
@@ -255,52 +211,15 @@ export function convertToNotionProperties(
 
     if (typeof value === 'string') {
       if (value === '' && schemaType) {
-        if (
-          schemaType === 'url' ||
-          schemaType === 'email' ||
-          schemaType === 'phone_number' ||
-          schemaType === 'date' ||
-          schemaType === 'number' ||
-          schemaType === 'select' ||
-          schemaType === 'status'
-        ) {
-          converted[key] = { [schemaType]: null }
-          continue
-        }
-        if (
-          schemaType === 'relation' ||
-          schemaType === 'people' ||
-          schemaType === 'files' ||
-          schemaType === 'multi_select' ||
-          schemaType === 'rich_text' ||
-          schemaType === 'title'
-        ) {
-          converted[key] = { [schemaType]: [] }
+        const codec = PROPERTY_CODECS[schemaType]
+        if (codec) {
+          converted[key] = codec.toNotion(value, { schemaType, key })
           continue
         }
       }
 
-      if (schemaType === 'title') {
-        converted[key] = { title: [RichText.text(value)] }
-      } else if (schemaType === 'rich_text') {
-        converted[key] = { rich_text: [RichText.text(value)] }
-      } else if (schemaType === 'date') {
-        converted[key] = { date: { start: value } }
-      } else if (schemaType === 'number') {
-        const num = Number(value)
-        converted[key] = { number: Number.isNaN(num) ? null : num }
-      } else if (schemaType === 'url') {
-        converted[key] = { url: value }
-      } else if (schemaType === 'email') {
-        converted[key] = { email: value }
-      } else if (schemaType === 'phone_number') {
-        converted[key] = { phone_number: value }
-      } else if (schemaType === 'relation') {
-        converted[key] = toRelation(value)
-      } else if (schemaType === 'select') {
-        converted[key] = { select: { name: value } }
-      } else if (schemaType === 'status') {
-        converted[key] = { status: { name: value } }
+      if (schemaType && PROPERTY_CODECS[schemaType]) {
+        converted[key] = PROPERTY_CODECS[schemaType].toNotion(value, { schemaType, key })
       } else if (key === 'Name' || key === 'Title' || key.toLowerCase() === 'title') {
         // Fallback: guess title from key name
         converted[key] = { title: [RichText.text(value)] }
@@ -314,29 +233,8 @@ export function convertToNotionProperties(
     } else if (typeof value === 'boolean') {
       converted[key] = { checkbox: value }
     } else if (Array.isArray(value)) {
-      const schemaType = schema?.[key]
-      if (schemaType === 'relation') {
-        converted[key] = toRelation(value)
-        continue
-      }
-      if (schemaType === 'people') {
-        converted[key] = {
-          people: value.map((v) => (typeof v === 'object' && v !== null && 'id' in v ? v : { id: extractPageId(v) }))
-        }
-        continue
-      }
-      if (schemaType === 'files') {
-        converted[key] = {
-          files: value.map((v) =>
-            typeof v === 'object' && v !== null ? v : { name: String(v), external: { url: String(v) } }
-          )
-        }
-        continue
-      }
-      if (schemaType === 'multi_select') {
-        converted[key] = {
-          multi_select: value.map((v) => (typeof v === 'object' && v !== null && 'name' in v ? v : { name: String(v) }))
-        }
+      if (schemaType && PROPERTY_CODECS[schemaType]) {
+        converted[key] = PROPERTY_CODECS[schemaType].toNotion(value, { schemaType, key })
         continue
       }
       // Only assume multi_select if all elements are strings and no other schema
@@ -352,7 +250,6 @@ export function convertToNotionProperties(
         converted[key] = value
       }
     } else if (typeof value === 'object') {
-      const schemaType = schema?.[key]
       if (schemaType === 'date' && value !== null && 'start' in value && !('date' in value)) {
         // Bare {start,end} object for a date column — wrap with the `date` type key.
         converted[key] = { date: value }
@@ -381,233 +278,19 @@ export function extractPageProperties(pageProperties: any): any {
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i]
     const p = pageProperties[key] as any
-    // Cache p.type once per iteration -- avoids ~20 redundant property
-    // lookups in the if/else-if chain on every Notion page row.
+    // Cache p.type once per iteration -- avoids redundant property lookups
     const type = p.type as string | undefined
+    if (!type) continue
 
-    switch (type) {
-      case 'title': {
-        if (p.title) {
-          const title = p.title
-          const len = title.length
-          const arr = new Array(len)
-          for (let j = 0; j < len; j++) arr[j] = title[j].plain_text || ''
-          properties[key] = arr.join('')
-        }
-        break
-      }
-      case 'rich_text': {
-        if (p.rich_text) {
-          const richText = p.rich_text
-          const len = richText.length
-          const arr = new Array(len)
-          for (let j = 0; j < len; j++) arr[j] = richText[j].plain_text || ''
-          properties[key] = arr.join('')
-        }
-        break
-      }
-      case 'select': {
-        if (p.select) properties[key] = p.select.name
-        break
-      }
-      case 'multi_select': {
-        if (p.multi_select) {
-          const ms = p.multi_select
-          const arr = new Array(ms.length)
-          for (let j = 0; j < ms.length; j++) arr[j] = ms[j].name
-          properties[key] = arr
-        }
-        break
-      }
-      case 'number': {
-        properties[key] = p.number
-        break
-      }
-      case 'checkbox': {
-        properties[key] = p.checkbox
-        break
-      }
-      case 'url': {
-        properties[key] = p.url
-        break
-      }
-      case 'email': {
-        properties[key] = p.email
-        break
-      }
-      case 'phone_number': {
-        properties[key] = p.phone_number
-        break
-      }
-      case 'date': {
-        if (p.date) {
-          const d = p.date
-          properties[key] = d.start + (d.end ? ` to ${d.end}` : '')
-        }
-        break
-      }
-      case 'relation': {
-        if (p.relation) {
-          const rel = p.relation
-          const arr = new Array(rel.length)
-          for (let j = 0; j < rel.length; j++) arr[j] = rel[j].id
-          properties[key] = arr
-        }
-        break
-      }
-      case 'rollup': {
-        if (p.rollup) properties[key] = p.rollup
-        break
-      }
-      case 'people': {
-        if (p.people) {
-          const ppl = p.people
-          const arr = new Array(ppl.length)
-          for (let j = 0; j < ppl.length; j++) arr[j] = ppl[j].name || ppl[j].id
-          properties[key] = arr
-        }
-        break
-      }
-      case 'files': {
-        if (p.files) {
-          const files = p.files
-          const arr = new Array(files.length)
-          for (let j = 0; j < files.length; j++) {
-            const f = files[j]
-            arr[j] = f.file?.url || f.external?.url || f.name
-          }
-          properties[key] = arr
-        }
-        break
-      }
-      case 'formula': {
-        if (p.formula) {
-          const f = p.formula
-          properties[key] = f.type ? (f[f.type] ?? null) : null
-        }
-        break
-      }
-      case 'created_time': {
-        properties[key] = p.created_time
-        break
-      }
-      case 'last_edited_time': {
-        properties[key] = p.last_edited_time
-        break
-      }
-      case 'created_by': {
-        if (p.created_by) {
-          properties[key] = p.created_by?.name || p.created_by?.id
-        }
-        break
-      }
-      case 'last_edited_by': {
-        if (p.last_edited_by) {
-          properties[key] = p.last_edited_by?.name || p.last_edited_by?.id
-        }
-        break
-      }
-      case 'status': {
-        if (p.status) {
-          properties[key] = p.status?.name
-        }
-        break
-      }
-      case 'unique_id': {
-        if (p.unique_id) {
-          const u = p.unique_id
-          properties[key] = u.prefix ? `${u.prefix}-${u.number}` : u.number
-        }
-        break
+    const codec = PROPERTY_CODECS[type]
+    if (codec) {
+      const val = codec.fromNotion(p)
+      if (val !== undefined) {
+        properties[key] = val
       }
     }
   }
   return properties
-}
-
-/**
- * Normalize per-block-type properties from the user's input format to the
- * shape Notion's API expects. Throws NotionMCPError on invalid input.
- *
- * Extracted from `composite/blocks.ts` so it can be unit-tested in isolation
- * and reused if other code paths need to format block properties.
- */
-export function normalizeBlockProperties(blockType: string, raw: Record<string, any>): any {
-  if (blockType === 'table_row') {
-    const cells = raw.cells
-    if (Array.isArray(cells) && cells.length > 0 && Array.isArray(cells[0])) {
-      // cells is string[][] or RichText[][]
-      if (cells[0].length > 0 && typeof cells[0][0] === 'string') {
-        // string[][] -> RichText[][]
-        return {
-          table_row: {
-            cells: (cells as string[][]).map((row) => row.map((cell) => parseRichText(cell)))
-          }
-        }
-      }
-      // already RichText[][] - pass through
-      return { table_row: { cells } }
-    }
-    throw new NotionMCPError(
-      'table_row.properties.cells must be string[][] or RichText[][]',
-      'VALIDATION_ERROR',
-      'Provide cells as e.g. [["A", "B"], ["C", "D"]]'
-    )
-  }
-
-  if (blockType === 'synced_block') {
-    // Accept { synced_from: null } (unlink) or { synced_from: { block_id } } (link)
-    if (raw.synced_from === null) {
-      return { synced_block: { synced_from: null } }
-    }
-    if (raw.synced_from && typeof raw.synced_from === 'object' && typeof raw.synced_from.block_id === 'string') {
-      return { synced_block: { synced_from: { block_id: raw.synced_from.block_id } } }
-    }
-    throw new NotionMCPError(
-      'synced_block.properties.synced_from must be null or { block_id: string }',
-      'VALIDATION_ERROR',
-      'Pass null to unlink, or { block_id: "<id>" } to link'
-    )
-  }
-
-  if (blockType === 'link_to_page') {
-    const targets = ['page_id', 'database_id', 'comment_id'].filter((k) => raw[k])
-    if (targets.length !== 1) {
-      throw new NotionMCPError(
-        'link_to_page requires exactly one of: page_id, database_id, comment_id',
-        'VALIDATION_ERROR',
-        'Provide e.g. { page_id: "<page-id>" } or { database_id: "<db-id>" }'
-      )
-    }
-    return { link_to_page: { [targets[0]]: raw[targets[0]] } }
-  }
-
-  if (blockType === 'template') {
-    // Template block has no markdown syntax — caller passes rich_text via properties.
-    // Wrap into { template: {...} } to match Notion API contract.
-    return { template: raw }
-  }
-
-  if (blockType === 'column') {
-    const ratio = raw.width_ratio
-    if (typeof ratio !== 'number' || !Number.isFinite(ratio) || ratio <= 0 || ratio > 1) {
-      throw new NotionMCPError(
-        'width_ratio must be between 0 and 1',
-        'VALIDATION_ERROR',
-        'Provide a positive number up to 1 (e.g. 0.5 for half-width column)'
-      )
-    }
-    return { column: { width_ratio: ratio } }
-  }
-
-  // table: wrap into { table: {...} } to match Notion API contract
-  if (blockType === 'table') {
-    return { table: raw }
-  }
-
-  // For other block types (text-rich like paragraph/heading), pass-through.
-  // The caller (blocks.ts updateBlock) wraps under the block type key itself.
-  return raw
 }
 
 /**
@@ -620,46 +303,9 @@ export function normalizeBlockProperties(blockType: string, raw: Record<string, 
  */
 export function readPropertyValue(page: any, propertyName: string): any {
   const prop = page?.properties?.[propertyName]
-  if (!prop) return null
-  switch (prop.type) {
-    case 'number':
-      return typeof prop.number === 'number' ? prop.number : null
-    case 'checkbox':
-      return typeof prop.checkbox === 'boolean' ? prop.checkbox : null
-    case 'select':
-      return prop.select?.name ?? null
-    case 'multi_select':
-      return Array.isArray(prop.multi_select) ? prop.multi_select.map((o: any) => o.name) : null
-    case 'date':
-      return prop.date?.start ?? null
-    case 'status':
-      return prop.status?.name ?? null
-    case 'formula':
-      // formula 属性返回 { type: "formula", formula: { type: "number", number: 42 } }
-      if (prop.formula?.type === 'number' && typeof prop.formula.number === 'number') {
-        return prop.formula.number
-      }
-      if (prop.formula?.type === 'string') {
-        if (prop.formula.string === null) return null
-        const parsed = parseFloat(prop.formula.string)
-        return Number.isNaN(parsed) ? prop.formula.string : parsed
-      }
-      if (prop.formula?.type === 'boolean') {
-        return prop.formula.boolean ?? null
-      }
-      if (prop.formula?.type === 'date') {
-        return prop.formula.date?.start ?? null
-      }
-      return null
-    case 'people':
-      return Array.isArray(prop.people) ? prop.people.map((p: any) => p.id) : null
-    case 'rich_text':
-      return Array.isArray(prop.rich_text) ? prop.rich_text.map((t: any) => t.plain_text).join('') : null
-    case 'title':
-      return Array.isArray(prop.title) ? prop.title.map((t: any) => t.plain_text).join('') : null
-    default:
-      return null
-  }
+  if (!prop?.type) return null
+  const codec = PROPERTY_CODECS[prop.type]
+  return codec?.toScalar ? codec.toScalar(prop) : null
 }
 
 /**

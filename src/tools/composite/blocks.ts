@@ -4,11 +4,11 @@
  */
 
 import type { Client } from '@notionhq/client'
+import { normalizeBlockProperties } from '../helpers/block-properties.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
 import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
-import { normalizeBlockProperties } from '../helpers/properties.js'
 
 export interface GetBlockResult {
   action: 'get'
