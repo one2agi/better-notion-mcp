@@ -272,6 +272,117 @@ describe('workspace', () => {
 
       expect(result.results[0].title).toBe('Untitled')
     })
+
+    it('filters search results by parent_id and enriches parent metadata', async () => {
+      mockNotion.search.mockResolvedValue({
+        results: [
+          {
+            id: 'page-1',
+            object: 'page',
+            properties: { title: { title: [{ plain_text: 'Matched Child' }] } },
+            url: 'https://notion.so/page-1',
+            last_edited_time: '2026-01-01',
+            parent: { type: 'page_id', page_id: 'parent-123' }
+          },
+          {
+            id: 'page-2',
+            object: 'page',
+            properties: { title: { title: [{ plain_text: 'Unmatched Other Child' }] } },
+            url: 'https://notion.so/page-2',
+            last_edited_time: '2026-01-01',
+            parent: { type: 'page_id', page_id: 'other-parent' }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await workspace(mockNotion as any, {
+        action: 'search',
+        query: 'Child',
+        parent_id: 'parent-123'
+      })) as Extract<WorkspaceResult, { action: 'search' }>
+
+      expect(res.results).toHaveLength(1)
+      expect(res.results[0].id).toBe('page-1')
+      expect(res.results[0].parent).toEqual({ type: 'page_id', id: 'parent-123' })
+      expect(res.total).toBe(1)
+    })
+
+    it('normalizes UUID hyphens when filtering by parent_id', async () => {
+      mockNotion.search.mockResolvedValue({
+        results: [
+          {
+            id: 'page-1',
+            object: 'page',
+            properties: { title: { title: [{ plain_text: 'Child under DB' }] } },
+            url: 'https://notion.so/page-1',
+            last_edited_time: '2026-01-01',
+            parent: { type: 'database_id', database_id: '12345678-1234-1234-1234-123456789abc' }
+          },
+          {
+            id: 'page-2',
+            object: 'page',
+            properties: { title: { title: [{ plain_text: 'Child under Block' }] } },
+            url: 'https://notion.so/page-2',
+            last_edited_time: '2026-01-01',
+            parent: { type: 'block_id', block_id: 'abcdef01-abcd-abcd-abcd-abcdef012345' }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      // Query with unhyphenated target ID for database parent
+      const resDb = (await workspace(mockNotion as any, {
+        action: 'search',
+        parent_id: '12345678123412341234123456789abc'
+      })) as Extract<WorkspaceResult, { action: 'search' }>
+
+      expect(resDb.results).toHaveLength(1)
+      expect(resDb.results[0].id).toBe('page-1')
+      expect(resDb.results[0].parent).toEqual({
+        type: 'database_id',
+        id: '12345678-1234-1234-1234-123456789abc'
+      })
+
+      // Query with hyphenated target ID for block parent
+      const resBlock = (await workspace(mockNotion as any, {
+        action: 'search',
+        parent_id: 'abcdef01-abcd-abcd-abcd-abcdef012345'
+      })) as Extract<WorkspaceResult, { action: 'search' }>
+
+      expect(resBlock.results).toHaveLength(1)
+      expect(resBlock.results[0].id).toBe('page-2')
+      expect(resBlock.results[0].parent).toEqual({
+        type: 'block_id',
+        id: 'abcdef01-abcd-abcd-abcd-abcdef012345'
+      })
+    })
+
+    it('enriches parent metadata on search results without parent_id filter', async () => {
+      mockNotion.search.mockResolvedValue({
+        results: [
+          {
+            id: 'page-1',
+            object: 'page',
+            properties: { title: { title: [{ plain_text: 'Page with Parent' }] } },
+            url: 'https://notion.so/page-1',
+            last_edited_time: '2026-01-01',
+            parent: { type: 'workspace', workspace: true }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await workspace(mockNotion as any, { action: 'search' })) as Extract<
+        WorkspaceResult,
+        { action: 'search' }
+      >
+
+      expect(res.results[0].parent).toEqual({ type: 'workspace', id: undefined })
+    })
   })
 
   describe('unknown action', () => {

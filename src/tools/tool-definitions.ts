@@ -322,7 +322,7 @@ export const TOOLS = [
   {
     name: 'workspace',
     description:
-      'Search workspace and get workspace info.\n\nActions (required params -> optional):\n- info: workspace name, plan, and bot user\n- search (-> query, filter.object="page"|"data_source", sort, limit): find pages/databases shared with integration',
+      'Search workspace and get workspace info.\n\nActions (required params -> optional):\n- info: workspace name, plan, and bot user\n- search (-> query, filter.object="page"|"data_source", parent_id, sort, limit): find pages/databases shared with integration',
     annotations: {
       title: 'Workspace',
       readOnlyHint: true,
@@ -338,6 +338,10 @@ export const TOOLS = [
           enum: ['info', 'search']
         },
         query: { type: 'string', description: 'Search query' },
+        parent_id: {
+          type: 'string',
+          description: 'Filter search results to children of a specific page or database ID'
+        },
         filter: {
           type: 'object',
           properties: {

@@ -25,6 +25,10 @@ export interface WorkspaceSearchResultItem {
   url: string
   last_edited_time: string
   database_id?: string
+  parent?: {
+    type: string
+    id?: string
+  }
 }
 
 export interface WorkspaceSearchResult {
@@ -41,6 +45,7 @@ export interface WorkspaceInput {
 
   // Search params
   query?: string
+  parent_id?: string
   filter?: {
     object?: 'page' | 'data_source'
     property?: string
@@ -125,9 +130,20 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
           { limit: input.limit }
         )
 
-        const formattedResults = new Array(results.length)
-        for (let i = 0; i < results.length; i++) {
-          const item: any = results[i]
+        let filteredResults = results
+        if (input.parent_id) {
+          const targetParentId = input.parent_id.replace(/-/g, '').toLowerCase()
+          filteredResults = results.filter((item: any) => {
+            const p = item.parent
+            if (!p) return false
+            const itemParentId = (p.page_id || p.database_id || p.block_id || '').replace(/-/g, '').toLowerCase()
+            return itemParentId === targetParentId
+          })
+        }
+
+        const formattedResults = new Array(filteredResults.length)
+        for (let i = 0; i < filteredResults.length; i++) {
+          const item: any = filteredResults[i]
           const result: any = {
             id: item.id,
             object: item.object,
@@ -140,6 +156,12 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
             url: item.url,
             last_edited_time: item.last_edited_time
           }
+          if (item.parent) {
+            result.parent = {
+              type: item.parent.type,
+              id: item.parent.page_id || item.parent.database_id || item.parent.block_id
+            }
+          }
           // For data_source objects, include the parent database_id
           // This lets callers use either ID with the databases tool
           if (item.object === 'data_source' && item.parent?.database_id) {
@@ -151,7 +173,7 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
         return {
           action: 'search' as const,
           query: input.query,
-          total: results.length,
+          total: filteredResults.length,
           results: formattedResults
         }
       }
