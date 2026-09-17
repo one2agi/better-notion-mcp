@@ -658,7 +658,7 @@ async function updateDatabasePages(notion: Client, input: DatabasesInput): Promi
       }
 
       const converted = convertToNotionProperties(item.properties, schemaTypeMap)
-      const properties = sanitizeReadonlyProperties(converted)
+      const properties = sanitizeReadonlyProperties(converted, { mode: 'update' })
 
       await retryWithBackoff(async () =>
         notion.pages.update({

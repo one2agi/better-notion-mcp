@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { NotionBlock, RichText } from './markdown'
-import { blocksToMarkdown, extractPlainText, markdownToBlocks, parseRichText } from './markdown'
+import { blocksToMarkdown, extractPlainText, markdownToBlocks, parseRichText, sanitizeNotionMarkdown } from './markdown'
 
 // ============================================================
 // Helpers
@@ -578,6 +578,37 @@ describe('markdownToBlocks', () => {
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('bookmark')
       expect(blocks[0].bookmark.url).toBe('https://example.com')
+    })
+
+    it('should parse Bookmark with uppercase and spaces', () => {
+      const { blocks } = markdownToBlocks('  [Bookmark](https://example.com)  ')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('bookmark')
+      expect(blocks[0].bookmark.url).toBe('https://example.com')
+    })
+
+    it('should parse Chinese bookmark keywords [书签] and [网页书签]', () => {
+      const { blocks: b1 } = markdownToBlocks('[书签](https://example.com)')
+      expect(b1[0].type).toBe('bookmark')
+      expect(b1[0].bookmark.url).toBe('https://example.com')
+
+      const { blocks: b2 } = markdownToBlocks('[网页书签](https://example.com)')
+      expect(b2[0].type).toBe('bookmark')
+      expect(b2[0].bookmark.url).toBe('https://example.com')
+    })
+
+    it('should parse bookmark immediately after heading without blank lines', () => {
+      const { blocks } = markdownToBlocks('#### 官网：\n[Bookmark](https://example.com)')
+      expect(blocks).toHaveLength(2)
+      expect(blocks[0].type).toBe('heading_4')
+      expect(blocks[1].type).toBe('bookmark')
+      expect(blocks[1].bookmark.url).toBe('https://example.com')
+    })
+
+    it('does not hijack links with arbitrary text containing bookmark keyword into bookmark blocks', () => {
+      const { blocks } = markdownToBlocks('[BoostNet机场Bookmark1](https://example.com)')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('paragraph')
     })
 
     it('bookmark with caption parses', () => {
@@ -2050,5 +2081,54 @@ describe('round-trip conversion', () => {
     expect(output).toContain('- Item 2')
     expect(output).toContain('---')
     expect(output).toContain('> Quote')
+  })
+})
+
+describe('bookmark link parsing vs regular markdown links', () => {
+  it('does not treat regular markdown links containing bookmark/embed substrings as bookmark blocks', () => {
+    const md = '[Word Embeddings Guide](https://example.com/guide)'
+    const { blocks } = markdownToBlocks(md)
+    expect(blocks.length).toBe(1)
+    expect(blocks[0].type).toBe('paragraph')
+  })
+
+  it('converts exact keyword links to bookmark or embed blocks', () => {
+    const bookmarkRes = markdownToBlocks('[bookmark](https://example.com)')
+    expect(bookmarkRes.blocks[0].type).toBe('bookmark')
+
+    const embedRes = markdownToBlocks('[embed](https://example.com)')
+    expect(embedRes.blocks[0].type).toBe('embed')
+
+    const cnBookmarkRes = markdownToBlocks('[书签](https://example.com)')
+    expect(cnBookmarkRes.blocks[0].type).toBe('bookmark')
+
+    const cnWebBookmarkRes = markdownToBlocks('[网页书签](https://example.com)')
+    expect(cnWebBookmarkRes.blocks[0].type).toBe('bookmark')
+  })
+})
+
+describe('sanitizeNotionMarkdown', () => {
+  it('handles empty input gracefully', () => {
+    expect(sanitizeNotionMarkdown('')).toBe('')
+    expect(sanitizeNotionMarkdown(undefined as any)).toBe('')
+  })
+
+  it('strips <empty-block/> tags', () => {
+    const raw = '# Hello\n<empty-block/>\nWorld\n<empty-block />'
+    expect(sanitizeNotionMarkdown(raw)).toBe('# Hello\n\nWorld')
+  })
+
+  it('converts html table to GFM markdown table', () => {
+    const raw = '<table><tr><th>Col 1</th><th>Col 2</th></tr><tr><td>Val 1</td><td>Val 2</td></tr></table>'
+    const cleaned = sanitizeNotionMarkdown(raw)
+    expect(cleaned).toContain('| Col 1 | Col 2 |')
+    expect(cleaned).toContain('| --- | --- |')
+    expect(cleaned).toContain('| Val 1 | Val 2 |')
+  })
+
+  it('escapes pipe characters inside table cells', () => {
+    const raw = '<table><tr><th>Name</th><th>Equation</th></tr><tr><td>Bitwise OR</td><td>a | b</td></tr></table>'
+    const cleaned = sanitizeNotionMarkdown(raw)
+    expect(cleaned).toContain('| Bitwise OR | a \\| b |')
   })
 })

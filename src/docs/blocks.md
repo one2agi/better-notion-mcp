@@ -89,6 +89,7 @@ Placeholder
 ## Actions
 
 ### get
+Retrieve a single block by ID. Returns the standard `markdown` representation along with the raw `block` object.
 ```json
 {"action": "get", "block_id": "xxx"}
 ```
@@ -97,7 +98,7 @@ Placeholder
 ```json
 {"action": "children", "block_id": "xxx"}
 ```
-Returns markdown of child blocks.
+Returns markdown of child blocks and array of block objects.
 
 ### append
 ```json
@@ -115,8 +116,8 @@ Returns markdown of child blocks.
 
 - **`content`** — markdown string → parsed to a Notion block. Use for text-rich
   block types (paragraph, headings, lists, quote, to_do, code, toggle, callout,
-  template). Markdown type MUST match the existing block type, otherwise the
-  update errors.
+  template). When passing plain text without markdown markers (e.g. updating a heading),
+  the original block type is automatically preserved.
 - **`properties`** — direct field object → sent straight to the SDK. Use for
   structural block types that have no markdown representation (table,
   table_row, column, synced_block, link_to_page).

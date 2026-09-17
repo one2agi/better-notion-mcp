@@ -54,22 +54,53 @@ export function filterToSchemaKeys(
   return filtered
 }
 
+export interface SanitizeOptions {
+  mode?: 'create' | 'update'
+}
+
+export interface SanitizeResult {
+  writable: Record<string, any>
+  ignoredProperties: string[]
+}
+
 /**
  * Strip Notion-managed readonly properties from a page properties map.
- * Used when duplicating pages — these fields are computed by Notion
- * and cannot be set via POST /v1/pages.
+ * In create mode (default), empty values and arrays are dropped to avoid POST /v1/pages 400.
+ * In update mode, null values and empty arrays are preserved so Notion API clears the fields.
  */
-export function sanitizeReadonlyProperties(properties: Record<string, any> | undefined): Record<string, any> {
-  const result: Record<string, any> = {}
-  if (!properties) return result
+export function sanitizeReadonlyPropertiesWithFeedback(
+  properties: Record<string, any> | undefined,
+  options?: SanitizeOptions
+): SanitizeResult {
+  const mode = options?.mode ?? 'create'
+  const writable: Record<string, any> = {}
+  const ignoredProperties: string[] = []
+
+  if (!properties) return { writable, ignoredProperties }
+
   for (const [key, prop] of Object.entries(properties)) {
+    if (prop === null || prop === undefined) {
+      if (mode === 'update') {
+        writable[key] = prop
+      }
+      continue
+    }
+
+    // Skip non-objects
+    if (typeof prop !== 'object') {
+      if (mode === 'update') {
+        writable[key] = prop
+      }
+      continue
+    }
+
     const propType = (prop as any)?.type
 
     // Skip server-managed readonly types (formula, rollup, created_*, etc.)
-    if (propType && READONLY_PROPERTY_TYPES.has(propType)) continue
-
-    // Skip non-objects (defensive: malformed input)
-    if (!prop || typeof prop !== 'object') continue
+    if (propType && READONLY_PROPERTY_TYPES.has(propType)) {
+      ignoredProperties.push(key)
+      continue
+    }
 
     // Detect readonly even when `type` is absent: a property whose only field
     // is a readonly-typed key (e.g. `{ created_time: '...' }`) is also a
@@ -77,53 +108,62 @@ export function sanitizeReadonlyProperties(properties: Record<string, any> | und
     // so callers can POST raw values without explicit `type` (Bug #35).
     if (!propType) {
       const keys = Object.keys(prop).filter((k) => k !== 'type' && k !== 'id')
-      if (keys.length === 1 && READONLY_PROPERTY_TYPES.has(keys[0])) continue
+      if (keys.length === 1 && READONLY_PROPERTY_TYPES.has(keys[0])) {
+        ignoredProperties.push(key)
+        continue
+      }
     }
 
     // Skip properties whose value field exists but is empty — Notion API
     // rejects these on POST /v1/pages (Bug #23 + #29). Only check when
-    // the value key is present; missing-value cases are passed through.
-    if (propType === 'relation') {
-      if ('relation' in prop && (!Array.isArray(prop.relation) || prop.relation.length === 0)) continue
-    } else if (propType === 'rich_text' || propType === 'title') {
-      if (propType in prop && (!Array.isArray(prop[propType]) || prop[propType].length === 0)) continue
-    } else if (propType === 'people' || propType === 'files') {
-      if (propType in prop && (!Array.isArray(prop[propType]) || prop[propType].length === 0)) continue
-    } else if (propType === 'select' || propType === 'status') {
-      // select / status: null OR no value field at all = unset — Notion rejects.
-      // (Real Notion API retrieve returns `{ type: 'select', select: null }` for unset;
-      // fetched pages may have value field omitted entirely.)
-      if (!(propType in prop) || prop[propType] === null) continue
+    // mode is 'create'. On 'update', Notion allows null/empty arrays to clear.
+    if (mode === 'create') {
+      if (propType === 'relation') {
+        if ('relation' in prop && (!Array.isArray(prop.relation) || prop.relation.length === 0)) continue
+      } else if (propType === 'rich_text' || propType === 'title') {
+        if (propType in prop && (!Array.isArray(prop[propType]) || prop[propType].length === 0)) continue
+      } else if (propType === 'people' || propType === 'files') {
+        if (propType in prop && (!Array.isArray(prop[propType]) || prop[propType].length === 0)) continue
+      } else if (propType === 'select' || propType === 'status') {
+        if (!(propType in prop) || prop[propType] === null) continue
+      }
     }
 
-    // Strip the top-level `type` and `id` fields — both are readonly on POST.
-    // - `type` is the property type discriminator (Bug #7 — Notion rejects it
-    //   when forwarded from GET shape, e.g. `type: 'status' should be not present`).
-    // - `id` is the property's schema ID (also readonly on POST).
-    //
-    // For status/select specifically, the GET shape is
-    // `{ type: 'status', status: {id, name, color} }` but POST wants
-    // `{ status: { name: '...' } }` — preserve the `status` wrapper (Notion
-    // requires it to identify the type), but drop `id` and `color` from the
-    // sub-object (both readonly). Sending `{name: '...'}` flat (no wrapper)
-    // is rejected as "no type discriminator"; sending `{status: {id, name}}`
-    // is rejected because the `id` is readonly.
+    // Button property check
+    if (propType === 'button' || (!propType && 'button' in prop)) {
+      ignoredProperties.push(key)
+      continue
+    }
+
     if (propType === 'status' || propType === 'select') {
       const sub = (prop as any)[propType]
       if (sub && typeof sub === 'object' && 'name' in sub) {
-        result[key] = { [propType]: { name: sub.name } }
+        writable[key] = { [propType]: { name: sub.name } }
       } else if (sub && typeof sub === 'object' && 'id' in sub) {
-        result[key] = { [propType]: { id: sub.id } }
+        writable[key] = { [propType]: { id: sub.id } }
+      } else if (sub === null && mode === 'update') {
+        writable[key] = { [propType]: null }
       }
-      // else: no usable sub-value — drop the prop
+      // else in create mode: no usable sub-value — drop the prop
     } else if (propType && ('type' in prop || 'id' in prop)) {
       const { type: _t, id: _i, ...rest } = prop as Record<string, any>
-      result[key] = rest
+      writable[key] = rest
     } else {
-      result[key] = prop
+      writable[key] = prop
     }
   }
-  return result
+
+  return { writable, ignoredProperties }
+}
+
+/**
+ * Strip Notion-managed readonly properties from a page properties map.
+ */
+export function sanitizeReadonlyProperties(
+  properties: Record<string, any> | undefined,
+  options?: SanitizeOptions
+): Record<string, any> {
+  return sanitizeReadonlyPropertiesWithFeedback(properties, options).writable
 }
 
 const PAGE_ID_REGEX = /([a-f0-9]{32})/
@@ -177,15 +217,68 @@ export function convertToNotionProperties(
     const key = keys[i]
     const value = properties[key]
 
-    if (value === null || value === undefined) {
-      converted[key] = value
+    const schemaType = schema?.[key]
+
+    const normalizedKey = key.toLowerCase().replace(/[\s_-]+/g, '_')
+    const readonlyType =
+      (schemaType && READONLY_PROPERTY_TYPES.has(schemaType) ? schemaType : null) ??
+      (!schemaType && READONLY_PROPERTY_TYPES.has(normalizedKey) ? normalizedKey : null)
+
+    if (readonlyType) {
+      if (typeof value === 'object' && value !== null && ('type' in value || readonlyType in value)) {
+        converted[key] = value
+      } else {
+        converted[key] = { type: readonlyType, [readonlyType]: value }
+      }
       continue
     }
 
-    // Auto-detect property type and convert
+    if (value === null || value === undefined) {
+      if (schemaType) {
+        if (
+          schemaType === 'relation' ||
+          schemaType === 'people' ||
+          schemaType === 'files' ||
+          schemaType === 'multi_select' ||
+          schemaType === 'rich_text' ||
+          schemaType === 'title'
+        ) {
+          converted[key] = { [schemaType]: [] }
+        } else {
+          converted[key] = { [schemaType]: null }
+        }
+      } else {
+        converted[key] = value
+      }
+      continue
+    }
+
     if (typeof value === 'string') {
-      // Use schema type if available
-      const schemaType = schema?.[key]
+      if (value === '' && schemaType) {
+        if (
+          schemaType === 'url' ||
+          schemaType === 'email' ||
+          schemaType === 'phone_number' ||
+          schemaType === 'date' ||
+          schemaType === 'number' ||
+          schemaType === 'select' ||
+          schemaType === 'status'
+        ) {
+          converted[key] = { [schemaType]: null }
+          continue
+        }
+        if (
+          schemaType === 'relation' ||
+          schemaType === 'people' ||
+          schemaType === 'files' ||
+          schemaType === 'multi_select' ||
+          schemaType === 'rich_text' ||
+          schemaType === 'title'
+        ) {
+          converted[key] = { [schemaType]: [] }
+          continue
+        }
+      }
 
       if (schemaType === 'title') {
         converted[key] = { title: [RichText.text(value)] }
@@ -193,6 +286,9 @@ export function convertToNotionProperties(
         converted[key] = { rich_text: [RichText.text(value)] }
       } else if (schemaType === 'date') {
         converted[key] = { date: { start: value } }
+      } else if (schemaType === 'number') {
+        const num = Number(value)
+        converted[key] = { number: Number.isNaN(num) ? null : num }
       } else if (schemaType === 'url') {
         converted[key] = { url: value }
       } else if (schemaType === 'email') {
@@ -237,8 +333,13 @@ export function convertToNotionProperties(
         }
         continue
       }
-      // Could be multi_select, relation, people, files
-      // Only assume multi_select if all elements are strings
+      if (schemaType === 'multi_select') {
+        converted[key] = {
+          multi_select: value.map((v) => (typeof v === 'object' && v !== null && 'name' in v ? v : { name: String(v) }))
+        }
+        continue
+      }
+      // Only assume multi_select if all elements are strings and no other schema
       if (value.length > 0 && value.every((v) => typeof v === 'string')) {
         const multiSelect = new Array(value.length)
         for (let j = 0; j < value.length; j++) {

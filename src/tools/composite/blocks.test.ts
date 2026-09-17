@@ -53,6 +53,7 @@ describe('Blocks Tool', () => {
         type: 'paragraph',
         has_children: false,
         archived: false,
+        markdown: '',
         block: mockBlock
       })
       expect(mockNotion.blocks.retrieve).toHaveBeenCalledWith({ block_id: 'block-1' })
@@ -444,6 +445,67 @@ describe('Blocks Tool', () => {
           heading_1: expect.objectContaining({ rich_text: expect.any(Array) })
         })
       )
+    })
+
+    it('should adapt plain text content to original heading_1 block type', async () => {
+      mockNotion.blocks.retrieve.mockResolvedValue({
+        id: 'block-1',
+        type: 'heading_1',
+        has_children: false,
+        archived: false,
+        heading_1: { rich_text: [], color: 'default' }
+      })
+      mockNotion.blocks.update.mockResolvedValue({})
+
+      const result = await blocks(mockNotion as any, {
+        action: 'update',
+        block_id: 'block-1',
+        content: 'Plain text heading update'
+      })
+
+      expect(result).toEqual({
+        action: 'update',
+        block_id: 'block-1',
+        type: 'heading_1',
+        updated: true
+      })
+      expect(mockNotion.blocks.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'block-1',
+          heading_1: expect.objectContaining({
+            rich_text: expect.arrayContaining([
+              expect.objectContaining({ text: expect.objectContaining({ content: 'Plain text heading update' }) })
+            ])
+          })
+        })
+      )
+    })
+
+    it('should surface actual error message when changing block type is rejected by Notion', async () => {
+      mockNotion.blocks.retrieve.mockResolvedValue({
+        id: 'block-1',
+        type: 'heading_1',
+        has_children: false,
+        archived: false,
+        heading_1: { rich_text: [] }
+      })
+      const apiError = new Error(
+        "Block type mismatch: this block is a `heading_1`, but your request includes fields for a `code` block. Changing a block's type is not supported."
+      )
+      ;(apiError as any).code = 'validation_error'
+      ;(apiError as any).body = {
+        message:
+          "Block type mismatch: this block is a `heading_1`, but your request includes fields for a `code` block. Changing a block's type is not supported."
+      }
+      mockNotion.blocks.update.mockRejectedValue(apiError)
+
+      await expect(
+        blocks(mockNotion as any, {
+          action: 'update',
+          block_id: 'block-1',
+          content: '```js\nconsole.log(1)\n```'
+        })
+      ).rejects.toThrow("Changing a block's type is not supported")
     })
 
     it('should throw for unsupported block type', async () => {
@@ -1286,6 +1348,31 @@ describe('Blocks Tool', () => {
   })
 
   // ---------------------------------------------------------------------------
+  // delete
+  // ---------------------------------------------------------------------------
+  describe('delete', () => {
+    it('deletes single block by block_id', async () => {
+      mockNotion.blocks.delete.mockResolvedValue({})
+      const result = await blocks(mockNotion as any, { action: 'delete', block_id: 'b-1' })
+      expect(result).toEqual({ action: 'delete', block_id: 'b-1', deleted: true })
+      expect(mockNotion.blocks.delete).toHaveBeenCalledWith({ block_id: 'b-1' })
+    })
+
+    it('deletes multiple blocks concurrently with block_ids', async () => {
+      mockNotion.blocks.delete.mockResolvedValue({})
+      const result = await blocks(mockNotion as any, { action: 'delete', block_ids: ['b-1', 'b-2', 'b-3'] })
+      expect(result).toEqual({ action: 'delete', processed: 3, deleted: true })
+      expect(mockNotion.blocks.delete).toHaveBeenCalledTimes(3)
+    })
+
+    it('throws validation error if neither block_id nor block_ids provided', async () => {
+      await expect(blocks(mockNotion as any, { action: 'delete' as any })).rejects.toThrow(
+        'block_id or block_ids required'
+      )
+    })
+  })
+
+  // ---------------------------------------------------------------------------
   // JSON-string fallback (Claude Code XML serialization workaround)
   // ---------------------------------------------------------------------------
   describe('JSON-string input fallback (Claude Code XML serialization workaround)', () => {
@@ -1325,6 +1412,23 @@ describe('Blocks Tool', () => {
           properties: '{not-valid' as unknown as Record<string, any>
         })
       ).rejects.toThrow(/Failed to parse JSON string/)
+    })
+
+    it('delete accepts block_ids as JSON-stringified array', async () => {
+      mockNotion.blocks.delete.mockResolvedValue({ id: 'b1' })
+
+      const result = await blocks(mockNotion as any, {
+        action: 'delete',
+        block_ids: '["b1", "b2"]' as any
+      })
+
+      expect(result).toMatchObject({
+        action: 'delete',
+        processed: 2,
+        deleted: true
+      })
+      expect(mockNotion.blocks.delete).toHaveBeenCalledWith({ block_id: 'b1' })
+      expect(mockNotion.blocks.delete).toHaveBeenCalledWith({ block_id: 'b2' })
     })
   })
 })

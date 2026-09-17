@@ -1,0 +1,10 @@
+services:
+  better-notion-mcp:
+    build:
+      context: .
+      target: stdio
+    image: better-notion-mcp:stdio
+    env_file: .env
+    stdin_open: true
+    # NOTE: no `tty: true` — MCP stdio uses raw JSON-RPC over stdin/stdout; a PTY would corrupt the protocol.
+    # NOTE: no `ports:` — stdio mode speaks over stdin/stdout, not TCP.

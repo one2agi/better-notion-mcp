@@ -4,10 +4,10 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
 import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
-import { autoPaginate, populateDeepChildren } from '../helpers/pagination.js'
+import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
 import { normalizeBlockProperties } from '../helpers/properties.js'
 
 export interface GetBlockResult {
@@ -16,6 +16,7 @@ export interface GetBlockResult {
   type: string
   has_children: boolean
   archived: boolean
+  markdown: string
   block: any
 }
 
@@ -43,7 +44,8 @@ export interface UpdateBlockResult {
 
 export interface DeleteBlockResult {
   action: 'delete'
-  block_id: string
+  block_id?: string
+  processed?: number
   deleted: true
 }
 
@@ -56,7 +58,8 @@ export type BlocksResult =
 
 export interface BlocksInput {
   action: 'get' | 'children' | 'append' | 'update' | 'delete'
-  block_id: string
+  block_id?: string
+  block_ids?: string[]
   content?: string // Markdown format (for text-rich block types)
 
   /**
@@ -87,7 +90,17 @@ export interface BlocksInput {
 export async function blocks(notion: Client, input: BlocksInput): Promise<BlocksResult> {
   return withErrorHandling(async () => {
     if (!input.block_id) {
-      throw new NotionMCPError('block_id required', 'VALIDATION_ERROR', 'Provide block_id')
+      if (input.action === 'delete') {
+        if (!input.block_ids || input.block_ids.length === 0) {
+          throw new NotionMCPError(
+            'block_id or block_ids required',
+            'VALIDATION_ERROR',
+            'Provide block_id or block_ids'
+          )
+        }
+      } else {
+        throw new NotionMCPError('block_id required', 'VALIDATION_ERROR', 'Provide block_id')
+      }
     }
 
     switch (input.action) {
@@ -117,13 +130,15 @@ export async function blocks(notion: Client, input: BlocksInput): Promise<Blocks
  * Maps to: GET /v1/blocks/{id}
  */
 async function getBlock(notion: Client, input: BlocksInput): Promise<GetBlockResult> {
-  const block: any = await notion.blocks.retrieve({ block_id: input.block_id })
+  const block: any = await notion.blocks.retrieve({ block_id: input.block_id! })
+  const markdown = blocksToMarkdown([block])
   return {
     action: 'get',
     block_id: block.id,
     type: block.type,
     has_children: block.has_children,
     archived: block.archived,
+    markdown,
     block
   }
 }
@@ -135,7 +150,7 @@ async function getBlock(notion: Client, input: BlocksInput): Promise<GetBlockRes
 async function getBlockChildren(notion: Client, input: BlocksInput): Promise<GetBlockChildrenResult> {
   const blocksList = await autoPaginate((cursor) =>
     notion.blocks.children.list({
-      block_id: input.block_id,
+      block_id: input.block_id!,
       start_cursor: cursor,
       page_size: 100
     })
@@ -147,7 +162,7 @@ async function getBlockChildren(notion: Client, input: BlocksInput): Promise<Get
   const markdown = blocksToMarkdown(blocksList as any)
   return {
     action: 'children',
-    block_id: input.block_id,
+    block_id: input.block_id!,
     total_children: blocksList.length,
     markdown,
     blocks: blocksList
@@ -201,7 +216,7 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
     }
   }
   const appendParams: any = {
-    block_id: input.block_id,
+    block_id: input.block_id!,
     children: blocksList as any
   }
   if (input.position === 'start') {
@@ -212,7 +227,7 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
   await notion.blocks.children.append(appendParams)
   const result: AppendToBlockResult = {
     action: 'append',
-    block_id: input.block_id,
+    block_id: input.block_id!,
     appended_count: blocksList.length
   }
   // BUG #5: surface parser warnings to the caller so silent markdown degradation
@@ -251,7 +266,7 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
   // Pre-fetch block type once (needed for both content and properties paths)
   let originalBlockType: string | undefined
   try {
-    const existingBlock: any = await notion.blocks.retrieve({ block_id: input.block_id })
+    const existingBlock: any = await notion.blocks.retrieve({ block_id: input.block_id! })
     originalBlockType = existingBlock.type
   } catch {
     // Block not found will be caught by update call below
@@ -274,10 +289,32 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
     const newContent = newBlocks[0]
     blockType = newContent.type
 
+    // Adapt plain text paragraph to original text block type (heading_1-4, quote, callout, to_do, etc.)
+    const ADAPTABLE_TEXT_TYPES = new Set([
+      'heading_1',
+      'heading_2',
+      'heading_3',
+      'heading_4',
+      'quote',
+      'to_do',
+      'callout',
+      'bulleted_list_item',
+      'numbered_list_item'
+    ])
+    if (
+      originalBlockType &&
+      ADAPTABLE_TEXT_TYPES.has(originalBlockType) &&
+      blockType === 'paragraph' &&
+      originalBlockType !== 'paragraph'
+    ) {
+      blockType = originalBlockType
+    }
+
     updatePayload = {}
     if (blockType === 'to_do') {
+      const richText = (newContent as any).to_do?.rich_text || (newContent as any).paragraph?.rich_text || []
       updatePayload.to_do = {
-        rich_text: (newContent as any).to_do?.rich_text || [],
+        rich_text: richText,
         checked: (newContent as any).to_do?.checked ?? false
       }
     } else if (blockType === 'code') {
@@ -286,14 +323,16 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
         language: (newContent as any).code?.language || 'plain text'
       }
     } else if (blockType === 'callout') {
+      const richText = (newContent as any).callout?.rich_text || (newContent as any).paragraph?.rich_text || []
       updatePayload.callout = {
-        rich_text: (newContent as any).callout?.rich_text || [],
+        rich_text: richText,
         icon: (newContent as any).callout?.icon,
         color: (newContent as any).callout?.color ?? 'default'
       }
     } else if (blockType === 'toggle') {
+      const richText = (newContent as any).toggle?.rich_text || (newContent as any).paragraph?.rich_text || []
       updatePayload.toggle = {
-        rich_text: (newContent as any).toggle?.rich_text || [],
+        rich_text: richText,
         color: (newContent as any).toggle?.color ?? 'default'
       }
     } else if (blockType === 'template') {
@@ -325,7 +364,8 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
       updatePayload.column_list = {}
     } else {
       // Default: rich_text-based blocks (paragraph, heading_*, list, quote, etc.)
-      updatePayload[blockType] = (newContent as any)[blockType] || { rich_text: [] }
+      const richText = (newContent as any)[blockType]?.rich_text || (newContent as any).paragraph?.rich_text || []
+      updatePayload[blockType] = { rich_text: richText }
     }
   } else {
     // Properties path: build updatePayload directly.
@@ -363,13 +403,20 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
     // swallow unrelated field-level errors (e.g. "this block type does not support
     // property is_toggleable") and hide the real Notion API contract from the caller.
     const bodyMessage: string = err.body?.message || err.message || ''
+
+    // If Notion rejected because changing a block's type is not supported, preserve the contract message
+    const isTypeMismatch = /changing a block's type/i.test(bodyMessage) || /block type mismatch/i.test(bodyMessage)
+    if (isTypeMismatch) {
+      throw err
+    }
+
     // Phrasings observed in real Notion API responses:
     //   "Block type 'image' cannot be updated."
     //   "block type 'foo' is not supported"
     //   "body block type 'foo' cannot be created"
     const isWhitelistMismatch =
       /block type .*?(cannot|can't|is not|not) be (updated|created|changed|modified)/i.test(bodyMessage) ||
-      /block type .*?(not |un)(supported|allowed|changeable|changeable|updatable|changeable)/i.test(bodyMessage)
+      /block type .*?(not |un)(supported|allowed|changeable|updatable)/i.test(bodyMessage)
     if (err.code === 'validation_error' && isWhitelistMismatch) {
       throw new NotionMCPError(
         `Block type cannot be updated`,
@@ -382,7 +429,7 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
 
   return {
     action: 'update',
-    block_id: input.block_id,
+    block_id: input.block_id!,
     type: blockType || originalBlockType || 'unknown',
     updated: true
   }
@@ -390,31 +437,8 @@ async function updateBlock(notion: Client, input: BlocksInput): Promise<UpdateBl
 
 /**
  * Block types that can be updated via the Notion API.
- */
-const UPDATABLE_BLOCK_TYPES = new Set([
-  'paragraph',
-  'heading_1',
-  'heading_2',
-  'heading_3',
-  'heading_4',
-  'bulleted_list_item',
-  'numbered_list_item',
-  'quote',
-  'to_do',
-  'code',
-  'toggle',
-  'callout',
-  'template',
-  'table',
-  'table_row',
-  'column',
-  'synced_block',
-  'link_to_page'
-])
-
 /**
  * Block types that must be updated via properties (no markdown representation).
- * Subset of UPDATABLE_BLOCK_TYPES.
  */
 const STRUCTURAL_BLOCK_TYPES = new Set([
   'table',
@@ -426,18 +450,34 @@ const STRUCTURAL_BLOCK_TYPES = new Set([
 ])
 
 /**
- * Text-only blocks — should be updated via content (markdown), not properties.
- * Subset of UPDATABLE_BLOCK_TYPES. Excludes headings/paragraph/list items/quote
- * which CAN accept properties (e.g. to preserve color, check state).
- */
-const TEXT_ONLY_BLOCK_TYPES = new Set<string>() // No text-rich blocks reject properties — all allow it for color/style
-
-/**
  * Remove block
  * Maps to: DELETE /v1/blocks/{id}
  */
 async function deleteBlock(notion: Client, input: BlocksInput): Promise<DeleteBlockResult> {
-  await notion.blocks.delete({ block_id: input.block_id })
+  const rawIds = input.block_ids ? parseMaybeJSON(input.block_ids, 'block_ids') : undefined
+  const blockIds = Array.isArray(rawIds) ? rawIds : undefined
+
+  if (blockIds && blockIds.length > 0) {
+    await processBatches(blockIds, (blockId) => retryWithBackoff(() => notion.blocks.delete({ block_id: blockId })), {
+      batchSize: 10,
+      concurrency: 5
+    })
+    return {
+      action: 'delete',
+      processed: blockIds.length,
+      deleted: true
+    }
+  }
+
+  if (!input.block_id) {
+    throw new NotionMCPError(
+      'block_id or block_ids required for delete action',
+      'VALIDATION_ERROR',
+      'Provide block_id or block_ids'
+    )
+  }
+
+  await retryWithBackoff(() => notion.blocks.delete({ block_id: input.block_id! }))
   return {
     action: 'delete',
     block_id: input.block_id,

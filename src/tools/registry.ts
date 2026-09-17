@@ -123,6 +123,10 @@ const TOOLS = [
             'Page properties (for database pages). Use simple values -- auto-converted to Notion format. String: title/rich_text/select/status. Number: number. Boolean: checkbox. String[]: multi_select. ISO date string: date. Object with Notion structure: pass through as-is.'
         },
         property_id: { type: 'string', description: 'Property ID (for get_property action)' },
+        property_name: {
+          type: 'string',
+          description: 'Property name (alternative to property_id for get_property action)'
+        },
         icon: {
           type: 'string',
           description:
@@ -140,6 +144,10 @@ const TOOLS = [
             'For update action with content: if true, delete existing blocks before appending new content (default false, which appends)'
         },
         // Markdown-native actions parameters
+        markdown: {
+          type: 'string',
+          description: 'Markdown content (alias for content / new_str)'
+        },
         new_str: {
           type: 'string',
           description: 'Markdown body for replace_content / insert_markdown / replace_content_range'
@@ -270,7 +278,7 @@ const TOOLS = [
   {
     name: 'blocks',
     description:
-      'Read and modify block-level content within pages.\n\nActions (required params -> optional):\n- get (block_id): retrieve single block\n- children (block_id): list child blocks\n- append (block_id, content -> position, after_block_id): add markdown content at position\n- update (block_id, content OR properties): replace block content (mutually exclusive)\n- delete (block_id): remove block\n\nUse `pages` for page metadata/properties. Page IDs are valid block IDs. update has two modes: content (markdown string) or properties (direct fields for structural types or to preserve color on headings). Image/file blocks contain signed URLs (1h expiry). append supports position: "start" (prepend), "end" (default), "after_block" (requires after_block_id).',
+      'Read and modify block-level content within pages.\n\nActions (required params -> optional):\n- get (block_id): retrieve single block\n- children (block_id): list child blocks\n- append (block_id, content -> position, after_block_id): add markdown content at position\n- update (block_id, content OR properties): replace block content (mutually exclusive)\n- delete (block_id OR block_ids): remove block(s)\n\nUse `pages` for page metadata/properties. Page IDs are valid block IDs. update has two modes: content (markdown string) or properties (direct fields for structural types or to preserve color on headings). Image/file blocks contain signed URLs (1h expiry). append supports position: "start" (prepend), "end" (default), "after_block" (requires after_block_id).',
     annotations: {
       title: 'Blocks',
       readOnlyHint: false,
@@ -286,6 +294,11 @@ const TOOLS = [
           enum: ['get', 'children', 'append', 'update', 'delete']
         },
         block_id: { type: 'string', description: 'Block ID' },
+        block_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of block IDs for batch delete action'
+        },
         content: { type: 'string', description: 'Markdown content (for append/update)' },
         blocks: {
           type: 'array',
@@ -306,7 +319,7 @@ const TOOLS = [
             'Direct block fields for update (for structural types or to preserve color on headings). Mutually exclusive with content.'
         }
       },
-      required: ['action', 'block_id']
+      required: ['action']
     }
   },
   {
@@ -376,7 +389,7 @@ const TOOLS = [
   {
     name: 'comments',
     description:
-      'Manage page comments.\n\nActions (required params -> optional):\n- list (page_id): all comments on a page\n- get (comment_id): single comment\n- create (content -> page_id for new discussion, discussion_id for reply)',
+      'Manage page comments.\n\nActions (required params -> optional):\n- list (page_id): all comments on a page\n- get (comment_id): single comment\n- create (content -> page_id for new discussion, discussion_id for reply)\n- update (comment_id, content): edit comment text\n- delete (comment_id): delete comment',
     annotations: {
       title: 'Comments',
       readOnlyHint: false,
@@ -387,11 +400,11 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['list', 'get', 'create'] },
+        action: { type: 'string', enum: ['list', 'get', 'create', 'update', 'delete'] },
         page_id: { type: 'string', description: 'Page ID' },
-        comment_id: { type: 'string', description: 'Comment ID (for get action)' },
+        comment_id: { type: 'string', description: 'Comment ID (for get, update, delete action)' },
         discussion_id: { type: 'string', description: 'Discussion ID (for replies)' },
-        content: { type: 'string', description: 'Comment content (for create)' }
+        content: { type: 'string', description: 'Comment content (for create, update)' }
       },
       required: ['action']
     }

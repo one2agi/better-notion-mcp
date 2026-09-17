@@ -8,7 +8,8 @@ import {
   normalizeBlockProperties,
   READONLY_PROPERTY_TYPES,
   readPropertyValue,
-  sanitizeReadonlyProperties
+  sanitizeReadonlyProperties,
+  sanitizeReadonlyPropertiesWithFeedback
 } from './properties'
 
 const richText = (content: string) => ({
@@ -97,9 +98,9 @@ describe('convertToNotionProperties', () => {
       expect(result).toEqual({ State: { status: { name: 'In progress' } } })
     })
 
-    it('converts empty string for status field (API validates option names, not this layer)', () => {
+    it('normalizes empty string for status field to null to allow clearing', () => {
       const result = convertToNotionProperties({ Status: '' }, { Status: 'status' })
-      expect(result).toEqual({ Status: { status: { name: '' } } })
+      expect(result).toEqual({ Status: { status: null } })
     })
   })
 
@@ -1271,5 +1272,144 @@ describe('convertToNotionProperties schema-aware array & object conversion (RC-2
   it('still wraps string array as relation when schema type is relation (regression)', () => {
     const result = convertToNotionProperties({ 关联: ['abc'] }, { 关联: 'relation' })
     expect(result).toEqual({ 关联: { relation: [{ id: 'abc' }] } })
+  })
+
+  describe('property clearing for update (TODO-1)', () => {
+    it('normalizes empty string to null for url, email, phone_number, date, number, select, status', () => {
+      const schema = {
+        Link: 'url',
+        Contact: 'email',
+        Phone: 'phone_number',
+        Due: 'date',
+        Amount: 'number',
+        Category: 'select',
+        State: 'status'
+      }
+      const input = {
+        Link: '',
+        Contact: '',
+        Phone: '',
+        Due: '',
+        Amount: '',
+        Category: '',
+        State: ''
+      }
+      const result = convertToNotionProperties(input, schema)
+      expect(result).toEqual({
+        Link: { url: null },
+        Contact: { email: null },
+        Phone: { phone_number: null },
+        Due: { date: null },
+        Amount: { number: null },
+        Category: { select: null },
+        State: { status: null }
+      })
+    })
+
+    it('normalizes null values to { [type]: null } for schema-aware properties', () => {
+      const schema = {
+        Link: 'url',
+        Category: 'select',
+        State: 'status'
+      }
+      const input = {
+        Link: null,
+        Category: null,
+        State: null
+      }
+      const result = convertToNotionProperties(input, schema)
+      expect(result).toEqual({
+        Link: { url: null },
+        Category: { select: null },
+        State: { status: null }
+      })
+    })
+
+    it('normalizes empty string and null to empty array for relation, people, files', () => {
+      const schema = {
+        Rel: 'relation',
+        Assigned: 'people',
+        Docs: 'files'
+      }
+      const input = {
+        Rel: '',
+        Assigned: null,
+        Docs: []
+      }
+      const result = convertToNotionProperties(input, schema)
+      expect(result).toEqual({
+        Rel: { relation: [] },
+        Assigned: { people: [] },
+        Docs: { files: [] }
+      })
+    })
+
+    it('preserves null and { [type]: null } in sanitizeReadonlyProperties when mode is update', () => {
+      const input = {
+        Link: { url: null },
+        RawNull: null,
+        State: { status: null },
+        Rel: { relation: [] },
+        Formula: { type: 'formula' }
+      }
+      const out = sanitizeReadonlyProperties(input, { mode: 'update' })
+      expect(out).toEqual({
+        Link: { url: null },
+        RawNull: null,
+        State: { status: null },
+        Rel: { relation: [] }
+      })
+    })
+
+    it('collects ignored readonly properties (TODO-9)', () => {
+      const input = {
+        Title: { title: [{ plain_text: 'Test' }] },
+        Calc: { type: 'formula' },
+        Modified: { type: 'last_edited_time' }
+      }
+      const result = sanitizeReadonlyPropertiesWithFeedback(input)
+      expect(result.writable).toEqual({
+        Title: { title: [{ plain_text: 'Test' }] }
+      })
+      expect(result.ignoredProperties.sort()).toEqual(['Calc', 'Modified'])
+    })
+
+    it('preserves readonly schema types instead of defaulting to select, allowing sanitizeReadonlyPropertiesWithFeedback to ignore them', () => {
+      const schema = {
+        'Last edited time': 'last_edited_time',
+        'Created at': 'created_time',
+        'Formula col': 'formula',
+        'Rollup col': 'rollup',
+        'Auto ID': 'unique_id'
+      }
+      const input = {
+        'Last edited time': '2026-01-01T00:00:00.000Z',
+        'Created at': '2025-01-01T00:00:00.000Z',
+        'Formula col': '123',
+        'Rollup col': 456,
+        'Auto ID': 'ID-1'
+      }
+      const converted = convertToNotionProperties(input, schema)
+      expect(converted['Last edited time']).toEqual({
+        type: 'last_edited_time',
+        last_edited_time: '2026-01-01T00:00:00.000Z'
+      })
+      const sanitized = sanitizeReadonlyPropertiesWithFeedback(converted, { mode: 'update' })
+      expect(sanitized.writable).toEqual({})
+      expect(sanitized.ignoredProperties.sort()).toEqual(
+        ['Auto ID', 'Created at', 'Formula col', 'Last edited time', 'Rollup col'].sort()
+      )
+    })
+
+    it('recognizes standard readonly property names when schema is omitted', () => {
+      const input = {
+        'Last edited time': '2026-01-01T00:00:00.000Z',
+        created_time: '2025-01-01T00:00:00.000Z'
+      }
+      const converted = convertToNotionProperties(input)
+      const sanitized = sanitizeReadonlyPropertiesWithFeedback(converted, { mode: 'update' })
+      expect(sanitized.writable).toEqual({})
+      expect(sanitized.ignoredProperties.sort()).toEqual(['Last edited time', 'created_time'].sort())
+    })
   })
 })

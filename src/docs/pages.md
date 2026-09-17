@@ -48,14 +48,29 @@ Returns all properties including: title, rich_text, select, multi_select, number
 ### get_property
 Retrieve a single page property item with auto-pagination for large properties.
 ```json
-{"action": "get_property", "page_id": "xxx", "property_id": "prop_id"}
+{"action": "get_property", "page_id": "xxx", "property_id": "prop_id_or_name"}
 ```
-Use this for paginated properties like relation, rollup, rich_text, or people that may exceed inline limits.
+Accepts either canonical property IDs or human-readable property names (including non-ASCII/Chinese names). For empty properties, returns a typed fallback value (e.g. `""` for rich text, `[]` for relations, `null` for select) instead of dropping fields.
 
 ### update
+Update page metadata, properties, and/or content in a single call.
 ```json
-{"action": "update", "page_id": "xxx", "append_content": "\n## New Section"}
+{
+  "action": "update",
+  "page_id": "xxx",
+  "properties": {
+    "Status": "Done",
+    "Source URL": ""
+  },
+  "cover": "none",
+  "content": "## Updated Content",
+  "replace": true
+}
 ```
+- **Clearing properties**: Pass `""` or `null` to clear fields (URL, email, phone, date, number, select, status, relation, people, files).
+- **Clearing cover**: Pass `cover: "none"` or `null` to remove page cover.
+- **Read-only property safety**: Server-managed properties (e.g. `Last edited time`, `formula`, `rollup`) are safely filtered out, and reported in the response under `ignored_properties`.
+- **Content aliases**: Accepts `content`, `markdown`, or `new_str`.
 
 ### move
 Move a page to a new parent page.
