@@ -11,43 +11,50 @@ import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling
 import { formatIcon } from '../helpers/icons.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
 import { blocksToMarkdown, markdownToBlocks, sanitizeNotionMarkdown } from '../helpers/markdown.js'
+import {
+  type GetPageMarkdownResult,
+  getPageMarkdown,
+  type InsertMarkdownResult,
+  insertPageMarkdown,
+  type PageMarkdownAPI,
+  type ReplaceContentRangeResult,
+  type ReplaceContentResult,
+  replacePageContent,
+  replacePageContentRange,
+  type UpdateContentResult,
+  updatePageContent
+} from '../helpers/page-content.js'
+import { type DuplicatePageResult, duplicatePage } from '../helpers/page-duplicate.js'
+import { type GetPagePropertyResult, getPageProperty } from '../helpers/page-property-resolver.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
 import {
   convertToNotionProperties,
   extractPageProperties,
   filterToSchemaKeys,
   findTitleColumnName,
-  sanitizeReadonlyProperties,
   sanitizeReadonlyPropertiesWithFeedback
 } from '../helpers/properties.js'
 import * as RichText from '../helpers/richtext.js'
 
-export { sanitizeNotionMarkdown }
-
-/**
- * Server-side markdown endpoints from Notion SDK v5.22.0 (`pages.retrieveMarkdown`,
- * `pages.updateMarkdown`). The SDK exposes the methods on `Client.d.ts` but does
- * not re-export the request/response interfaces from its public entry, so we
- * declare the surface we use locally to keep call sites type-safe.
- */
-
-interface PageMarkdownAPI {
-  retrieveMarkdown(args: { page_id: string }): Promise<{
-    markdown?: string
-    truncated?: boolean
-    unknown_block_ids?: string[]
-  }>
-  updateMarkdown(args: {
-    page_id: string
-    type: 'insert_content' | 'replace_content' | 'update_content' | 'replace_content_range'
-    insert_content?: { content: string; position?: { type: 'start' | 'end' }; after?: string }
-    replace_content?: { new_str: string; allow_deleting_content?: boolean }
-    update_content?: {
-      content_updates: Array<{ old_str: string; new_str: string; replace_all_matches?: boolean }>
-      allow_deleting_content?: boolean
-    }
-    replace_content_range?: { content: string; content_range: string; allow_deleting_content?: boolean }
-  }): Promise<{ markdown?: string; truncated?: boolean }>
+export type {
+  DuplicatePageResult,
+  GetPageMarkdownResult,
+  GetPagePropertyResult,
+  InsertMarkdownResult,
+  PageMarkdownAPI,
+  ReplaceContentRangeResult,
+  ReplaceContentResult,
+  UpdateContentResult
+}
+export {
+  duplicatePage,
+  getPageMarkdown,
+  getPageProperty,
+  insertPageMarkdown,
+  replacePageContent,
+  replacePageContentRange,
+  sanitizeNotionMarkdown,
+  updatePageContent
 }
 
 export interface CreatePageResult {
@@ -71,14 +78,6 @@ export interface GetPageResult {
   block_count: number
 }
 
-export interface GetPagePropertyResult {
-  action: 'get_property'
-  page_id: string
-  property_id: string
-  type: string
-  value: any
-}
-
 export interface UpdatePageResult {
   action: 'update'
   page_id: string
@@ -97,52 +96,6 @@ export interface ArchivePageResult {
   action: 'archive' | 'restore'
   processed: number
   results: Array<{ page_id: string; archived: boolean }>
-}
-
-export interface DuplicatePageResult {
-  action: 'duplicate'
-  processed: number
-  results: Array<{ original_id: string; duplicate_id: string; url: string }>
-}
-
-export interface GetPageMarkdownResult {
-  action: 'get_markdown'
-  page_id: string
-  markdown: string
-  truncated: boolean
-  unknown_block_ids: string[]
-}
-
-export interface ReplaceContentResult {
-  action: 'replace_content'
-  page_id: string
-  replaced: true
-  markdown?: string
-  truncated?: boolean
-}
-
-export interface InsertMarkdownResult {
-  action: 'insert_markdown'
-  page_id: string
-  inserted: true
-  markdown?: string
-  truncated?: boolean
-}
-
-export interface UpdateContentResult {
-  action: 'update_content'
-  page_id: string
-  updated: true
-  markdown?: string
-  truncated?: boolean
-}
-
-export interface ReplaceContentRangeResult {
-  action: 'replace_content_range'
-  page_id: string
-  replaced: true
-  markdown?: string
-  truncated?: boolean
 }
 
 export type PagesResult =
@@ -434,156 +387,6 @@ async function getPage(notion: Client, input: PagesInput): Promise<GetPageResult
 }
 
 /**
- * Retrieve a page property item (supports paginated properties like relation, rollup, rich_text)
- * Maps to: GET /v1/pages/{id}/properties/{property_id}
- */
-async function getPageProperty(notion: Client, input: PagesInput): Promise<GetPagePropertyResult> {
-  if (!input.page_id) {
-    throw new NotionMCPError('page_id is required for get_property action', 'VALIDATION_ERROR', 'Provide page_id')
-  }
-
-  let propertyId = input.property_id || input.property_name
-  if (!propertyId) {
-    throw new NotionMCPError(
-      'property_id is required for get_property action',
-      'VALIDATION_ERROR',
-      'Provide property_id (from page properties metadata)'
-    )
-  }
-
-  let propertyTypeHint: string | undefined
-
-  // Attempt to resolve property name to property ID.
-  // In Notion, property_id in the retrieve endpoint must be a property ID (or 'title'),
-  // but callers frequently pass property names (e.g. 'Status', '源链接', 'Tags').
-  const isDirectId = propertyId === 'title' || propertyId.startsWith('%')
-  const shouldResolveName = Boolean(input.property_name || !isDirectId || /[^\w\-_%]/.test(propertyId))
-
-  if (shouldResolveName && notion.pages?.retrieve) {
-    try {
-      const page = (await notion.pages.retrieve({ page_id: input.page_id })) as any
-      if (page?.properties) {
-        const targetName = input.property_name || propertyId
-        if (page.properties[targetName]) {
-          const prop = page.properties[targetName]
-          propertyId = prop.id
-          propertyTypeHint = prop.type
-        } else {
-          for (const [name, prop] of Object.entries<any>(page.properties)) {
-            if (name.toLowerCase() === targetName.toLowerCase()) {
-              propertyId = prop.id
-              propertyTypeHint = prop.type
-              break
-            }
-          }
-        }
-      }
-    } catch {
-      // Fall through to direct property retrieve
-    }
-  }
-
-  let propertyItemType: string | undefined
-
-  // Fetch with auto-pagination for paginated property items
-  const allResults = await autoPaginate(async (cursor) => {
-    const response: any = await notion.pages.properties.retrieve({
-      page_id: input.page_id!,
-      property_id: propertyId,
-      start_cursor: cursor,
-      page_size: 100
-    } as any)
-
-    if (response.property_item?.type) {
-      propertyItemType = response.property_item.type
-    } else if (response.type && response.type !== 'property_item') {
-      propertyItemType = response.type
-    }
-
-    // Non-paginated property items return the value directly (no results array)
-    if (!response.results) {
-      return {
-        results: [response],
-        next_cursor: null,
-        has_more: false
-      }
-    }
-
-    return {
-      results: response.results,
-      next_cursor: response.next_cursor,
-      has_more: response.has_more
-    }
-  })
-
-  // Format results based on property type
-  const firstResult = allResults[0] as any
-  const propertyType = firstResult?.type || propertyItemType || propertyTypeHint || 'unknown'
-
-  let value: any
-  switch (propertyType) {
-    case 'title':
-    case 'rich_text': {
-      if (allResults.length === 0) {
-        value = ''
-        break
-      }
-      const len = allResults.length
-      const arr = new Array(len)
-      for (let i = 0; i < len; i++) {
-        arr[i] = (allResults[i] as any)[propertyType]?.plain_text || ''
-      }
-      value = arr.join('')
-      break
-    }
-    case 'relation': {
-      const relationIds: string[] = []
-      for (const item of allResults as any[]) {
-        const id = item.relation?.id
-        if (id) {
-          relationIds.push(id)
-        }
-      }
-      value = relationIds
-      break
-    }
-    case 'rollup':
-      value = firstResult?.rollup ?? null
-      break
-    case 'people':
-      if (allResults.length === 0) {
-        value = []
-        break
-      }
-      value = allResults.map((item: any) => ({
-        id: item.people?.id,
-        name: item.people?.name
-      }))
-      break
-    case 'multi_select':
-    case 'files':
-      value = allResults.length === 0 ? [] : (firstResult?.[propertyType] ?? [])
-      break
-    default:
-      // For non-paginated types, return the raw value
-      if (allResults.length === 0) {
-        value = null
-      } else {
-        value = firstResult?.[propertyType] ?? firstResult
-      }
-      break
-  }
-
-  return {
-    action: 'get_property',
-    page_id: input.page_id,
-    property_id: propertyId!,
-    type: propertyType,
-    value
-  }
-}
-
-/**
  * Update page content/properties
  * Maps to: PATCH /v1/pages/{id} + PATCH /v1/blocks/{id}/children
  */
@@ -759,327 +562,5 @@ async function archivePage(notion: Client, input: PagesInput): Promise<ArchivePa
     action: input.action as 'archive' | 'restore',
     processed: results.length,
     results
-  }
-}
-
-/**
- * Duplicate page
- * Maps to: GET /v1/pages/{id} + POST /v1/pages + GET/PATCH /v1/blocks
- */
-async function duplicatePage(notion: Client, input: PagesInput): Promise<DuplicatePageResult> {
-  const pageIds = input.page_ids || (input.page_id ? [input.page_id] : [])
-
-  if (pageIds.length === 0) {
-    throw new NotionMCPError('page_id or page_ids required', 'VALIDATION_ERROR', 'Provide at least one page ID')
-  }
-
-  // Process duplicates in batches to improve performance while respecting rate limits
-  const results = await processBatches(
-    pageIds,
-    async (pageId) => {
-      // Get original page and content in parallel
-
-      const [originalPage, originalBlocks] = await Promise.all([
-        retryWithBackoff(() => notion.pages.retrieve({ page_id: pageId }) as Promise<any>),
-
-        autoPaginate((cursor) =>
-          notion.blocks.children.list({
-            block_id: pageId,
-
-            start_cursor: cursor,
-
-            page_size: 100
-          })
-        )
-      ])
-
-      // Bug #33: Notion API `blocks.children.append` requires nested children
-      // to be inlined for has_children blocks (tables, toggles, columns, ...).
-      // autoPaginate above only fetches the top level — recursively fetch
-      // nested children so the append payload matches what Notion expects.
-      // (Discovered via real-Notion differential test on test page
-      // 3924f4cfc8e280aba43fcbb4ede3631e — table block at children[13] had
-      // `table.children should be defined, instead was undefined`.)
-      await populateDeepChildren(notion, originalBlocks as any)
-
-      // Sanitize parent - API response may include extra fields that
-      // the create endpoint rejects (e.g. database_id in data_source parent)
-      const rawParent = originalPage.parent
-      let parent: any
-      if (rawParent.type === 'data_source_id') {
-        parent = { type: 'data_source_id', data_source_id: rawParent.data_source_id }
-      } else if (rawParent.type === 'database_id') {
-        parent = { type: 'database_id', database_id: rawParent.database_id }
-      } else if (rawParent.type === 'page_id') {
-        parent = { type: 'page_id', page_id: rawParent.page_id }
-      } else {
-        parent = rawParent
-      }
-
-      // Drop Notion-managed readonly types (formula, rollup, created_time, etc.)
-      // that POST /v1/pages rejects. All other properties pass through unchanged
-      // to preserve their exact Notion format (title, select, date objects, ...).
-      const sanitizedProps = sanitizeReadonlyProperties(originalPage.properties)
-
-      // Create duplicate
-      const duplicatedPage: any = await retryWithBackoff(() =>
-        notion.pages.create({
-          parent,
-          properties: sanitizedProps,
-          icon: originalPage.icon,
-          cover: originalPage.cover
-        })
-      )
-
-      // Copy content — strip read-only fields that the create endpoint rejects.
-      // Recurses into nested children so nested blocks (table rows, toggle
-      // paragraphs, etc.) are also sanitized — they have the same metadata
-      // fields (id/parent/created_time/...) that POST rejects.
-      //
-      // Bug #34: child_page and child_database blocks are NOT creatable via
-      // blocks.children.append — Notion rejects them with "X should be defined"
-      // for every type field. They're created via pages.create separately.
-      // For duplicate, we drop them (they live as their own pages, not part of
-      // the parent's body). Discovered via real-Notion differential test on
-      // test page 3924f4cfc8e280aba43fcbb4ede3631e, 2026-07-04.
-      const BLOCKS_DROP_ON_DUPLICATE = new Set(['child_page', 'child_database'])
-      if (originalBlocks.length > 0) {
-        const sanitizeBlock = (block: any): any | null => {
-          const {
-            id,
-            parent,
-            created_time,
-            last_edited_time,
-            created_by,
-            last_edited_by,
-            has_children,
-            archived,
-            in_trash,
-            request_id,
-            object,
-            ...rest
-          } = block
-          // Drop block types that POST /v1/blocks/{id}/children rejects outright
-          if (BLOCKS_DROP_ON_DUPLICATE.has(rest.type)) return null
-          // Strip null values inside block type data (e.g., paragraph.icon: null)
-          // Notion API rejects null where it expects object or undefined
-          const blockType = rest.type
-          if (blockType && rest[blockType] && typeof rest[blockType] === 'object') {
-            for (const key of Object.keys(rest[blockType])) {
-              if (rest[blockType][key] === null) {
-                delete rest[blockType][key]
-              }
-            }
-            // Recurse into nested children (tables, toggles, columns, ...)
-            const nestedChildren = rest[blockType].children
-            if (Array.isArray(nestedChildren)) {
-              rest[blockType].children = nestedChildren.map(sanitizeBlock).filter((b: any) => b !== null)
-            }
-          }
-          return rest
-        }
-        const sanitizedBlocks = (originalBlocks as any[]).map(sanitizeBlock).filter((b: any) => b !== null)
-        if (sanitizedBlocks.length > 0) {
-          await retryWithBackoff(() =>
-            notion.blocks.children.append({
-              block_id: duplicatedPage.id,
-              children: sanitizedBlocks as any
-            })
-          )
-        }
-      }
-
-      return {
-        original_id: pageId,
-        duplicate_id: duplicatedPage.id,
-        url: duplicatedPage.url
-      }
-    },
-    { batchSize: 5, concurrency: 3 }
-  )
-
-  return {
-    action: 'duplicate',
-    processed: results.length,
-    results
-  }
-}
-
-/**
- * get_markdown action — retrieve page content as a markdown string.
- * Maps to: GET /v1/pages/{id}/markdown (Notion API 2025-09-03, requires SDK v5.22+).
- * Faster than `pages: get` for long pages (no per-block JSON parsing).
- */
-async function getPageMarkdown(notion: Client, input: PagesInput): Promise<GetPageMarkdownResult> {
-  if (!input.page_id) {
-    throw new NotionMCPError('page_id is required for get_markdown action', 'VALIDATION_ERROR', 'Provide page_id')
-  }
-  // SDK types don't include retrieveMarkdown in Client.d.ts pre-v5.22; cast for forward-compat.
-  const r = await (notion.pages as unknown as PageMarkdownAPI).retrieveMarkdown({ page_id: input.page_id })
-  return {
-    action: 'get_markdown',
-    page_id: input.page_id,
-    markdown: sanitizeNotionMarkdown(r?.markdown ?? ''),
-    truncated: Boolean(r?.truncated),
-    unknown_block_ids: Array.isArray(r?.unknown_block_ids) ? r.unknown_block_ids : []
-  }
-}
-
-/**
- * replace_content action — overwrite the entire page content with a single markdown string.
- * Maps to: PATCH /v1/pages/{id}/markdown with body type=replace_content (SDK v5.22+).
- * DESTRUCTIVE: deletes all existing content by default (allow_deleting_content=true).
- */
-async function replacePageContent(notion: Client, input: PagesInput): Promise<ReplaceContentResult> {
-  if (!input.page_id) {
-    throw new NotionMCPError('page_id is required for replace_content action', 'VALIDATION_ERROR', 'Provide page_id')
-  }
-  const newStr = input.new_str ?? input.content ?? input.markdown ?? (input as any).new_content
-  if (newStr === undefined || newStr === null) {
-    throw new NotionMCPError(
-      'new_str is required for replace_content action',
-      'VALIDATION_ERROR',
-      'Provide new_str (or content: the full new markdown content for the page)'
-    )
-  }
-  const allowDel = input.allow_deleting_content ?? true
-  const r = await retryWithBackoff(() =>
-    (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
-      page_id: input.page_id!,
-      type: 'replace_content',
-      replace_content: {
-        new_str: newStr,
-        allow_deleting_content: allowDel
-      }
-    })
-  )
-  return {
-    action: 'replace_content',
-    page_id: input.page_id,
-    replaced: true,
-    markdown: r?.markdown ? sanitizeNotionMarkdown(r.markdown) : r?.markdown,
-    truncated: r?.truncated
-  }
-}
-
-/**
- * insert_markdown action — insert markdown at a specific position.
- * Maps to: PATCH /v1/pages/{id}/markdown with body type=insert_content (SDK v5.22+).
- * position: 'start' | 'end' (default 'end'); after_block_id: insert after a specific block.
- */
-async function insertPageMarkdown(notion: Client, input: PagesInput): Promise<InsertMarkdownResult> {
-  if (!input.page_id) {
-    throw new NotionMCPError('page_id is required for insert_markdown action', 'VALIDATION_ERROR', 'Provide page_id')
-  }
-  const content = input.content ?? input.markdown ?? input.new_str
-  if (content === undefined || content === null) {
-    throw new NotionMCPError(
-      'content is required for insert_markdown action',
-      'VALIDATION_ERROR',
-      'Provide content (the markdown to insert)'
-    )
-  }
-  const insertContent: any = { content }
-  if (input.position === 'start') {
-    insertContent.position = { type: 'start' }
-  } else if (input.after_block_id) {
-    insertContent.after = input.after_block_id
-  } else {
-    // default: append to end
-    insertContent.position = { type: 'end' }
-  }
-  const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
-    page_id: input.page_id,
-    type: 'insert_content',
-    insert_content: insertContent
-  })
-  return {
-    action: 'insert_markdown',
-    page_id: input.page_id,
-    inserted: true,
-    markdown: r?.markdown ? sanitizeNotionMarkdown(r.markdown) : r?.markdown,
-    truncated: r?.truncated
-  }
-}
-
-/**
- * update_content action — server-side search & replace (string-level).
- * Maps to: PATCH /v1/pages/{id}/markdown with body type=update_content (SDK v5.22+).
- * Updates: [{old_str, new_str, replace_all_matches?}]
- * Server finds old_str and replaces with new_str without disturbing other content.
- */
-async function updatePageContent(notion: Client, input: PagesInput): Promise<UpdateContentResult> {
-  if (!input.page_id) {
-    throw new NotionMCPError('page_id is required for update_content action', 'VALIDATION_ERROR', 'Provide page_id')
-  }
-  if (!input.updates || input.updates.length === 0) {
-    throw new NotionMCPError(
-      'updates is required for update_content action',
-      'VALIDATION_ERROR',
-      'Provide updates: [{old_str, new_str, replace_all_matches?}] (at least one)'
-    )
-  }
-  const parsedUpdates = parseMaybeJSON(input.updates, 'updates')
-  const contentUpdates = Array.isArray(parsedUpdates)
-    ? parsedUpdates.map((u: any) => ({
-        old_str: u.old_str ?? u.search ?? u.target,
-        new_str: u.new_str ?? u.replace ?? u.content,
-        ...(u.replace_all_matches !== undefined ? { replace_all_matches: u.replace_all_matches } : {})
-      }))
-    : parsedUpdates
-
-  const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
-    page_id: input.page_id,
-    type: 'update_content',
-    update_content: {
-      content_updates: contentUpdates as any,
-      allow_deleting_content: input.allow_deleting_content ?? false
-    }
-  })
-  return {
-    action: 'update_content',
-    page_id: input.page_id,
-    updated: true,
-    markdown: r?.markdown ? sanitizeNotionMarkdown(r.markdown) : r?.markdown,
-    truncated: r?.truncated
-  }
-}
-
-/**
- * replace_content_range action — replace markdown within a specific content range.
- * Maps to: PATCH /v1/pages/{id}/markdown with body type=replace_content_range (SDK v5.22+).
- */
-async function replacePageContentRange(notion: Client, input: PagesInput): Promise<ReplaceContentRangeResult> {
-  if (!input.page_id) {
-    throw new NotionMCPError(
-      'page_id is required for replace_content_range action',
-      'VALIDATION_ERROR',
-      'Provide page_id'
-    )
-  }
-  // `new_str` and `markdown` are accepted as aliases for `content`
-  const rangeBody = input.content ?? input.markdown ?? input.new_str
-  if (rangeBody === undefined || rangeBody === null || !input.content_range) {
-    throw new NotionMCPError(
-      'content (or new_str) and content_range required for replace_content_range action',
-      'VALIDATION_ERROR',
-      'Provide both content/new_str (new markdown) and content_range (existing range to replace)'
-    )
-  }
-  const r = await (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
-    page_id: input.page_id,
-    type: 'replace_content_range',
-    replace_content_range: {
-      content: rangeBody,
-      content_range: input.content_range,
-      allow_deleting_content: input.allow_deleting_content ?? false
-    }
-  })
-  return {
-    action: 'replace_content_range',
-    page_id: input.page_id,
-    replaced: true,
-    markdown: r?.markdown ? sanitizeNotionMarkdown(r.markdown) : r?.markdown,
-    truncated: r?.truncated
   }
 }
