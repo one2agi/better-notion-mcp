@@ -4,7 +4,7 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
+import { NotionMCPError, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
 import { autoPaginate } from '../helpers/pagination.js'
 
@@ -56,6 +56,8 @@ export interface WorkspaceInput {
     timestamp?: 'last_edited_time' | 'created_time'
   }
   limit?: number
+  in_trash?: boolean
+  archived?: boolean
 }
 
 // Cache for bot identity
@@ -98,6 +100,14 @@ export async function workspace(notion: Client, input: WorkspaceInput): Promise<
       }
 
       case 'search': {
+        if (input.in_trash || input.archived) {
+          throw new NotionMCPError(
+            'Notion REST API does not support searching deleted or archived pages in workspace.search',
+            'VALIDATION_ERROR',
+            'To restore an archived page, use pages.restore({ page_id: "<id>" }) directly. If you need the ID, check parent page block history, database sync logs, or previous search results.'
+          )
+        }
+
         // Query is optional - empty query returns all accessible pages
         const parsedFilter = parseMaybeJSON<NonNullable<WorkspaceInput['filter']>>(input.filter, 'filter')
         const searchParams: any = {

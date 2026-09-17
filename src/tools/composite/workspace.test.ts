@@ -383,6 +383,33 @@ describe('workspace', () => {
 
       expect(res.results[0].parent).toEqual({ type: 'workspace', id: undefined })
     })
+
+    it('provides actionable guidance when searching in_trash or archived items', async () => {
+      const mockNotion = { search: vi.fn() }
+      await expect(
+        workspace(mockNotion as any, {
+          action: 'search',
+          query: 'deleted page',
+          in_trash: true
+        })
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringMatching(/Notion REST API does not support searching deleted or archived pages/),
+        suggestion: expect.stringMatching(/pages\.restore/)
+      })
+
+      await expect(
+        workspace(mockNotion as any, {
+          action: 'search',
+          query: 'archived page',
+          archived: true
+        })
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringMatching(/Notion REST API does not support searching deleted or archived pages/),
+        suggestion: expect.stringMatching(/pages\.restore/)
+      })
+    })
   })
 
   describe('unknown action', () => {
