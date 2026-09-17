@@ -40,6 +40,13 @@ describe('tool-definitions', () => {
         expect(tool.inputSchema.type).toBe('object')
       }
     })
+
+    it('documents batch page_ids support for archive and restore actions in pages tool description', () => {
+      const pagesTool = TOOLS.find((t) => t.name === 'pages')
+      expect(pagesTool).toBeDefined()
+      expect(pagesTool!.description).toContain('archive (page_id | page_ids)')
+      expect(pagesTool!.description).toContain('restore (page_id | page_ids)')
+    })
   })
 
   describe('RESOURCES metadata', () => {
