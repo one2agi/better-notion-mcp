@@ -142,4 +142,17 @@ describe('formatCover', () => {
       expect(() => formatCover('   ')).toThrow('Unsafe cover URL')
     })
   })
+
+  describe('formatCover clear support (TODO-3)', () => {
+    it('returns null for "none" (case-insensitive)', () => {
+      expect(formatCover('none')).toBeNull()
+      expect(formatCover('None')).toBeNull()
+      expect(formatCover('NONE')).toBeNull()
+    })
+
+    it('returns null for null or undefined', () => {
+      expect(formatCover(null)).toBeNull()
+      expect(formatCover(undefined)).toBeNull()
+    })
+  })
 })

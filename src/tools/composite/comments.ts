@@ -12,13 +12,13 @@ export interface CommentsManageInput {
   page_id?: string
   comment_id?: string
   discussion_id?: string
-  action: 'list' | 'get' | 'create'
-  content?: string // For create action
+  action: 'list' | 'get' | 'create' | 'update' | 'delete'
+  content?: string // For create and update actions
 }
 
 /**
- * Manage comments (list, get, create)
- * Maps to: GET /v1/comments, GET /v1/comments/{id}, POST /v1/comments
+ * Manage comments (list, get, create, update, delete)
+ * Maps to: GET /v1/comments, GET /v1/comments/{id}, POST /v1/comments, PATCH /v1/comments/{id}, DELETE /v1/comments/{id}
  */
 export async function commentsManage(notion: Client, input: CommentsManageInput): Promise<any> {
   return withErrorHandling(
@@ -30,33 +30,25 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
           }
           const pageId: string = input.page_id
 
-          try {
-            const comments = await autoPaginate(async (cursor) => {
-              return await notion.comments.list({
-                block_id: pageId,
-                start_cursor: cursor
-              })
+          const comments = await autoPaginate(async (cursor) => {
+            return await notion.comments.list({
+              block_id: pageId,
+              start_cursor: cursor
             })
+          })
 
-            return {
-              page_id: input.page_id,
-              total_comments: comments.length,
-              results: comments.map((comment: any) => ({
-                id: comment.id,
-                created_time: comment.created_time,
-                created_by: comment.created_by,
-                discussion_id: comment.discussion_id,
-                text: RichText.extractPlainText(comment.rich_text),
-                ...(comment.display_name ? { display_name: comment.display_name } : {}),
-                parent: comment.parent
-              }))
-            }
-          } catch (error: any) {
-            // Re-throw so the outer withErrorHandling can apply the HTTP-status-based
-            // OAuth 404 disambiguation. The previous env-gated path only caught the
-            // bug for explicitly-OAuth deployments and missed internal tokens hitting
-            // the same Notion API behavior.
-            throw error
+          return {
+            page_id: input.page_id,
+            total_comments: comments.length,
+            results: comments.map((comment: any) => ({
+              id: comment.id,
+              created_time: comment.created_time,
+              created_by: comment.created_by,
+              discussion_id: comment.discussion_id,
+              text: RichText.extractPlainText(comment.rich_text),
+              ...(comment.display_name ? { display_name: comment.display_name } : {}),
+              parent: comment.parent
+            }))
           }
         }
         case 'get': {
@@ -135,9 +127,49 @@ export async function commentsManage(notion: Client, input: CommentsManageInput)
             created: true
           }
         }
+        case 'update': {
+          if (!input.comment_id) {
+            throw new NotionMCPError('comment_id required for update action', 'VALIDATION_ERROR', 'Provide comment_id')
+          }
+          if (!input.content) {
+            throw new NotionMCPError(
+              'content required for update action',
+              'VALIDATION_ERROR',
+              'Provide comment content'
+            )
+          }
+
+          const comment: any = await notion.comments.update({
+            comment_id: input.comment_id,
+            rich_text: [RichText.text(input.content)] as any
+          })
+
+          return {
+            action: 'update',
+            comment_id: comment.id,
+            text: RichText.extractPlainText(comment.rich_text),
+            updated: true
+          }
+        }
+
+        case 'delete': {
+          if (!input.comment_id) {
+            throw new NotionMCPError('comment_id required for delete action', 'VALIDATION_ERROR', 'Provide comment_id')
+          }
+
+          await notion.comments.delete({
+            comment_id: input.comment_id
+          })
+
+          return {
+            action: 'delete',
+            comment_id: input.comment_id,
+            deleted: true
+          }
+        }
 
         default:
-          throwUnknownAction(input.action, ['list', 'get', 'create'], 'comments')
+          throwUnknownAction(input.action, ['list', 'get', 'create', 'update', 'delete'], 'comments')
       }
     },
     { tool: 'comments' }

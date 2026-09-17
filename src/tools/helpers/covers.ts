@@ -87,7 +87,24 @@ const COVER_CATALOG: Record<string, string> = Object.assign(Object.create(null),
  * - Full URL (http/https) -> external cover
  * - Shorthand name (e.g., "gradient_8", "solid_blue") -> resolved to Notion CDN URL
  */
-export function formatCover(value: string): { type: 'external'; external: { url: string } } {
+export function formatCover<T extends string | null | undefined>(
+  value: T
+): T extends 'none' | 'None' | 'NONE' | null | undefined ? null : { type: 'external'; external: { url: string } }
+export function formatCover(value: string | null | undefined): { type: 'external'; external: { url: string } } | null {
+  if (value === null || value === undefined) {
+    return null
+  }
+  if (typeof value !== 'string') {
+    throw new NotionMCPError(
+      'Cover value must be a string, or "none"/null to clear.',
+      'VALIDATION_ERROR',
+      'Provide a valid image URL, cover shorthand, or "none" to remove cover'
+    )
+  }
+  if (value.toLowerCase() === 'none') {
+    return null
+  }
+
   // Full URL (with safety check against javascript:, data:, etc.)
   if (value.startsWith('http://') || value.startsWith('https://')) {
     if (!isSafeUrl(value)) {

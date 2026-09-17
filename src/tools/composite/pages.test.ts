@@ -3,6 +3,7 @@ import {
   type ArchivePageResult,
   type CreatePageResult,
   type DuplicatePageResult,
+  type GetPageMarkdownResult,
   type GetPagePropertyResult,
   type GetPageResult,
   type MovePageResult,
@@ -10,19 +11,23 @@ import {
   type UpdatePageResult
 } from './pages'
 
-vi.mock('../helpers/markdown.js', () => ({
-  markdownToBlocks: vi.fn((md: string) => {
-    if (!md) return { blocks: [], warnings: [] }
-    return {
-      blocks: [{ type: 'paragraph', paragraph: { rich_text: [{ text: { content: md } }] } }],
-      warnings: []
-    }
-  }),
-  blocksToMarkdown: vi.fn((blocks: any[]) => {
-    if (!blocks.length) return ''
-    return '# Mock markdown'
-  })
-}))
+vi.mock('../helpers/markdown.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../helpers/markdown.js')>()
+  return {
+    ...actual,
+    markdownToBlocks: vi.fn((md: string) => {
+      if (!md) return { blocks: [], warnings: [] }
+      return {
+        blocks: [{ type: 'paragraph', paragraph: { rich_text: [{ text: { content: md } }] } }],
+        warnings: []
+      }
+    }),
+    blocksToMarkdown: vi.fn((blocks: any[]) => {
+      if (!blocks.length) return ''
+      return '# Mock markdown'
+    })
+  }
+})
 
 function createMockNotion() {
   return {
@@ -324,6 +329,23 @@ describe('pages', () => {
 
       expect(mockNotion.blocks.children.append).toHaveBeenCalledWith({
         block_id: 'page-4',
+        children: expect.any(Array)
+      })
+    })
+
+    it('creates page with content supplied via markdown or new_str alias', async () => {
+      mockNotion.pages.create.mockResolvedValue({ id: 'page-md', url: 'https://notion.so/page-md' })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
+
+      await pages(mockNotion as any, {
+        action: 'create',
+        title: 'Markdown Page',
+        parent_id: 'parent-1',
+        markdown: '# Hello from Markdown'
+      })
+
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith({
+        block_id: 'page-md',
         children: expect.any(Array)
       })
     })
@@ -684,6 +706,111 @@ describe('pages', () => {
       expect(mockNotion.pages.properties.retrieve).toHaveBeenCalledTimes(2)
     })
 
+    it('resolves Chinese property name to property_id via page.properties', async () => {
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        properties: {
+          人物志: { id: 'Ri%3FU', type: 'relation' }
+        }
+      })
+      mockNotion.pages.properties.retrieve.mockResolvedValueOnce({
+        results: [{ type: 'relation', relation: { id: 'rel-1' } }],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'get_property',
+        page_id: 'page-1',
+        property_id: '人物志'
+      })) as GetPagePropertyResult
+
+      expect(mockNotion.pages.properties.retrieve).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page_id: 'page-1',
+          property_id: 'Ri%3FU'
+        })
+      )
+      expect(result.type).toBe('relation')
+      expect(result.value).toEqual(['rel-1'])
+    })
+
+    it('returns typed empty array for relation when results is empty', async () => {
+      mockNotion.pages.properties.retrieve.mockResolvedValueOnce({
+        object: 'list',
+        results: [],
+        next_cursor: null,
+        has_more: false,
+        type: 'property_item',
+        property_item: {
+          id: 'prop-empty',
+          type: 'relation',
+          relation: {}
+        }
+      })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'get_property',
+        page_id: 'page-1',
+        property_id: 'prop-empty'
+      })) as GetPagePropertyResult
+
+      expect(result.type).toBe('relation')
+      expect(result.value).toEqual([])
+    })
+
+    it('supports property_name alias as input', async () => {
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        properties: {
+          人物志: { id: 'Ri%3FU', type: 'relation' }
+        }
+      })
+      mockNotion.pages.properties.retrieve.mockResolvedValueOnce({
+        results: [{ type: 'relation', relation: { id: 'rel-1' } }],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await pages(
+        mockNotion as any,
+        {
+          action: 'get_property',
+          page_id: 'page-1',
+          property_name: '人物志'
+        } as any
+      )) as GetPagePropertyResult
+
+      expect(result.type).toBe('relation')
+      expect(result.value).toEqual(['rel-1'])
+    })
+
+    it('resolves English property name passed in property_id to property ID', async () => {
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        properties: {
+          Status: { id: 'status-id-123', type: 'status' }
+        }
+      })
+      mockNotion.pages.properties.retrieve.mockResolvedValueOnce({
+        type: 'status',
+        status: { id: 's1', name: 'In Progress', color: 'blue' }
+      })
+
+      const result = (await pages(
+        mockNotion as any,
+        {
+          action: 'get_property',
+          page_id: 'page-1',
+          property_id: 'Status'
+        } as any
+      )) as GetPagePropertyResult
+
+      expect(mockNotion.pages.properties.retrieve).toHaveBeenCalledWith(
+        expect.objectContaining({ property_id: 'status-id-123' })
+      )
+      expect(result.type).toBe('status')
+      expect(result.value).toEqual({ id: 's1', name: 'In Progress', color: 'blue' })
+      expect(result.property_id).toBe('status-id-123')
+    })
+
     it('throws without page_id', async () => {
       await expect(pages(mockNotion as any, { action: 'get_property', property_id: 'prop-1' })).rejects.toThrow(
         'page_id is required'
@@ -716,6 +843,81 @@ describe('pages', () => {
         page_id: 'page-1',
         icon: { type: 'emoji', emoji: '📝' },
         cover: { type: 'external', external: { url: 'https://example.com/banner.jpg' } }
+      })
+    })
+
+    it('clears cover when cover is "none"', async () => {
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        cover: 'none'
+      })) as UpdatePageResult
+
+      expect(result).toEqual({ action: 'update', page_id: 'page-1', updated: true })
+      expect(mockNotion.pages.update).toHaveBeenCalledWith({
+        page_id: 'page-1',
+        cover: null
+      })
+    })
+
+    it('clears cover when cover is null or empty string', async () => {
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        cover: null as any
+      })
+      expect(mockNotion.pages.update).toHaveBeenCalledWith({
+        page_id: 'page-1',
+        cover: null
+      })
+
+      await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        cover: ''
+      })
+      expect(mockNotion.pages.update).toHaveBeenCalledWith({
+        page_id: 'page-1',
+        cover: null
+      })
+    })
+
+    it('returns ignored_properties when read-only properties are stripped', async () => {
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        properties: {
+          Status: { select: { name: 'Done' } },
+          Formula: { formula: { type: 'number', number: 42 } },
+          Rollup: { rollup: { type: 'number', number: 7 } }
+        }
+      })) as UpdatePageResult
+
+      expect(result.updated).toBe(true)
+      expect(result.ignored_properties).toEqual(['Formula', 'Rollup'])
+    })
+
+    it('updates content using markdown alias', async () => {
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({ markdown: 'Appended content' })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'update',
+        page_id: 'page-1',
+        markdown: 'Appended content'
+      })) as UpdatePageResult
+
+      expect(result.updated).toBe(true)
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'page-1',
+        type: 'insert_content',
+        insert_content: { content: 'Appended content', position: { type: 'end' } }
       })
     })
 
@@ -1734,6 +1936,27 @@ describe('pages', () => {
       expect(mockNotion.pages.retrieveMarkdown).toHaveBeenCalledWith({ page_id: 'p1' })
     })
 
+    it('cleans <empty-block/> and converts HTML tables to markdown', async () => {
+      mockNotion.pages.retrieveMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown:
+          '# Title\n\n<empty-block/>\n\n<table header-row="true"><tr><th>Name</th><th>Role</th></tr><tr><td>Alice</td><td>Admin</td></tr></table>\n\n<empty-block/>',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'get_markdown',
+        page_id: 'p1'
+      })) as GetPageMarkdownResult
+
+      expect(result.markdown).not.toContain('<empty-block/>')
+      expect(result.markdown).not.toContain('<table')
+      expect(result.markdown).toContain('| Name | Role |')
+      expect(result.markdown).toContain('| Alice | Admin |')
+    })
+
     it('throws without page_id', async () => {
       await expect(pages(mockNotion as any, { action: 'get_markdown' })).rejects.toThrow('page_id is required')
     })
@@ -1763,6 +1986,32 @@ describe('pages', () => {
         page_id: 'p1',
         type: 'replace_content',
         replace_content: { new_str: 'NEW', allow_deleting_content: true }
+      })
+    })
+
+    it('accepts content alias instead of new_str', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: 'ALIASED',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      const result = await pages(
+        mockNotion as any,
+        {
+          action: 'replace_content',
+          page_id: 'p1',
+          content: 'ALIASED'
+        } as any
+      )
+
+      expect(result).toMatchObject({ action: 'replace_content', page_id: 'p1', replaced: true })
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'replace_content',
+        replace_content: { new_str: 'ALIASED', allow_deleting_content: true }
       })
     })
 
@@ -1800,6 +2049,31 @@ describe('pages', () => {
         page_id: 'p1',
         type: 'insert_content',
         insert_content: { content: 'INSERTED', position: { type: 'end' } }
+      })
+    })
+
+    it('accepts markdown alias instead of content', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(
+        mockNotion as any,
+        {
+          action: 'insert_markdown',
+          page_id: 'p1',
+          markdown: 'INSERT_ALIASED'
+        } as any
+      )
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'insert_content',
+        insert_content: { content: 'INSERT_ALIASED', position: { type: 'end' } }
       })
     })
 
@@ -1876,6 +2150,31 @@ describe('pages', () => {
         action: 'update_content',
         page_id: 'p1',
         updates: [{ old_str: 'foo', new_str: 'bar' }]
+      })
+
+      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
+        page_id: 'p1',
+        type: 'update_content',
+        update_content: {
+          content_updates: [{ old_str: 'foo', new_str: 'bar' }],
+          allow_deleting_content: false
+        }
+      })
+    })
+
+    it('normalizes updates with search and replace aliases', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      await pages(mockNotion as any, {
+        action: 'update_content',
+        page_id: 'p1',
+        updates: [{ search: 'foo', replace: 'bar' }] as any
       })
 
       expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
@@ -1985,6 +2284,29 @@ describe('pages', () => {
           content_range: '旧正文',
           allow_deleting_content: false
         }
+      })
+    })
+
+    it('cleans <empty-block/> in returned markdown', async () => {
+      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
+        object: 'page_markdown',
+        id: 'p1',
+        markdown: '# Section\n<empty-block/>\nUpdated body',
+        truncated: false,
+        unknown_block_ids: []
+      })
+
+      const result = await pages(mockNotion as any, {
+        action: 'replace_content_range',
+        page_id: 'p1',
+        content: 'Updated body',
+        content_range: 'Old body'
+      })
+
+      expect(result).toMatchObject({
+        action: 'replace_content_range',
+        page_id: 'p1',
+        markdown: '# Section\n\nUpdated body'
       })
     })
   })

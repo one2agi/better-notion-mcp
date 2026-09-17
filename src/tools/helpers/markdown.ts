@@ -72,8 +72,8 @@ function createMention(
 
 // Regular expressions for block parsing
 const CALLOUT_REGEX = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR|DANGER)\]\s*(.*)/i
-const IMAGE_REGEX = /^!\[([^\]]*)\]\(([^)]+)\)/
-const BOOKMARK_REGEX = /^\[(bookmark|embed)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/i
+const IMAGE_REGEX = /^\s*!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/
+const BOOKMARK_REGEX = /^\s*\[\s*(bookmark|embed|书签|网页书签)\s*\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/i
 const CHECKED_LIST_REGEX = /^\s*[-*+]\s\[([ xX])\](?:\s|$)/
 const BULLETED_LIST_REGEX = /^\s*[-*+]\s/
 const NUMBERED_LIST_REGEX = /^\s*\d+\.\s/
@@ -174,7 +174,7 @@ class MarkdownParser {
     }
 
     // Image ![alt](url)
-    const imageMatch = line.match(IMAGE_REGEX)
+    const imageMatch = trimmedLine.match(IMAGE_REGEX)
     if (imageMatch) {
       const url = imageMatch[2]
       if (isSafeUrl(url)) {
@@ -186,10 +186,12 @@ class MarkdownParser {
       return i
     }
 
-    // Bookmark/Embed [bookmark](url) or [embed](url)
-    const bookmarkMatch = line.match(BOOKMARK_REGEX)
+    // Bookmark/Embed [bookmark](url) or [embed](url) or [书签](url) or [网页书签](url)
+    const bookmarkMatch = trimmedLine.match(BOOKMARK_REGEX)
     if (bookmarkMatch) {
-      const type = bookmarkMatch[1].toLowerCase()
+      const linkText = bookmarkMatch[1].toLowerCase()
+      const isEmbed = linkText.includes('embed')
+      const type = isEmbed ? 'embed' : 'bookmark'
       const url = bookmarkMatch[2]
       const caption = bookmarkMatch[3]
       if (isSafeUrl(url)) {
@@ -1213,16 +1215,6 @@ function createToggle(text: string, children: NotionBlock[] = []): NotionBlock {
   }
 }
 
-function createTemplate(text: string): NotionBlock {
-  return {
-    object: 'block',
-    type: 'template',
-    template: {
-      rich_text: parseRichText(text)
-    }
-  }
-}
-
 function createImage(url: string, caption: string = ''): NotionBlock {
   return {
     object: 'block',
@@ -1342,4 +1334,57 @@ function createBreadcrumb(): NotionBlock {
 
 function isListItem(line: string): boolean {
   return CHECKED_LIST_REGEX.test(line) || BULLETED_LIST_REGEX.test(line) || NUMBERED_LIST_REGEX.test(line)
+}
+
+/**
+ * Cleans Notion API artifacts from markdown returned by retrieveMarkdown/updateMarkdown.
+ * Removes <empty-block/> tags and converts basic HTML <table> elements into GFM tables.
+ */
+export function sanitizeNotionMarkdown(md: string): string {
+  if (!md) return ''
+
+  // 1. Remove <empty-block/> tags
+  let cleaned = md.replace(/<empty-block\s*\/?>/gi, '')
+
+  // 2. Convert simple HTML tables to GFM tables
+  cleaned = cleaned.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_match, tableBody) => {
+    const rowMatches = [...tableBody.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)]
+    if (rowMatches.length === 0) return ''
+
+    const rows: string[][] = []
+
+    for (const rowMatch of rowMatches) {
+      const rowContent = rowMatch[1]
+      const thMatches = [...rowContent.matchAll(/<th[^>]*>([\s\S]*?)<\/th>/gi)]
+      if (thMatches.length > 0) {
+        rows.push(thMatches.map((m) => m[1].trim().replace(/\|/g, '\\|')))
+      } else {
+        const tdMatches = [...rowContent.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
+        rows.push(tdMatches.map((m) => m[1].trim().replace(/\|/g, '\\|')))
+      }
+    }
+
+    if (rows.length === 0) return ''
+
+    const colCount = Math.max(...rows.map((r) => r.length))
+    const formattedRows: string[] = []
+
+    const header = rows[0]
+    while (header.length < colCount) header.push('')
+    formattedRows.push(`| ${header.join(' | ')} |`)
+    formattedRows.push(`| ${new Array(colCount).fill('---').join(' | ')} |`)
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i]
+      while (row.length < colCount) row.push('')
+      formattedRows.push(`| ${row.join(' | ')} |`)
+    }
+
+    return formattedRows.join('\n')
+  })
+
+  // 3. Normalize multiple blank lines (3 or more newlines to 2)
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
+
+  return cleaned.trim()
 }

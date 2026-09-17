@@ -10,7 +10,9 @@ const mockNotion = {
   comments: {
     list: vi.fn(),
     retrieve: vi.fn(),
-    create: vi.fn()
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn()
   },
   blocks: {
     retrieve: vi.fn()
@@ -389,9 +391,87 @@ describe('commentsManage', () => {
     })
   })
 
+  describe('update', () => {
+    it('should update a comment with new content', async () => {
+      mockNotion.comments.update.mockResolvedValue({
+        id: 'comment-1',
+        rich_text: [{ type: 'text', text: { content: 'Updated comment' } }]
+      })
+
+      const result = await commentsManage(mockNotion as any, {
+        action: 'update',
+        comment_id: 'comment-1',
+        content: 'Updated comment'
+      })
+
+      expect(result).toEqual({
+        action: 'update',
+        comment_id: 'comment-1',
+        text: 'Updated comment',
+        updated: true
+      })
+      expect(mockNotion.comments.update).toHaveBeenCalledWith({
+        comment_id: 'comment-1',
+        rich_text: [
+          expect.objectContaining({
+            text: { content: 'Updated comment', link: null }
+          })
+        ]
+      })
+    })
+
+    it('should throw if comment_id is missing', async () => {
+      await expect(
+        commentsManage(mockNotion as any, { action: 'update', content: 'New text' } as any)
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringContaining('comment_id required')
+      })
+    })
+
+    it('should throw if content is missing', async () => {
+      await expect(
+        commentsManage(mockNotion as any, { action: 'update', comment_id: 'comment-1' } as any)
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringContaining('content required')
+      })
+    })
+  })
+
+  describe('delete', () => {
+    it('should delete a comment', async () => {
+      mockNotion.comments.delete.mockResolvedValue({
+        id: 'comment-1',
+        object: 'comment'
+      })
+
+      const result = await commentsManage(mockNotion as any, {
+        action: 'delete',
+        comment_id: 'comment-1'
+      })
+
+      expect(result).toEqual({
+        action: 'delete',
+        comment_id: 'comment-1',
+        deleted: true
+      })
+      expect(mockNotion.comments.delete).toHaveBeenCalledWith({
+        comment_id: 'comment-1'
+      })
+    })
+
+    it('should throw if comment_id is missing', async () => {
+      await expect(commentsManage(mockNotion as any, { action: 'delete' } as any)).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringContaining('comment_id required')
+      })
+    })
+  })
+
   describe('unknown action', () => {
     it('should throw on unsupported action', async () => {
-      await expect(commentsManage(mockNotion as any, { action: 'delete' as any })).rejects.toMatchObject({
+      await expect(commentsManage(mockNotion as any, { action: 'invalid_action' as any })).rejects.toMatchObject({
         code: 'VALIDATION_ERROR'
       })
     })

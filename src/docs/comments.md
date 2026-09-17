@@ -1,7 +1,7 @@
 # Comments Tool - Full Documentation
 
 ## Overview
-Comments: list, get, create.
+Comments: list, get, create, update, delete.
 
 ## Threading
 - Use `page_id` for new discussion
@@ -34,11 +34,23 @@ Retrieve a single comment by its ID.
 {"action": "create", "discussion_id": "thread-id", "content": "I agree"}
 ```
 
+### update
+Edit an existing comment's text.
+```json
+{"action": "update", "comment_id": "xxx", "content": "Updated comment text"}
+```
+
+### delete
+Delete a comment by its ID.
+```json
+{"action": "delete", "comment_id": "xxx"}
+```
+
 ## Parameters
 - `page_id` - Page ID
-- `comment_id` - Comment ID (for get action)
+- `comment_id` - Comment ID (for get, update, delete action)
 - `discussion_id` - Discussion ID (for replies)
-- `content` - Comment content
+- `content` - Comment content (for create, update)
 
 ## Known Limitations
 
@@ -50,6 +62,5 @@ As of 2025-09-03, the Notion API may return a 404 error when attempting to list 
 2. **Use action: "create"** - Creating new comments or replying to discussions via `discussion_id` is unaffected and works as expected.
 
 ### Not exposed in this tool
-- **`comments.delete`** is **not** exposed by this MCP. If you need to remove a comment, do it from the Notion UI directly, or use the Notion REST API: `DELETE /v1/comments/{comment_id}` (requires server-side integration, not available to OAuth integrations per Notion API docs as of 2025-09-03).
 - **Comment reactions** (emoji) are not exposed. The Notion REST API supports adding/removing reactions on comments but is not yet wired into this tool.
 
