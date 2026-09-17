@@ -32,6 +32,7 @@ export function clearPageTitleCache(): void {
 }
 
 export async function resolvePageTitle(notion: Client, pageId: string): Promise<string> {
+  if (!pageId) return 'Untitled'
   if (pageTitleCache.has(pageId)) {
     return pageTitleCache.get(pageId)!
   }
