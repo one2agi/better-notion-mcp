@@ -213,7 +213,11 @@ export const TOOLS = [
           description:
             'Cover image (for update_database): URL or built-in shorthand (gradient_1..11, solid_red/yellow/blue/beige, nasa_*, met_*, rijksmuseum_*, woodcuts_*)'
         },
-        filters: { type: 'object', description: 'Query filters (for query/aggregate/group_by actions)' },
+        filters: {
+          type: 'object',
+          description:
+            'Query filters (for query/aggregate/group_by actions). Supports flat key-value pairs (e.g. {"Status": "Done", "Active": true}) or official Notion filter DSL.'
+        },
         sorts: { type: 'array', items: { type: 'object' }, description: 'Query sorts' },
         limit: { type: 'number', description: 'Max query results' },
         search: { type: 'string', description: 'Smart search across text fields (for query/aggregate/group_by)' },
