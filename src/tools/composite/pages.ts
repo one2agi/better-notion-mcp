@@ -25,7 +25,12 @@ import {
   updatePageContent
 } from '../helpers/page-content.js'
 import { type DuplicatePageResult, duplicatePage } from '../helpers/page-duplicate.js'
-import { type GetPagePropertyResult, getPageProperty } from '../helpers/page-property-resolver.js'
+import {
+  clearPageTitleCache,
+  type GetPagePropertyResult,
+  getPageProperty,
+  resolvePageTitle
+} from '../helpers/page-property-resolver.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
 import {
   convertToNotionProperties,
@@ -47,12 +52,14 @@ export type {
   UpdateContentResult
 }
 export {
+  clearPageTitleCache,
   duplicatePage,
   getPageMarkdown,
   getPageProperty,
   insertPageMarkdown,
   replacePageContent,
   replacePageContentRange,
+  resolvePageTitle,
   sanitizeNotionMarkdown,
   updatePageContent
 }
@@ -144,6 +151,10 @@ export interface PagesInput {
   // get_property params
   property_id?: string
   property_name?: string
+  resolve_titles?: boolean
+
+  // get params
+  resolve_relations?: boolean
 
   // Archive/Restore params
   archived?: boolean
@@ -370,6 +381,23 @@ async function getPage(notion: Client, input: PagesInput): Promise<GetPageResult
 
   // Extract properties
   const properties = extractPageProperties(page.properties)
+
+  const shouldResolveRelations = input.resolve_relations === true || (input.resolve_relations as any) === 'true'
+  if (shouldResolveRelations && page.properties) {
+    for (const [key, prop] of Object.entries<any>(page.properties)) {
+      if (prop.type === 'relation' && Array.isArray(properties[key])) {
+        properties[key] = await Promise.all(
+          properties[key].map(async (item: any) => {
+            const id = typeof item === 'string' ? item : item?.id
+            return {
+              id,
+              title: await resolvePageTitle(notion, id)
+            }
+          })
+        )
+      }
+    }
+  }
 
   return {
     action: 'get',

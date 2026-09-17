@@ -21,7 +21,44 @@ export interface GetPagePropertyInput {
   page_id?: string
   property_id?: string
   property_name?: string
+  resolve_titles?: boolean
   [key: string]: any
+}
+
+const pageTitleCache = new Map<string, string>()
+
+export function clearPageTitleCache(): void {
+  pageTitleCache.clear()
+}
+
+export async function resolvePageTitle(notion: Client, pageId: string): Promise<string> {
+  if (pageTitleCache.has(pageId)) {
+    return pageTitleCache.get(pageId)!
+  }
+
+  try {
+    const page: any = await notion.pages.retrieve({ page_id: pageId })
+    let title = 'Untitled'
+    if (page?.properties) {
+      for (const prop of Object.values<any>(page.properties)) {
+        if (prop.type === 'title' && prop.title) {
+          if (Array.isArray(prop.title) && prop.title.length > 0) {
+            const joined = prop.title.map((t: any) => t.plain_text || '').join('')
+            title = joined || prop.title[0]?.plain_text || 'Untitled'
+            break
+          }
+        }
+      }
+    }
+    if (pageTitleCache.size >= 500) {
+      const oldestKey = pageTitleCache.keys().next().value
+      if (oldestKey) pageTitleCache.delete(oldestKey)
+    }
+    pageTitleCache.set(pageId, title)
+    return title
+  } catch {
+    return 'Untitled'
+  }
 }
 
 /**
@@ -102,8 +139,8 @@ export async function getPageProperty(notion: Client, input: GetPagePropertyInpu
 
     return {
       results: response.results,
-      next_cursor: response.next_cursor,
-      has_more: response.has_more
+      next_cursor: response.next_cursor ?? null,
+      has_more: response.has_more ?? false
     }
   })
 
@@ -135,7 +172,16 @@ export async function getPageProperty(notion: Client, input: GetPagePropertyInpu
           relationIds.push(id)
         }
       }
-      value = relationIds
+      if (input.resolve_titles === true || (input.resolve_titles as unknown) === 'true') {
+        value = await Promise.all(
+          relationIds.map(async (id) => ({
+            id,
+            title: await resolvePageTitle(notion, id)
+          }))
+        )
+      } else {
+        value = relationIds
+      }
       break
     }
     case 'rollup':

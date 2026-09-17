@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   type ArchivePageResult,
+  clearPageTitleCache,
   type CreatePageResult,
   type DuplicatePageResult,
   type GetPageMarkdownResult,
@@ -67,6 +68,7 @@ describe('pages', () => {
   beforeEach(() => {
     mockNotion = createMockNotion()
     clearDataSourceCache()
+    clearPageTitleCache()
     vi.spyOn(console, 'error').mockImplementation(() => {})
   })
 
@@ -551,6 +553,60 @@ describe('pages', () => {
       expect(mockNotion.blocks.children.list).toHaveBeenCalledTimes(2)
     })
 
+    it('resolves relation page titles when resolve_relations is true', async () => {
+      mockNotion.pages.retrieve.mockImplementation(async ({ page_id }) => {
+        if (page_id === 'page-with-rel') {
+          return {
+            id: 'page-with-rel',
+            url: 'https://notion.so/page-with-rel',
+            created_time: '2024-01-01T00:00:00.000Z',
+            last_edited_time: '2024-01-02T00:00:00.000Z',
+            archived: false,
+            properties: {
+              Name: { type: 'title', title: [{ plain_text: 'Main Task' }] },
+              RelatedProject: {
+                type: 'relation',
+                relation: [{ id: 'proj-1' }, { id: 'proj-2' }]
+              }
+            }
+          }
+        }
+        if (page_id === 'proj-1') {
+          return {
+            id: 'proj-1',
+            properties: {
+              Name: { type: 'title', title: [{ plain_text: 'Project 1' }] }
+            }
+          }
+        }
+        if (page_id === 'proj-2') {
+          return {
+            id: 'proj-2',
+            properties: {
+              Title: { type: 'title', title: [{ plain_text: 'Project 2' }] }
+            }
+          }
+        }
+        return { id: page_id, properties: {} }
+      })
+      mockNotion.blocks.children.list.mockResolvedValue({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'get',
+        page_id: 'page-with-rel',
+        resolve_relations: true
+      })) as GetPageResult
+
+      expect(result.properties.RelatedProject).toEqual([
+        { id: 'proj-1', title: 'Project 1' },
+        { id: 'proj-2', title: 'Project 2' }
+      ])
+    })
+
     it('throws without page_id', async () => {
       await expect(pages(mockNotion as any, { action: 'get' })).rejects.toThrow('page_id is required')
     })
@@ -808,6 +864,29 @@ describe('pages', () => {
       expect(result.type).toBe('status')
       expect(result.value).toEqual({ id: 's1', name: 'In Progress', color: 'blue' })
       expect(result.property_id).toBe('status-id-123')
+    })
+
+    it('resolves relation titles when resolve_titles is true', async () => {
+      mockNotion.pages.properties.retrieve.mockResolvedValueOnce({
+        results: [{ type: 'relation', relation: { id: 'proj-1' } }],
+        next_cursor: null,
+        has_more: false
+      })
+      mockNotion.pages.retrieve.mockResolvedValueOnce({
+        id: 'proj-1',
+        properties: {
+          Name: { type: 'title', title: [{ plain_text: 'Project 1' }] }
+        }
+      })
+
+      const result = (await pages(mockNotion as any, {
+        action: 'get_property',
+        page_id: 'source-page',
+        property_id: '%60rel',
+        resolve_titles: true
+      })) as GetPagePropertyResult
+
+      expect(result.value).toEqual([{ id: 'proj-1', title: 'Project 1' }])
     })
 
     it('throws without page_id', async () => {
