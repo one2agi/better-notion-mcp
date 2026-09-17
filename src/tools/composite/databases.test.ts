@@ -340,6 +340,31 @@ describe('databases', () => {
       )
     })
 
+    it('should auto-normalize flat key-value filters', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce(makeDataSourceResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+
+      await databases(notion, {
+        action: 'query',
+        database_id: 'db-1',
+        filters: { Status: 'Done' }
+      })
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: {
+            property: 'Status',
+            select: { equals: 'Done' }
+          }
+        })
+      )
+    })
+
     it('should build OR filter for smart search on text properties', async () => {
       mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
       mockNotion.dataSources.retrieve.mockResolvedValueOnce(
@@ -1470,6 +1495,41 @@ describe('databases', () => {
       // urgent + low = 2 unique labels
       expect(result.results.distinct_labels).toBe(2)
     })
+
+    it('should auto-normalize flat key-value filters', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce(makeDataSourceResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'page-1',
+            properties: {
+              Name: { type: 'title', title: [{ plain_text: 'Task 1' }] },
+              Status: { type: 'select', select: { name: 'Active' } }
+            }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await databases(notion, {
+        action: 'aggregate',
+        database_id: 'db-1',
+        aggregations: [{ type: 'count', alias: 'total' }],
+        filters: { Status: 'Active' }
+      })) as AggregateDatabaseResponse
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: {
+            property: 'Status',
+            select: { equals: 'Active' }
+          }
+        })
+      )
+      expect(res.results.total).toBe(1)
+    })
   })
 
   describe('group_by', () => {
@@ -1562,6 +1622,42 @@ describe('databases', () => {
 
       expect(result.groups.map((g) => g.key)).toEqual(['Alice', 'Bob', null])
       expect(result.groups[2].count).toBe(1)
+    })
+
+    it('should auto-normalize flat key-value filters', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce(makeDataSourceResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'page-1',
+            properties: {
+              Name: { type: 'title', title: [{ plain_text: 'Task 1' }] },
+              Status: { type: 'select', select: { name: 'Active' } }
+            }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await databases(notion, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: { property: 'Status' },
+        aggregations: [{ type: 'count' }],
+        filters: { Status: 'Active' }
+      })) as GroupByDatabaseResponse
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          filter: {
+            property: 'Status',
+            select: { equals: 'Active' }
+          }
+        })
+      )
+      expect(res.groups).toHaveLength(1)
     })
 
     it('should throw when database_id is missing', async () => {

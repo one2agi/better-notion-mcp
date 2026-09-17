@@ -15,6 +15,7 @@ import {
   schemaCache
 } from '../helpers/data-source.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
+import { isFlatFilter, normalizeFilter } from '../helpers/filter-normalizer.js'
 import { formatIcon } from '../helpers/icons.js'
 import { normalizeId } from '../helpers/id.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
@@ -424,6 +425,12 @@ async function queryDatabase(notion: Client, input: DatabasesInput): Promise<Que
   const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
 
   let filter = parseMaybeJSON<any>(input.filters, 'filters')
+
+  // Auto-normalize flat filter if provided
+  if (isFlatFilter(filter)) {
+    const properties = await getDataSourceSchema(notion, dataSourceId)
+    filter = normalizeFilter(properties, filter)
+  }
 
   // Smart search across text properties
   if (input.search && !filter) {
@@ -1036,13 +1043,12 @@ async function aggregateDatabase(notion: Client, input: DatabasesInput): Promise
   }
 
   const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
-  const pages = await fetchAllDataSourcePages(
-    notion,
-    databaseId,
-    dataSourceId,
-    parseMaybeJSON<any>(input.filters, 'filters'),
-    input.search
-  )
+  let filter = parseMaybeJSON<any>(input.filters, 'filters')
+  if (isFlatFilter(filter)) {
+    const properties = await getDataSourceSchema(notion, dataSourceId)
+    filter = normalizeFilter(properties, filter)
+  }
+  const pages = await fetchAllDataSourcePages(notion, databaseId, dataSourceId, filter, input.search)
 
   const results: Record<string, number | null> = {}
   for (const spec of aggregations) {
@@ -1098,13 +1104,12 @@ async function groupByDatabase(notion: Client, input: DatabasesInput): Promise<G
   }
 
   const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
-  const pages = await fetchAllDataSourcePages(
-    notion,
-    databaseId,
-    dataSourceId,
-    parseMaybeJSON<any>(input.filters, 'filters'),
-    input.search
-  )
+  let filter = parseMaybeJSON<any>(input.filters, 'filters')
+  if (isFlatFilter(filter)) {
+    const properties = await getDataSourceSchema(notion, dataSourceId)
+    filter = normalizeFilter(properties, filter)
+  }
+  const pages = await fetchAllDataSourcePages(notion, databaseId, dataSourceId, filter, input.search)
 
   // Group pages by the group_by property value
   const groups = new Map<string, any[]>()
