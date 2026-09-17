@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { type GetPagePropertyResult, getPageProperty } from './page-property-resolver.js'
+import {
+  clearPageTitleCache,
+  type GetPagePropertyResult,
+  getPageProperty,
+  resolvePageTitle
+} from './page-property-resolver.js'
 
 function createMockNotion() {
   return {
@@ -17,6 +22,7 @@ let mockNotion: ReturnType<typeof createMockNotion>
 describe('page-property-resolver helper', () => {
   beforeEach(() => {
     mockNotion = createMockNotion()
+    clearPageTitleCache()
   })
 
   it('returns paginated title joining text', async () => {
@@ -78,6 +84,96 @@ describe('page-property-resolver helper', () => {
     })
 
     expect(result.value).toEqual(['rel-1', 'rel-2'])
+  })
+
+  it('resolves relation page titles when resolve_titles is true', async () => {
+    const mockNotion = {
+      pages: {
+        properties: {
+          retrieve: vi.fn().mockResolvedValue({
+            object: 'list',
+            results: [
+              { id: 'item-1', type: 'relation', relation: { id: 'target-page-1' } },
+              { id: 'item-2', type: 'relation', relation: { id: 'target-page-2' } }
+            ],
+            has_more: false
+          })
+        },
+        retrieve: vi.fn().mockImplementation(async ({ page_id }) => {
+          if (page_id === 'target-page-1') {
+            return {
+              id: 'target-page-1',
+              properties: {
+                Name: { type: 'title', title: [{ plain_text: 'Project Alpha' }] }
+              }
+            }
+          }
+          if (page_id === 'target-page-2') {
+            return {
+              id: 'target-page-2',
+              properties: {
+                Title: { type: 'title', title: [{ plain_text: 'Project Beta' }] }
+              }
+            }
+          }
+          return { id: page_id, properties: {} }
+        })
+      }
+    }
+
+    const res = await getPageProperty(mockNotion as any, {
+      page_id: 'source-page',
+      property_id: 'rel_prop',
+      resolve_titles: true
+    })
+
+    expect(res.value).toEqual([
+      { id: 'target-page-1', title: 'Project Alpha' },
+      { id: 'target-page-2', title: 'Project Beta' }
+    ])
+  })
+
+  it('uses cached page titles on subsequent lookups', async () => {
+    const retrieveMock = vi.fn().mockResolvedValue({
+      id: 'target-page-1',
+      properties: {
+        Name: { type: 'title', title: [{ plain_text: 'Cached Title' }] }
+      }
+    })
+    const mockNotion = {
+      pages: {
+        retrieve: retrieveMock
+      }
+    }
+
+    const title1 = await resolvePageTitle(mockNotion as any, 'target-page-1')
+    const title2 = await resolvePageTitle(mockNotion as any, 'target-page-1')
+
+    expect(title1).toBe('Cached Title')
+    expect(title2).toBe('Cached Title')
+    expect(retrieveMock).toHaveBeenCalledTimes(1)
+
+    clearPageTitleCache()
+    const title3 = await resolvePageTitle(mockNotion as any, 'target-page-1')
+    expect(title3).toBe('Cached Title')
+    expect(retrieveMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls back to Untitled when title is missing or retrieve throws', async () => {
+    const mockNotion = {
+      pages: {
+        retrieve: vi.fn().mockImplementation(async ({ page_id }) => {
+          if (page_id === 'err-page') throw new Error('Notion API error')
+          return { id: page_id, properties: { Status: { type: 'status' } } }
+        })
+      }
+    }
+
+    const titleNoTitle = await resolvePageTitle(mockNotion as any, 'no-title-page')
+    expect(titleNoTitle).toBe('Untitled')
+
+    const titleErr = await resolvePageTitle(mockNotion as any, 'err-page')
+    expect(titleErr).toBe('Untitled')
   })
 
   it('returns people with id and name', async () => {

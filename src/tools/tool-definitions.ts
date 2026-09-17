@@ -93,6 +93,14 @@ export const TOOLS = [
           type: 'string',
           description: 'Property name (alternative to property_id for get_property action)'
         },
+        resolve_titles: {
+          type: 'boolean',
+          description: 'Resolve relation page IDs to {id, title} objects (for get_property action)'
+        },
+        resolve_relations: {
+          type: 'boolean',
+          description: 'Resolve relation property page IDs to {id, title} objects (for get action)'
+        },
         icon: {
           type: 'string',
           description:
