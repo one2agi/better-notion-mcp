@@ -1819,6 +1819,29 @@ describe('databases', () => {
         })
       ).rejects.toThrow('group_by required for group_by action')
     })
+
+    it('should accept group_by as a plain string property name shorthand', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } },
+          { id: 'p2', properties: { Owner: { type: 'select', select: { name: 'Bob' } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await databases(notion, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: 'Owner' as any,
+        aggregations: [{ type: 'count' }]
+      })) as GroupByDatabaseResponse
+
+      expect(res.group_by_property).toBe('Owner')
+      expect(res.groups).toHaveLength(2)
+      expect(res.groups[0].key).toBe('Alice')
+    })
   })
 
   // ---------------------------------------------------------------------------
