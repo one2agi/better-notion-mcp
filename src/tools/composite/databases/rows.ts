@@ -137,19 +137,45 @@ export async function updateDatabasePages(notion: Client, input: DatabasesInput)
     throw new NotionMCPError('pages or page_id+page_properties required', 'VALIDATION_ERROR', 'Provide items to update')
   }
 
-  // Validate all items before processing to avoid partial writes on malformed input
+  // Validate and normalize all items before processing to avoid partial writes on malformed input
+  const normalizedItems: Array<{ page_id: string; properties: Record<string, any> }> = []
   for (let i = 0; i < items.length; i++) {
-    if (!items[i] || items[i].properties === undefined || items[i].properties === null) {
+    const raw: any = items[i]
+    if (!raw || raw.properties === null) {
       throw new NotionMCPError(
         `Item at index ${i} in the pages array is missing the "properties" key`,
         'VALIDATION_ERROR',
         'Use format: pages: [{ "page_id": "...", "properties": { "FieldName": "value" } }]'
       )
     }
+
+    let properties = raw.properties
+    if (properties === undefined) {
+      const { page_id: _p, id: _i, template: _t, template_id: _ti, ...flatProps } = raw
+      if (Object.keys(flatProps).length > 0) {
+        properties = flatProps
+      } else {
+        throw new NotionMCPError(
+          `Item at index ${i} in the pages array is missing the "properties" key`,
+          'VALIDATION_ERROR',
+          'Use format: pages: [{ "page_id": "...", "properties": { "FieldName": "value" } }]'
+        )
+      }
+    }
+
+    const pageId = raw.page_id || raw.id
+    if (!pageId) {
+      throw new NotionMCPError('page_id required for each item', 'VALIDATION_ERROR', 'Provide page_id')
+    }
+
+    normalizedItems.push({
+      page_id: pageId,
+      properties
+    })
   }
 
   const results = await processBatches(
-    items,
+    normalizedItems,
     async (item) => {
       if (!item.page_id) {
         throw new NotionMCPError('page_id required for each item', 'VALIDATION_ERROR', 'Provide page_id')

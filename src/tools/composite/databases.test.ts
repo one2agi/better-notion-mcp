@@ -786,6 +786,40 @@ describe('databases', () => {
       ])
     })
 
+    it('should accept id alias and flat properties in pages array', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'p-1' }).mockResolvedValueOnce({ id: 'p-2' })
+
+      const result = (await databases(notion, {
+        action: 'update_page',
+        pages: [
+          { id: 'p-1', Status: 'Done' } as any,
+          { page_id: 'p-2', properties: { Status: 'Active' } }
+        ]
+      })) as UpdateDatabasePageResponse
+
+      expect(result.action).toBe('update_page')
+      expect(result.processed).toBe(2)
+      expect(result.results).toEqual([
+        { page_id: 'p-1', updated: true },
+        { page_id: 'p-2', updated: true }
+      ])
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'p-1' }))
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'p-2' }))
+    })
+
+    it('should accept id alias with nested properties in pages array', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'p-1' })
+
+      const result = (await databases(notion, {
+        action: 'update_page',
+        pages: [{ id: 'p-1', properties: { Status: 'Done' } } as any]
+      })) as UpdateDatabasePageResponse
+
+      expect(result.processed).toBe(1)
+      expect(result.results).toEqual([{ page_id: 'p-1', updated: true }])
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'p-1' }))
+    })
+
     it('should throw when neither pages nor page_id+page_properties provided', async () => {
       await expect(databases(notion, { action: 'update_page' })).rejects.toThrow(
         'pages or page_id+page_properties required'
