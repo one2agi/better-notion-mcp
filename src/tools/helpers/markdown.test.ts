@@ -710,13 +710,14 @@ describe('markdownToBlocks', () => {
       expect(columns).toHaveLength(3)
     })
 
-    it('should handle empty column content', () => {
+    it('should handle empty column content with safety fallback paragraph', () => {
       const md = ':::columns\n:::column\n:::column\nRight side\n:::end'
       const { blocks } = markdownToBlocks(md)
       const columns = blocks[0].column_list.children
       expect(columns).toHaveLength(2)
-      // Empty column should still exist but with no children
-      expect(columns[0].column.children).toHaveLength(0)
+      // Empty column must contain at least 1 fallback child to prevent Notion 400 validation error
+      expect(columns[0].column.children).toHaveLength(1)
+      expect(columns[0].column.children[0].type).toBe('paragraph')
     })
 
     it('should parse width ratio on columns', () => {

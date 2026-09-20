@@ -48,7 +48,7 @@ export const TOOLS = [
   {
     name: 'pages',
     description:
-      'Page CRUD for individual pages and database rows.\n\nActions (required params -> optional):\n- create (parent_id -> title, content, properties, icon, cover)\n- get (page_id): returns markdown content\n- get_property (page_id, property_id)\n- update (page_id -> title, content, append_content, properties, icon, cover, archived)\n- move (page_id, parent_id)\n- archive (page_id | page_ids) / restore (page_id | page_ids)\n- duplicate (page_id -> parent_id)\n- get_markdown (page_id): server-side markdown render (faster than `get`, requires Notion API 2025-09-03 + SDK v5.22+)\n- replace_content (page_id, new_str): overwrite whole page with markdown (destructive)\n- insert_markdown (page_id, content, position="start"|"end", after_block_id?): insert at position or after block\n- update_content (page_id, updates[{old_str,new_str,replace_all_matches?}]): server-side search & replace\n- replace_content_range (page_id, content, content_range): replace a specific markdown range\n\nUse `databases` instead for querying or bulk row operations. Property format: simple values auto-convert -- string for title/rich_text/select/status, number for number, boolean for checkbox, string[] for multi_select, ISO date "2025-01-15" for date. Example: properties: {"Name": "My Page", "Status": "In Progress", "Tags": ["tag1", "tag2"], "Due": "2025-06-01", "Count": 42, "Done": true}.',
+      'Page CRUD for individual pages and database rows.\n\nActions (required params -> optional):\n- create (parent_id -> title, content, template, properties, icon, cover)\n- get (page_id): returns markdown content\n- get_property (page_id, property_id)\n- update (page_id -> title, content, append_content, properties, icon, cover, archived)\n- move (page_id, parent_id)\n- archive (page_id | page_ids) / restore (page_id | page_ids)\n- duplicate (page_id -> parent_id)\n- get_markdown (page_id): server-side markdown render (faster than `get`, requires Notion API 2025-09-03 + SDK v5.22+)\n- replace_content (page_id, new_str): overwrite whole page with markdown (destructive)\n- insert_markdown (page_id, content, position="start"|"end", after_block_id?): insert at position or after block\n- update_content (page_id, updates[{old_str,new_str,replace_all_matches?}]): server-side search & replace\n- replace_content_range (page_id, content, content_range): replace a specific markdown range\n\nUse `databases` instead for querying or bulk row operations. Property format: simple values auto-convert -- string for title/rich_text/select/status, number for number, boolean for checkbox, string[] for multi_select, ISO date "2025-01-15" for date. Example: properties: {"Name": "My Page", "Status": "In Progress", "Tags": ["tag1", "tag2"], "Due": "2025-06-01", "Count": 42, "Done": true}.',
     annotations: {
       title: 'Pages',
       readOnlyHint: false,
@@ -111,6 +111,14 @@ export const TOOLS = [
           description:
             'Cover image: URL or built-in shorthand (gradient_1..11, solid_red/yellow/blue/beige, nasa_*, met_*, rijksmuseum_*, woodcuts_*)'
         },
+        template: {
+          description:
+            'Template to instantiate: "default", template name string (auto-matched against database templates), UUID, or template object'
+        },
+        template_id: {
+          type: 'string',
+          description: 'Template UUID to instantiate (alternative to template)'
+        },
         archived: { type: 'boolean', description: 'Archive status' },
         replace: {
           type: 'boolean',
@@ -164,7 +172,7 @@ export const TOOLS = [
   {
     name: 'databases',
     description:
-      'Database schema, query, and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search)\n- aggregate (database_id, aggregations[{type,property,alias}]): count/sum/avg/min/max/unique_count\n- group_by (database_id, group_by{property}, aggregations): group rows by a property, compute per-group stats\n- create_page (database_id, pages[{properties}])\n- update_page (database_id, page_id, page_properties)\n- delete_page (database_id, page_ids)\n- create_data_source / update_data_source / update_database / list_templates\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
+      'Database schema, query, views (table, board, calendar, timeline, gallery, list, form, chart), and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search)\n- aggregate (database_id, aggregations[{type,property,alias}]): count/sum/avg/min/max/unique_count\n- group_by (database_id, group_by{property}, aggregations): group rows by a property, compute per-group stats\n- create_page (database_id, pages[{properties, template?}] | page_properties, template?)\n- update_page (database_id, page_id, page_properties)\n- delete_page (database_id, page_ids)\n- create_data_source / update_data_source / update_database / list_templates\n- create_view (database_id, name, type -> chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, anonymous_submissions, submission_permissions, quick_filters, configuration, filters, sorts, placement, position): supports table, board, calendar, timeline, gallery, list, form, chart\n- list_views (database_id -> limit)\n- get_view (view_id)\n- update_view (view_id -> name, type, chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, quick_filters, configuration, filters, sorts)\n- delete_view (view_id)\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
     annotations: {
       title: 'Databases',
       readOnlyHint: false,
@@ -189,13 +197,18 @@ export const TOOLS = [
             'create_data_source',
             'update_data_source',
             'update_database',
-            'list_templates'
+            'list_templates',
+            'create_view',
+            'list_views',
+            'get_view',
+            'update_view',
+            'delete_view'
           ]
         },
         database_id: {
           type: 'string',
           description:
-            'Database ID (from Notion URL) or data_source_id (from workspace search). Auto-resolved for query/aggregate/group_by/create_page/list_templates.'
+            'Database ID (from Notion URL) or data_source_id (from workspace search). Auto-resolved for query/aggregate/group_by/create_page/list_templates/create_view/list_views.'
         },
         data_source_id: { type: 'string', description: 'Data source ID (for update_data_source action)' },
         parent_id: { type: 'string', description: 'Parent page ID (for create/update_database)' },
@@ -216,9 +229,13 @@ export const TOOLS = [
         filters: {
           type: 'object',
           description:
-            'Query filters (for query/aggregate/group_by actions). Supports flat key-value pairs (e.g. {"Status": "Done", "Active": true}) or official Notion filter DSL.'
+            'Query filters (for query/aggregate/group_by/create_view/update_view actions). Supports flat key-value pairs (e.g. {"Status": "Done", "Active": true}) or official Notion filter DSL.'
         },
-        sorts: { type: 'array', items: { type: 'object' }, description: 'Query sorts' },
+        sorts: {
+          type: 'array',
+          items: { type: 'object' },
+          description: 'Query sorts (for query/create_view/update_view)'
+        },
         limit: { type: 'number', description: 'Max query results' },
         search: { type: 'string', description: 'Smart search across text fields (for query/aggregate/group_by)' },
         aggregations: {
@@ -238,17 +255,114 @@ export const TOOLS = [
           description: 'Aggregation specs (for aggregate/group_by actions)'
         },
         group_by: {
-          type: 'object',
-          properties: {
-            property: { type: 'string', description: 'Property name to group by' }
-          },
-          required: ['property'],
-          description: 'Group-by config (for group_by action)'
+          description:
+            'Group-by config: property name string (e.g. "阶段") or object {property: string, ...} for aggregate/views'
         },
         page_id: { type: 'string', description: 'Single page ID (for update_page)' },
         page_ids: { type: 'array', items: { type: 'string' }, description: 'Multiple page IDs (for delete_page)' },
         page_properties: { type: 'object', description: 'Page properties to update (for update_page)' },
-        pages: { type: 'array', items: { type: 'object' }, description: 'Array of pages for bulk create/update' }
+        pages: { type: 'array', items: { type: 'object' }, description: 'Array of pages for bulk create/update' },
+        template: {
+          description:
+            'Template to apply for create_page: "default", template name string (auto-matched), UUID, or template object'
+        },
+        template_id: {
+          type: 'string',
+          description: 'Template UUID to apply for create_page (alternative to template)'
+        },
+        view_id: { type: 'string', description: 'View ID (for get_view, update_view, delete_view)' },
+        name: { type: 'string', description: 'View name (for create_view, update_view)' },
+        type: {
+          type: 'string',
+          enum: ['table', 'board', 'calendar', 'timeline', 'gallery', 'list', 'form', 'chart'],
+          description:
+            'View type: table, board, calendar, timeline, gallery, list, form, chart (for create_view, update_view)'
+        },
+        configuration: { type: 'object', description: 'View configuration object (for create_view, update_view)' },
+        date_property: {
+          type: 'string',
+          description: 'Date property name or ID (for calendar/timeline views; auto-resolved from schema)'
+        },
+        end_date_property: {
+          type: 'string',
+          description: 'End date property name or ID (for timeline view; auto-resolved from schema)'
+        },
+        placement: {
+          type: 'object',
+          description: 'Widget placement (e.g. {type: "new_row"} or {type: "existing_row", row_id: string})'
+        },
+        position: {
+          type: 'object',
+          description: 'Position in view tabs: {type: "start"|"end"} or {type: "after_view", view_id: string}'
+        },
+        visible_properties: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Array of property names or IDs to show in the view'
+        },
+        quick_filters: {
+          description: 'Quick filter bar configuration for database views'
+        },
+        // Form view parameters
+        is_form_closed: {
+          type: 'boolean',
+          description: 'Close form submissions (for form view; alias: closed)'
+        },
+        closed: {
+          type: 'boolean',
+          description: 'Alias for is_form_closed (close form submissions)'
+        },
+        anonymous_submissions: {
+          type: 'boolean',
+          description: 'Allow anonymous submissions (for form view; alias: anonymous)'
+        },
+        anonymous: {
+          type: 'boolean',
+          description: 'Alias for anonymous_submissions (allow anonymous submissions)'
+        },
+        submission_permissions: {
+          type: 'string',
+          enum: ['none', 'comment_only', 'reader', 'read_and_write', 'editor'],
+          description:
+            'Post-submission permissions for form respondents: "none" | "comment_only" | "reader" | "read_and_write" | "editor"'
+        },
+        // Chart view parameters
+        chart_type: {
+          type: 'string',
+          enum: ['column', 'bar', 'line', 'donut', 'number'],
+          description: 'Chart subtype for chart view: "column" | "bar" | "line" | "donut" | "number"'
+        },
+        x_axis: {
+          description:
+            'X-axis grouping property name or ID (e.g. "阶段" or {property: string, sort?: {type: "manual"}})'
+        },
+        y_axis: {
+          description:
+            'Y-axis aggregation: property name (auto-sums number), "count" (row count), or {property: string, aggregator: string}'
+        },
+        stack_by: {
+          description: 'Secondary grouping/stacking property name or ID (e.g. "优先级" or {property: string})'
+        },
+        group_style: {
+          type: 'string',
+          enum: ['stacked', 'clustered', 'normal', 'percent', 'side_by_side'],
+          description: 'Bar/column chart grouping style: "stacked" (normal) | "clustered" (side_by_side) | "percent"'
+        },
+        smooth_line: {
+          type: 'boolean',
+          description: 'Use smooth curves instead of straight lines (line chart)'
+        },
+        hide_empty_groups: {
+          type: 'boolean',
+          description: 'Hide empty categories/groups with zero values in chart'
+        },
+        target: {
+          description: 'Numeric target reference line (e.g. 100 or {value: 100, label: "目标"})'
+        },
+        value: {
+          description:
+            'Aggregation for number KPI chart: property name, "count", or {property: string, aggregator: string}'
+        }
       },
       required: ['action']
     }
