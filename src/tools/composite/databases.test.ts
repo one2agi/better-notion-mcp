@@ -750,6 +750,42 @@ describe('databases', () => {
       ])
     })
 
+    it('should update multiple pages with page_ids and page_properties', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'page-1' }).mockResolvedValueOnce({ id: 'page-2' })
+
+      const result = (await databases(notion, {
+        action: 'update_page',
+        page_ids: ['page-1', 'page-2'],
+        page_properties: { Status: 'Done' }
+      })) as UpdateDatabasePageResponse
+
+      expect(result.action).toBe('update_page')
+      expect(result.processed).toBe(2)
+      expect(result.results).toEqual([
+        { page_id: 'page-1', updated: true },
+        { page_id: 'page-2', updated: true }
+      ])
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'page-1' }))
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'page-2' }))
+    })
+
+    it('should update multiple pages with page_ids and properties alias', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'page-1' }).mockResolvedValueOnce({ id: 'page-2' })
+
+      const result = (await databases(notion, {
+        action: 'update_page',
+        page_ids: ['page-1', 'page-2'],
+        properties: { Status: 'Done' }
+      })) as UpdateDatabasePageResponse
+
+      expect(result.action).toBe('update_page')
+      expect(result.processed).toBe(2)
+      expect(result.results).toEqual([
+        { page_id: 'page-1', updated: true },
+        { page_id: 'page-2', updated: true }
+      ])
+    })
+
     it('should throw when neither pages nor page_id+page_properties provided', async () => {
       await expect(databases(notion, { action: 'update_page' })).rejects.toThrow(
         'pages or page_id+page_properties required'
