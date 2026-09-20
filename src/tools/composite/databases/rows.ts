@@ -12,6 +12,7 @@ import {
 } from '../../helpers/data-source.js'
 import { NotionMCPError, retryWithBackoff } from '../../helpers/errors.js'
 import { parseMaybeJSON } from '../../helpers/json-input.js'
+import { markdownToBlocks, sanitizeBlocksForAppend } from '../../helpers/markdown.js'
 import { processBatches } from '../../helpers/pagination.js'
 import { buildSchemaMap, convertToNotionProperties, sanitizeReadonlyProperties } from '../../helpers/properties.js'
 import type { TemplateConfig } from '../pages.js'
@@ -47,23 +48,67 @@ export async function createDatabasePages(notion: Client, input: DatabasesInput)
     schema[name] = richSchema[name].type
   }
 
-  const pageProperties = parseMaybeJSON<Record<string, any>>(input.page_properties, 'page_properties')
+  const rawCommonProperties = input.page_properties ?? input.properties
+  const pageProperties = parseMaybeJSON<Record<string, any>>(rawCommonProperties, 'page_properties')
   const parsedPages = parseMaybeJSON<NonNullable<DatabasesInput['pages']>>(input.pages, 'pages')
-  const items = parsedPages || (pageProperties ? [{ properties: pageProperties }] : [])
+  const rawItems = parsedPages || (pageProperties ? [{ properties: pageProperties }] : [])
 
-  if (items.length === 0) {
+  if (rawItems.length === 0) {
     throw new NotionMCPError('pages or page_properties required', 'VALIDATION_ERROR', 'Provide items to create')
   }
 
-  // Validate all items before processing to avoid partial writes on malformed input
-  for (let i = 0; i < items.length; i++) {
-    if (!items[i] || items[i].properties === undefined || items[i].properties === null) {
+  // Validate and normalize all items before processing to avoid partial writes on malformed input
+  const items: Array<{
+    properties: Record<string, any>
+    template?: any
+    template_id?: string
+    content?: string
+  }> = []
+
+  for (let i = 0; i < rawItems.length; i++) {
+    const raw: any = rawItems[i]
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.properties === null) {
       throw new NotionMCPError(
         `Item at index ${i} in the pages array is missing the "properties" key`,
         'VALIDATION_ERROR',
-        'Use format: pages: [{ "properties": { "FieldName": "value" } }] - not flat objects like [{ "FieldName": "value" }]'
+        'Use format: pages: [{ "properties": { "FieldName": "value" } }]'
       )
     }
+
+    let properties = raw.properties
+    if (typeof properties === 'string') {
+      properties = parseMaybeJSON(properties, 'properties')
+    }
+
+    if (properties === undefined) {
+      const {
+        template: _t,
+        template_id: _ti,
+        content: _c,
+        markdown: _m,
+        database_id: _d,
+        data_source_id: _ds,
+        ...flatProps
+      } = raw
+      if (Object.keys(flatProps).length > 0) {
+        properties = flatProps
+      } else {
+        throw new NotionMCPError(
+          `Item at index ${i} in the pages array is missing the "properties" key`,
+          'VALIDATION_ERROR',
+          'Use format: pages: [{ "properties": { "FieldName": "value" } }]'
+        )
+      }
+    }
+
+    const pageContent = raw.content ?? raw.markdown ?? input.content ?? input.markdown
+
+    items.push({
+      properties,
+      template: raw.template,
+      template_id: raw.template_id,
+      content: pageContent
+    })
   }
 
   let defaultTemplateConfig: TemplateConfig | undefined
@@ -101,6 +146,19 @@ export async function createDatabasePages(notion: Client, input: DatabasesInput)
       }
 
       const page = await retryWithBackoff(async () => notion.pages.create(pageCreatePayload))
+
+      if (item.content) {
+        const { blocks } = markdownToBlocks(item.content)
+        if (blocks.length > 0) {
+          const sanitized = sanitizeBlocksForAppend(blocks as any)
+          await retryWithBackoff(async () =>
+            notion.blocks.children.append({
+              block_id: page.id,
+              children: sanitized as any
+            })
+          )
+        }
+      }
 
       return {
         page_id: page.id,
@@ -242,13 +300,20 @@ export async function updateDatabasePages(notion: Client, input: DatabasesInput)
  */
 export async function deleteDatabasePages(notion: Client, input: DatabasesInput): Promise<DeleteDatabasePageResponse> {
   const parsedPages = parseMaybeJSON<NonNullable<DatabasesInput['pages']>>(input.pages, 'pages')
-  let pageIds = input.page_ids || (input.page_id ? [input.page_id] : [])
+  const parsedPageIds = parseMaybeJSON<string[]>(input.page_ids, 'page_ids')
+  let pageIds: string[] = parsedPageIds || (input.page_id ? [input.page_id] : [])
   if (!pageIds || pageIds.length === 0) {
     if (parsedPages) {
       pageIds = []
       for (const p of parsedPages) {
-        if (p.page_id) {
-          pageIds.push(p.page_id)
+        const itemAny: any = p
+        if (typeof itemAny === 'string' && itemAny.trim()) {
+          pageIds.push(itemAny.trim())
+        } else if (itemAny && typeof itemAny === 'object') {
+          const id = itemAny.page_id ?? itemAny.id
+          if (id) {
+            pageIds.push(id)
+          }
         }
       }
     } else {

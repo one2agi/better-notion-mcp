@@ -65,18 +65,25 @@ export interface DatabasesInput {
   page_id?: string
   page_ids?: string[]
   page_properties?: Record<string, any>
+  content?: string
+  markdown?: string
   template?: string | { type: 'default' | 'none' | 'template_id'; template_id?: string; timezone?: string }
   template_id?: string
 
   // Bulk operations
-  pages?: Array<{
-    page_id?: string
-    id?: string
-    properties?: Record<string, any>
-    [key: string]: any
-    template?: string | { type: 'default' | 'none' | 'template_id'; template_id?: string; timezone?: string }
-    template_id?: string
-  }>
+  pages?: Array<
+    | string
+    | {
+        page_id?: string
+        id?: string
+        properties?: Record<string, any>
+        content?: string
+        markdown?: string
+        [key: string]: any
+        template?: string | { type: 'default' | 'none' | 'template_id'; template_id?: string; timezone?: string }
+        template_id?: string
+      }
+  >
 
   // View operations params
   view_id?: string

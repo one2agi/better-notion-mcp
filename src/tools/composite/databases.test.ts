@@ -35,7 +35,12 @@ const mockNotion = {
     query: vi.fn(),
     listTemplates: vi.fn()
   },
-  request: vi.fn()
+  request: vi.fn(),
+  blocks: {
+    children: {
+      append: vi.fn()
+    }
+  }
 }
 
 const notion = mockNotion as any
@@ -630,33 +635,93 @@ describe('databases', () => {
       )
     })
 
-    it('should throw with item index when pages array item is missing the properties wrapper', async () => {
+    it('should accept properties alias for page_properties in create_page', async () => {
+      mockNotion.pages.create.mockResolvedValueOnce({ id: 'p-prop', url: 'https://notion.so/p-prop' })
+      const result = (await databases(notion, {
+        action: 'create_page',
+        database_id: 'db-1',
+        properties: { Name: 'Alias Item' }
+      })) as CreateDatabasePageResponse
+      expect(result.processed).toBe(1)
+      expect(mockNotion.pages.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            Name: {
+              title: [
+                expect.objectContaining({
+                  text: expect.objectContaining({ content: 'Alias Item' })
+                })
+              ]
+            }
+          })
+        })
+      )
+    })
+
+    it('should accept flat objects in pages array without properties wrapper', async () => {
+      mockNotion.pages.create.mockResolvedValueOnce({ id: 'p-flat', url: 'https://notion.so/p-flat' })
+      const result = (await databases(notion, {
+        action: 'create_page',
+        database_id: 'db-1',
+        pages: [{ Name: 'Flat Item', Status: 'Active' } as any]
+      })) as CreateDatabasePageResponse
+      expect(result.processed).toBe(1)
+      expect(mockNotion.pages.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            Name: {
+              title: [
+                expect.objectContaining({
+                  text: expect.objectContaining({ content: 'Flat Item' })
+                })
+              ]
+            }
+          })
+        })
+      )
+    })
+
+    it('should create page and append markdown content when content or markdown is provided', async () => {
+      mockNotion.pages.create.mockResolvedValueOnce({ id: 'p-md', url: 'https://notion.so/p-md' })
+      mockNotion.blocks.children.append.mockResolvedValueOnce({ results: [] })
+
+      const result = (await databases(notion, {
+        action: 'create_page',
+        database_id: 'db-1',
+        pages: [{ properties: { Name: 'Doc Item' }, content: '# Heading\nParagraph text' }]
+      })) as CreateDatabasePageResponse
+
+      expect(result.processed).toBe(1)
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'p-md',
+          children: expect.any(Array)
+        })
+      )
+    })
+
+    it('should throw with item index when pages array item is invalid primitive or empty', async () => {
       await expect(
         databases(notion, {
           action: 'create_page',
           database_id: 'db-1',
-          pages: [{ Name: 'Flat item' } as any]
+          pages: ['invalid-string' as any]
         })
       ).rejects.toMatchObject({
         message: expect.stringContaining('index 0'),
         code: 'VALIDATION_ERROR'
       })
-    })
-
-    it('should throw with correct index when second item is missing the properties wrapper', async () => {
-      mockNotion.pages.create.mockResolvedValueOnce({ id: 'p-1', url: 'https://notion.so/p-1' })
 
       await expect(
         databases(notion, {
           action: 'create_page',
           database_id: 'db-1',
-          pages: [{ properties: { Name: 'Valid' } }, { Name: 'Flat' } as any]
+          pages: [{} as any]
         })
       ).rejects.toMatchObject({
-        message: expect.stringContaining('index 1'),
+        message: expect.stringContaining('index 0'),
         code: 'VALIDATION_ERROR'
       })
-      expect(mockNotion.pages.create).not.toHaveBeenCalled()
     })
 
     it('should throw when pages array item has null properties', async () => {
@@ -960,6 +1025,32 @@ describe('databases', () => {
 
     it('should throw when no page ids provided', async () => {
       await expect(databases(notion, { action: 'delete_page' })).rejects.toThrow('page_id or page_ids required')
+    })
+
+    it('should parse JSON string page_ids in delete_page', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({}).mockResolvedValueOnce({})
+
+      const result = (await databases(notion, {
+        action: 'delete_page',
+        page_ids: '["page-json-1", "page-json-2"]' as any
+      })) as DeleteDatabasePageResponse
+
+      expect(result.processed).toBe(2)
+      expect(result.results[0].page_id).toBe('page-json-1')
+      expect(result.results[1].page_id).toBe('page-json-2')
+    })
+
+    it('should extract page IDs when pages array contains id alias or string IDs', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({}).mockResolvedValueOnce({})
+
+      const result = (await databases(notion, {
+        action: 'delete_page',
+        pages: [{ id: 'page-alias-1' }, 'page-string-2'] as any
+      })) as DeleteDatabasePageResponse
+
+      expect(result.processed).toBe(2)
+      expect(result.results[0].page_id).toBe('page-alias-1')
+      expect(result.results[1].page_id).toBe('page-string-2')
     })
   })
 
@@ -1841,6 +1932,29 @@ describe('databases', () => {
       expect(res.group_by_property).toBe('Owner')
       expect(res.groups).toHaveLength(2)
       expect(res.groups[0].key).toBe('Alice')
+    })
+
+    it('should default to count aggregation when aggregations is omitted or empty', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          { id: 'p1', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } },
+          { id: 'p2', properties: { Owner: { type: 'select', select: { name: 'Bob' } } } }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await databases(notion, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: { property: 'Owner' }
+      })) as GroupByDatabaseResponse
+
+      expect(res.group_by_property).toBe('Owner')
+      expect(res.groups).toHaveLength(2)
+      expect(res.groups[0].count).toBe(1)
+      expect(res.groups[0].aggregations).toEqual({ count: 1 })
     })
   })
 

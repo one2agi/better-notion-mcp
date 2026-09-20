@@ -167,13 +167,9 @@ export async function groupByDatabase(notion: Client, input: DatabasesInput): Pr
       'Provide group_by: { property: "Owner" }'
     )
   }
-  const aggregations = parseMaybeJSON<NonNullable<DatabasesInput['aggregations']>>(input.aggregations, 'aggregations')
+  let aggregations = parseMaybeJSON<NonNullable<DatabasesInput['aggregations']>>(input.aggregations, 'aggregations')
   if (!aggregations || aggregations.length === 0) {
-    throw new NotionMCPError(
-      'aggregations required for group_by action',
-      'VALIDATION_ERROR',
-      'Provide at least one aggregation spec, e.g. [{type: "count"}]'
-    )
+    aggregations = [{ type: 'count' }]
   }
 
   const groupByProperty = groupBy.property
