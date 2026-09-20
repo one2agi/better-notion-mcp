@@ -151,7 +151,15 @@ export async function groupByDatabase(notion: Client, input: DatabasesInput): Pr
       'Provide database_id (or data_source_id)'
     )
   }
-  const groupBy = parseMaybeJSON<NonNullable<DatabasesInput['group_by']>>(input.group_by, 'group_by')
+  let rawGroupBy = input.group_by
+  if (typeof rawGroupBy === 'string') {
+    if (rawGroupBy.trim().startsWith('{')) {
+      rawGroupBy = parseMaybeJSON(rawGroupBy, 'group_by')
+    } else {
+      rawGroupBy = { property: rawGroupBy }
+    }
+  }
+  const groupBy = rawGroupBy
   if (!groupBy) {
     throw new NotionMCPError(
       'group_by required for group_by action',
