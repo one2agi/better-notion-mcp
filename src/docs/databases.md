@@ -109,6 +109,31 @@ Group rows by a property value and compute per-group aggregations. Use for break
 ```
 
 ### update_page
+Update database pages (supports single page, homogeneous batch, and heterogeneous batch with auto-adaptation):
+
+**1. Homogeneous batch update (same properties for multiple pages):**
+```json
+{
+  "action": "update_page",
+  "database_id": "xxx",
+  "page_ids": ["page-1", "page-2"],
+  "page_properties": {"Status": "Done"}
+}
+```
+
+**2. Heterogeneous batch update (different properties per page with auto-adaptation):**
+```json
+{
+  "action": "update_page",
+  "database_id": "xxx",
+  "pages": [
+    {"page_id": "page-1", "Status": "Done"},
+    {"id": "page-2", "properties": {"Status": "In Progress"}}
+  ]
+}
+```
+
+**3. Single page update:**
 ```json
 {"action": "update_page", "page_id": "yyy", "page_properties": {"Status": "Done"}}
 ```

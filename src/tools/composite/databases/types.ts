@@ -71,7 +71,9 @@ export interface DatabasesInput {
   // Bulk operations
   pages?: Array<{
     page_id?: string
-    properties: Record<string, any>
+    id?: string
+    properties?: Record<string, any>
+    [key: string]: any
     template?: string | { type: 'default' | 'none' | 'template_id'; template_id?: string; timezone?: string }
     template_id?: string
   }>
