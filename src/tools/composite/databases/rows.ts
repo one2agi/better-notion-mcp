@@ -120,10 +120,18 @@ export async function createDatabasePages(notion: Client, input: DatabasesInput)
  * Maps to: Multiple PATCH /v1/pages/{id}
  */
 export async function updateDatabasePages(notion: Client, input: DatabasesInput): Promise<UpdateDatabasePageResponse> {
-  const pageProperties = parseMaybeJSON<Record<string, any>>(input.page_properties, 'page_properties')
+  const rawCommonProperties = input.page_properties ?? input.properties
+  const pageProperties = parseMaybeJSON<Record<string, any>>(rawCommonProperties, 'page_properties')
   const parsedPages = parseMaybeJSON<NonNullable<DatabasesInput['pages']>>(input.pages, 'pages')
-  const items =
-    parsedPages || (input.page_id && pageProperties ? [{ page_id: input.page_id, properties: pageProperties }] : [])
+  const parsedPageIds = parseMaybeJSON<string[]>(input.page_ids, 'page_ids')
+
+  let items = parsedPages ? [...parsedPages] : []
+
+  if (items.length === 0 && parsedPageIds && parsedPageIds.length > 0 && pageProperties) {
+    items = parsedPageIds.map((id) => ({ page_id: id, properties: pageProperties }))
+  } else if (items.length === 0 && input.page_id && pageProperties) {
+    items = [{ page_id: input.page_id, properties: pageProperties }]
+  }
 
   if (items.length === 0) {
     throw new NotionMCPError('pages or page_id+page_properties required', 'VALIDATION_ERROR', 'Provide items to update')
