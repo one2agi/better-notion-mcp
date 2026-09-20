@@ -71,7 +71,7 @@ export async function createDatabasePages(notion: Client, input: DatabasesInput)
       throw new NotionMCPError(
         `Item at index ${i} in the pages array is missing the "properties" key`,
         'VALIDATION_ERROR',
-        'Use format: pages: [{ "properties": { "FieldName": "value" } }]'
+        'Use format: pages: [{ "FieldName": "value" }] or [{ "properties": { "FieldName": "value" } }]'
       )
     }
 
@@ -86,6 +86,8 @@ export async function createDatabasePages(notion: Client, input: DatabasesInput)
         template_id: _ti,
         content: _c,
         markdown: _m,
+        page_id: _p,
+        id: _i,
         database_id: _d,
         data_source_id: _ds,
         ...flatProps
@@ -96,7 +98,7 @@ export async function createDatabasePages(notion: Client, input: DatabasesInput)
         throw new NotionMCPError(
           `Item at index ${i} in the pages array is missing the "properties" key`,
           'VALIDATION_ERROR',
-          'Use format: pages: [{ "properties": { "FieldName": "value" } }]'
+          'Use format: pages: [{ "FieldName": "value" }] or [{ "properties": { "FieldName": "value" } }]'
         )
       }
     }
@@ -151,12 +153,15 @@ export async function createDatabasePages(notion: Client, input: DatabasesInput)
         const { blocks } = markdownToBlocks(item.content)
         if (blocks.length > 0) {
           const sanitized = sanitizeBlocksForAppend(blocks as any)
-          await retryWithBackoff(async () =>
-            notion.blocks.children.append({
-              block_id: page.id,
-              children: sanitized as any
-            })
-          )
+          for (let i = 0; i < sanitized.length; i += 100) {
+            const chunk = sanitized.slice(i, i + 100)
+            await retryWithBackoff(async () =>
+              notion.blocks.children.append({
+                block_id: page.id,
+                children: chunk as any
+              })
+            )
+          }
         }
       }
 
@@ -301,19 +306,32 @@ export async function updateDatabasePages(notion: Client, input: DatabasesInput)
 export async function deleteDatabasePages(notion: Client, input: DatabasesInput): Promise<DeleteDatabasePageResponse> {
   const parsedPages = parseMaybeJSON<NonNullable<DatabasesInput['pages']>>(input.pages, 'pages')
   const parsedPageIds = parseMaybeJSON<string[]>(input.page_ids, 'page_ids')
-  let pageIds: string[] = parsedPageIds || (input.page_id ? [input.page_id] : [])
+  let pageIds: string[] =
+    parsedPageIds && parsedPageIds.length > 0 ? parsedPageIds : input.page_id ? [input.page_id] : []
   if (!pageIds || pageIds.length === 0) {
     if (parsedPages) {
       pageIds = []
-      for (const p of parsedPages) {
-        const itemAny: any = p
+      for (let i = 0; i < parsedPages.length; i++) {
+        const itemAny: any = parsedPages[i]
         if (typeof itemAny === 'string' && itemAny.trim()) {
           pageIds.push(itemAny.trim())
         } else if (itemAny && typeof itemAny === 'object') {
           const id = itemAny.page_id ?? itemAny.id
-          if (id) {
-            pageIds.push(id)
+          if (id && typeof id === 'string' && id.trim()) {
+            pageIds.push(id.trim())
+          } else {
+            throw new NotionMCPError(
+              `Item at index ${i} in pages array is missing page_id or id`,
+              'VALIDATION_ERROR',
+              'Provide { "page_id": "..." } or { "id": "..." } or a page ID string'
+            )
           }
+        } else {
+          throw new NotionMCPError(
+            `Item at index ${i} in pages array is missing page_id or id`,
+            'VALIDATION_ERROR',
+            'Provide { "page_id": "..." } or { "id": "..." } or a page ID string'
+          )
         }
       }
     } else {

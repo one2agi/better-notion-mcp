@@ -743,6 +743,57 @@ describe('databases', () => {
         })
       ).rejects.toMatchObject({ code: 'VALIDATION_ERROR' })
     })
+
+    it('should throw with index 1 when second item in pages is invalid or empty', async () => {
+      mockNotion.pages.create.mockResolvedValueOnce({ id: 'p-1', url: 'https://notion.so/p-1' })
+
+      await expect(
+        databases(notion, {
+          action: 'create_page',
+          database_id: 'db-1',
+          pages: [{ properties: { Name: 'Valid' } }, {} as any]
+        })
+      ).rejects.toMatchObject({
+        message: expect.stringContaining('index 1'),
+        code: 'VALIDATION_ERROR'
+      })
+      expect(mockNotion.pages.create).not.toHaveBeenCalled()
+    })
+
+    it('should exclude id and page_id container keys from flat properties in create_page', async () => {
+      mockNotion.pages.create.mockResolvedValueOnce({ id: 'p-new', url: 'https://notion.so/p-new' })
+
+      const result = (await databases(notion, {
+        action: 'create_page',
+        database_id: 'db-1',
+        pages: [{ id: 'copied-id', page_id: 'copied-page-id', Name: 'Copied Item' } as any]
+      })) as CreateDatabasePageResponse
+
+      expect(result.processed).toBe(1)
+      const createArgs = mockNotion.pages.create.mock.calls[0][0]
+      expect(createArgs.properties.id).toBeUndefined()
+      expect(createArgs.properties.page_id).toBeUndefined()
+    })
+
+    it('should chunk block append calls when content exceeds 100 blocks', async () => {
+      mockNotion.pages.create.mockResolvedValueOnce({ id: 'p-large', url: 'https://notion.so/p-large' })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
+
+      // Generate markdown with 150 paragraphs
+      const largeContent = Array.from({ length: 150 }, (_, i) => `Paragraph ${i + 1}`).join('\n\n')
+
+      const result = (await databases(notion, {
+        action: 'create_page',
+        database_id: 'db-1',
+        properties: { Name: 'Large Doc' },
+        content: largeContent
+      })) as CreateDatabasePageResponse
+
+      expect(result.processed).toBe(1)
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledTimes(2)
+      expect(mockNotion.blocks.children.append.mock.calls[0][0].children).toHaveLength(100)
+      expect(mockNotion.blocks.children.append.mock.calls[1][0].children).toHaveLength(50)
+    })
   })
 
   describe('update_page', () => {
@@ -1051,6 +1102,31 @@ describe('databases', () => {
       expect(result.processed).toBe(2)
       expect(result.results[0].page_id).toBe('page-alias-1')
       expect(result.results[1].page_id).toBe('page-string-2')
+    })
+
+    it('should fall back to page_id when page_ids is an empty array in delete_page', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({})
+
+      const result = (await databases(notion, {
+        action: 'delete_page',
+        page_ids: [],
+        page_id: 'fallback-page'
+      })) as DeleteDatabasePageResponse
+
+      expect(result.processed).toBe(1)
+      expect(result.results[0].page_id).toBe('fallback-page')
+    })
+
+    it('should throw with item index when item in pages is missing page_id or id in delete_page', async () => {
+      await expect(
+        databases(notion, {
+          action: 'delete_page',
+          pages: [{ page_id: 'p1' }, { invalid: 'no-id' } as any]
+        })
+      ).rejects.toMatchObject({
+        message: expect.stringContaining('index 1'),
+        code: 'VALIDATION_ERROR'
+      })
     })
   })
 
@@ -1390,7 +1466,7 @@ describe('databases', () => {
           action: 'delete_page',
           pages: [{}, { something: 'else' }] as any
         })
-      ).rejects.toThrow('page_id or page_ids required')
+      ).rejects.toThrow('Item at index 0 in pages array is missing page_id or id')
     })
   })
 
@@ -1955,6 +2031,23 @@ describe('databases', () => {
       expect(res.groups).toHaveLength(2)
       expect(res.groups[0].count).toBe(1)
       expect(res.groups[0].aggregations).toEqual({ count: 1 })
+    })
+
+    it('should trim whitespace from property name in string shorthand group_by', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse())
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [{ id: 'p1', properties: { Owner: { type: 'select', select: { name: 'Alice' } } } }],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await databases(notion, {
+        action: 'group_by',
+        database_id: 'db-1',
+        group_by: '  Owner  ' as any
+      })) as GroupByDatabaseResponse
+
+      expect(res.group_by_property).toBe('Owner')
     })
   })
 

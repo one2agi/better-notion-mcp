@@ -153,10 +153,11 @@ export async function groupByDatabase(notion: Client, input: DatabasesInput): Pr
   }
   let rawGroupBy = input.group_by
   if (typeof rawGroupBy === 'string') {
-    if (rawGroupBy.trim().startsWith('{')) {
-      rawGroupBy = parseMaybeJSON(rawGroupBy, 'group_by')
+    const trimmed = rawGroupBy.trim()
+    if (trimmed.startsWith('{')) {
+      rawGroupBy = parseMaybeJSON(trimmed, 'group_by')
     } else {
-      rawGroupBy = { property: rawGroupBy }
+      rawGroupBy = { property: trimmed }
     }
   }
   const groupBy = rawGroupBy
