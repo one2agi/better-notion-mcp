@@ -47,6 +47,34 @@ describe('tool-definitions', () => {
       expect(pagesTool!.description).toContain('archive (page_id | page_ids)')
       expect(pagesTool!.description).toContain('restore (page_id | page_ids)')
     })
+
+    it('documents form and chart views and options in databases tool', () => {
+      const dbTool = TOOLS.find((t) => t.name === 'databases')
+      expect(dbTool).toBeDefined()
+      expect(dbTool!.description).toContain('form')
+      expect(dbTool!.description).toContain('chart')
+
+      const props = dbTool!.inputSchema.properties as Record<string, any>
+      expect(props.type.enum).toEqual(['table', 'board', 'calendar', 'timeline', 'gallery', 'list', 'form', 'chart'])
+      // Form parameters
+      expect(props.is_form_closed).toBeDefined()
+      expect(props.closed).toBeDefined()
+      expect(props.anonymous_submissions).toBeDefined()
+      expect(props.anonymous).toBeDefined()
+      expect(props.submission_permissions).toBeDefined()
+      // Chart parameters
+      expect(props.chart_type.enum).toEqual(['column', 'bar', 'line', 'donut', 'number'])
+      expect(props.x_axis).toBeDefined()
+      expect(props.y_axis).toBeDefined()
+      expect(props.stack_by).toBeDefined()
+      expect(props.group_style.enum).toEqual(['stacked', 'clustered', 'normal', 'percent', 'side_by_side'])
+      expect(props.smooth_line).toBeDefined()
+      expect(props.hide_empty_groups).toBeDefined()
+      expect(props.target).toBeDefined()
+      expect(props.value).toBeDefined()
+      // Quick filters
+      expect(props.quick_filters).toBeDefined()
+    })
   })
 
   describe('RESOURCES metadata', () => {

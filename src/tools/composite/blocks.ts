@@ -7,7 +7,7 @@ import type { Client } from '@notionhq/client'
 import { normalizeBlockProperties } from '../helpers/block-properties.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
-import { blocksToMarkdown, markdownToBlocks } from '../helpers/markdown.js'
+import { blocksToMarkdown, markdownToBlocks, sanitizeBlocksForAppend } from '../helpers/markdown.js'
 import { autoPaginate, populateDeepChildren, processBatches } from '../helpers/pagination.js'
 
 export interface GetBlockResult {
@@ -202,18 +202,8 @@ async function appendToBlock(notion: Client, input: BlocksInput): Promise<Append
     blocksList = input.blocks
   } else {
     const { blocks: parsed, warnings } = markdownToBlocks(input.content!)
-    blocksList = parsed
+    blocksList = sanitizeBlocksForAppend(parsed)
     markdownWarnings = warnings
-    // Notion API rejects column_ratio in format when creating column blocks via blocks.children.append.
-    // Strip format.column_ratio from any column blocks (width is set implicitly or via separate update).
-    for (const block of blocksList) {
-      if (block.type === 'column' && (block as any).column?.format?.column_ratio !== undefined) {
-        delete (block as any).column.format.column_ratio
-        if (Object.keys((block as any).column.format).length === 0) {
-          delete (block as any).column.format
-        }
-      }
-    }
   }
   const appendParams: any = {
     block_id: input.block_id!,

@@ -83,6 +83,33 @@ const INLINE_SUMMARY_REGEX = /^<details>\s*<summary>(.*?)<\/summary>(.*?)(<\/det
 const SUMMARY_REGEX = /<summary>(.*?)<\/summary>/
 const COLUMN_REGEX = /^:::column(?:\{width=([\d.]+)\})?$/
 const TABLE_SEPARATOR_REGEX = /^[-:]+$/
+const SYNCED_REF_REGEX = /^:::synced\s*\{\s*(?:from=)?["']?([^"'}]+)["']?\s*\}(?::::)?$/
+
+/**
+ * Sanitizes block AST before sending to Notion API (e.g. blocks.children.append).
+ * Notion API rejects column_ratio in format when creating column blocks.
+ */
+export function sanitizeBlocksForAppend(blocks: NotionBlock[]): NotionBlock[] {
+  for (const block of blocks) {
+    if (block.type === 'column' && (block as any).column?.format?.column_ratio !== undefined) {
+      delete (block as any).column.format.column_ratio
+      if (Object.keys((block as any).column.format).length === 0) {
+        delete (block as any).column.format
+      }
+    }
+    if (block.type === 'column_list' && (block as any).column_list?.children) {
+      for (const col of (block as any).column_list.children) {
+        if (col.type === 'column' && col.column?.format?.column_ratio !== undefined) {
+          delete col.column.format.column_ratio
+          if (Object.keys(col.column.format).length === 0) {
+            delete col.column.format
+          }
+        }
+      }
+    }
+  }
+  return blocks
+}
 
 /**
  * Convert markdown string to Notion blocks
@@ -222,6 +249,20 @@ class MarkdownParser {
       const columnData = parseColumns(this.lines, i)
       this.blocks.push(createColumnList(columnData.columns, columnData.widthRatios))
       return columnData.endIndex
+    }
+
+    // Synced block reference :::synced{from="block_id"}:::
+    const syncedRefMatch = trimmedLine.match(SYNCED_REF_REGEX)
+    if (syncedRefMatch) {
+      this.blocks.push(createSyncedBlock(syncedRefMatch[1]))
+      return i
+    }
+
+    // Original synced block :::synced ... :::end
+    if (trimmedLine === ':::synced') {
+      const syncedData = parseSyncedBlock(this.lines, i)
+      this.blocks.push(createSyncedBlock(null, syncedData.children))
+      return syncedData.endIndex
     }
 
     // Table (pipe-delimited)
@@ -382,25 +423,72 @@ function columnListToMarkdown(block: NotionBlock, lines: string[]): void {
   lines.push(':::end')
 }
 
+function syncedBlockToMarkdown(block: NotionBlock, lines: string[]): void {
+  const syncedFrom = block.synced_block?.synced_from
+  if (syncedFrom?.block_id) {
+    lines.push(`:::synced{from="${syncedFrom.block_id}"}:::`)
+    return
+  }
+  lines.push(':::synced')
+  const children = block.synced_block?.children || []
+  if (children.length > 0) {
+    lines.push(blocksToMarkdown(children))
+  }
+  lines.push(':::end')
+}
+
 type BlockHandler = (block: NotionBlock, lines: string[]) => void
 
 const BLOCK_HANDLERS: Record<string, BlockHandler> = {
   heading_1: (block, lines) => {
-    lines.push(`# ${richTextToMarkdown(block.heading_1.rich_text)}`)
-    if (block.heading_1.children?.length > 0) {
-      lines.push(blocksToMarkdown(block.heading_1.children))
+    const text = richTextToMarkdown(block.heading_1.rich_text)
+    if (block.heading_1.is_toggleable) {
+      lines.push('<details>')
+      lines.push(`<summary># ${text}</summary>`)
+      if (block.heading_1.children && block.heading_1.children.length > 0) {
+        lines.push('')
+        lines.push(blocksToMarkdown(block.heading_1.children))
+      }
+      lines.push('</details>')
+    } else {
+      lines.push(`# ${text}`)
+      if (block.heading_1.children?.length > 0) {
+        lines.push(blocksToMarkdown(block.heading_1.children))
+      }
     }
   },
   heading_2: (block, lines) => {
-    lines.push(`## ${richTextToMarkdown(block.heading_2.rich_text)}`)
-    if (block.heading_2.children?.length > 0) {
-      lines.push(blocksToMarkdown(block.heading_2.children))
+    const text = richTextToMarkdown(block.heading_2.rich_text)
+    if (block.heading_2.is_toggleable) {
+      lines.push('<details>')
+      lines.push(`<summary>## ${text}</summary>`)
+      if (block.heading_2.children && block.heading_2.children.length > 0) {
+        lines.push('')
+        lines.push(blocksToMarkdown(block.heading_2.children))
+      }
+      lines.push('</details>')
+    } else {
+      lines.push(`## ${text}`)
+      if (block.heading_2.children?.length > 0) {
+        lines.push(blocksToMarkdown(block.heading_2.children))
+      }
     }
   },
   heading_3: (block, lines) => {
-    lines.push(`### ${richTextToMarkdown(block.heading_3.rich_text)}`)
-    if (block.heading_3.children?.length > 0) {
-      lines.push(blocksToMarkdown(block.heading_3.children))
+    const text = richTextToMarkdown(block.heading_3.rich_text)
+    if (block.heading_3.is_toggleable) {
+      lines.push('<details>')
+      lines.push(`<summary>### ${text}</summary>`)
+      if (block.heading_3.children && block.heading_3.children.length > 0) {
+        lines.push('')
+        lines.push(blocksToMarkdown(block.heading_3.children))
+      }
+      lines.push('</details>')
+    } else {
+      lines.push(`### ${text}`)
+      if (block.heading_3.children?.length > 0) {
+        lines.push(blocksToMarkdown(block.heading_3.children))
+      }
     }
   },
   heading_4: (block, lines) => {
@@ -478,6 +566,9 @@ const BLOCK_HANDLERS: Record<string, BlockHandler> = {
   },
   column_list: (block, lines) => {
     columnListToMarkdown(block, lines)
+  },
+  synced_block: (block, lines) => {
+    syncedBlockToMarkdown(block, lines)
   },
   table_of_contents: (_, lines) => {
     lines.push('[toc]')
@@ -993,21 +1084,35 @@ function parseColumns(lines: string[], startIndex: number): ColumnParseResult {
   const widthRatios: (number | undefined)[] = []
   let currentColumnLines: string[] = []
   let inColumn = false
+  let depth = 1
 
   while (i < lines.length) {
     const line = lines[i].trim()
 
+    if (line === ':::columns' || line === ':::synced') {
+      depth++
+      currentColumnLines.push(lines[i])
+      i++
+      continue
+    }
+
     if (line === ':::end') {
-      // Flush last column
-      if (inColumn) {
-        columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()).blocks)
-        currentColumnLines = []
+      depth--
+      if (depth === 0) {
+        // Flush last column
+        if (inColumn) {
+          columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()).blocks)
+          currentColumnLines = []
+        }
+        break
       }
-      break
+      currentColumnLines.push(lines[i])
+      i++
+      continue
     }
 
     const columnMatch = line.match(COLUMN_REGEX)
-    if (columnMatch) {
+    if (columnMatch && depth === 1) {
       // Flush previous column (even if empty)
       if (inColumn) {
         columns.push(markdownToBlocks(currentColumnLines.join('\n').trim()).blocks)
@@ -1029,6 +1134,39 @@ function parseColumns(lines: string[], startIndex: number): ColumnParseResult {
   }
 
   return { columns, widthRatios, endIndex: i }
+}
+
+// ============================================================
+// Synced block parsing (:::synced / :::end)
+// ============================================================
+
+interface SyncedBlockParseResult {
+  children: NotionBlock[]
+  endIndex: number
+}
+
+function parseSyncedBlock(lines: string[], startIndex: number): SyncedBlockParseResult {
+  let i = startIndex + 1 // Skip :::synced
+  const contentLines: string[] = []
+  let depth = 1
+
+  while (i < lines.length) {
+    const line = lines[i].trim()
+    if (line === ':::synced' || line === ':::columns') {
+      depth++
+    } else if (line === ':::end') {
+      depth--
+      if (depth === 0) {
+        break
+      }
+    }
+    contentLines.push(lines[i])
+    i++
+  }
+
+  const childContent = contentLines.join('\n').trim()
+  const children = childContent ? markdownToBlocks(childContent).blocks : []
+  return { children, endIndex: i }
 }
 
 // ============================================================
@@ -1204,6 +1342,43 @@ function createCallout(text: string, icon: string, color: string): NotionBlock {
 }
 
 function createToggle(text: string, children: NotionBlock[] = []): NotionBlock {
+  const trimmed = text.trim()
+  if (trimmed.startsWith('### ')) {
+    return {
+      object: 'block',
+      type: 'heading_3',
+      heading_3: {
+        rich_text: parseRichText(trimmed.slice(4)),
+        color: 'default',
+        is_toggleable: true,
+        children
+      }
+    }
+  }
+  if (trimmed.startsWith('## ')) {
+    return {
+      object: 'block',
+      type: 'heading_2',
+      heading_2: {
+        rich_text: parseRichText(trimmed.slice(3)),
+        color: 'default',
+        is_toggleable: true,
+        children
+      }
+    }
+  }
+  if (trimmed.startsWith('# ')) {
+    return {
+      object: 'block',
+      type: 'heading_1',
+      heading_1: {
+        rich_text: parseRichText(trimmed.slice(2)),
+        color: 'default',
+        is_toggleable: true,
+        children
+      }
+    }
+  }
   return {
     object: 'block',
     type: 'toggle',
@@ -1294,8 +1469,26 @@ function createTable(headers: string[], rows: string[][], hasHeader: boolean): N
 }
 
 function createColumnList(columns: NotionBlock[][], widthRatios?: (number | undefined)[]): NotionBlock {
-  const columnBlocks = columns.map((children, i) => {
-    const col: any = { children }
+  const normalizedColumns = [...columns]
+  while (normalizedColumns.length < 2) {
+    normalizedColumns.push([])
+  }
+
+  const columnBlocks = normalizedColumns.map((children, i) => {
+    const safeChildren =
+      children && children.length > 0
+        ? children
+        : [
+            {
+              object: 'block' as const,
+              type: 'paragraph',
+              paragraph: {
+                rich_text: []
+              }
+            }
+          ]
+
+    const col: any = { children: safeChildren }
     const ratio = widthRatios?.[i]
     if (ratio !== undefined) {
       col.format = { column_ratio: ratio }
@@ -1312,6 +1505,28 @@ function createColumnList(columns: NotionBlock[][], widthRatios?: (number | unde
     type: 'column_list',
     column_list: {
       children: columnBlocks
+    }
+  }
+}
+
+function createSyncedBlock(fromBlockId?: string | null, children: NotionBlock[] = []): NotionBlock {
+  if (fromBlockId) {
+    return {
+      object: 'block',
+      type: 'synced_block',
+      synced_block: {
+        synced_from: {
+          block_id: fromBlockId
+        }
+      }
+    }
+  }
+  return {
+    object: 'block',
+    type: 'synced_block',
+    synced_block: {
+      synced_from: null,
+      children
     }
   }
 }

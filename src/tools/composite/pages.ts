@@ -9,8 +9,14 @@ import { formatCover } from '../helpers/covers.js'
 import { getSchemaTypeMap, resolveDataSourceId, resolvePageSchema } from '../helpers/data-source.js'
 import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
 import { formatIcon } from '../helpers/icons.js'
+import { isValidNotionId } from '../helpers/id.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
-import { blocksToMarkdown, markdownToBlocks, sanitizeNotionMarkdown } from '../helpers/markdown.js'
+import {
+  blocksToMarkdown,
+  markdownToBlocks,
+  sanitizeBlocksForAppend,
+  sanitizeNotionMarkdown
+} from '../helpers/markdown.js'
 import {
   type GetPageMarkdownResult,
   getPageMarkdown,
@@ -147,6 +153,8 @@ export interface PagesInput {
   properties?: Record<string, any>
   icon?: string
   cover?: string
+  template?: string | { type: 'default' | 'none' | 'template_id'; template_id?: string; timezone?: string }
+  template_id?: string
 
   // get_property params
   property_id?: string
@@ -252,6 +260,169 @@ export async function pages(notion: Client, input: PagesInput): Promise<PagesRes
   })()
 }
 
+export type TemplateConfig =
+  | { type: 'none' }
+  | { type: 'default'; timezone?: string }
+  | { type: 'template_id'; template_id: string; timezone?: string }
+
+function extractTemplateName(template: any): string {
+  if (template?.name && typeof template.name === 'string') {
+    return template.name
+  }
+  if (template?.title) {
+    if (typeof template.title === 'string') return template.title
+    if (Array.isArray(template.title) && template.title[0]?.plain_text) {
+      return template.title[0].plain_text
+    }
+  }
+  if (template?.properties) {
+    for (const key of Object.keys(template.properties)) {
+      const prop = template.properties[key]
+      if (prop?.type === 'title' && Array.isArray(prop.title) && prop.title[0]?.plain_text) {
+        return prop.title[0].plain_text
+      }
+    }
+    const titleProp = template.properties.title || template.properties.Name || template.properties.名称
+    if (titleProp?.title?.[0]?.plain_text) {
+      return titleProp.title[0].plain_text
+    }
+  }
+  return 'Untitled'
+}
+
+/**
+ * Resolves template configuration for Notion page creation.
+ * Supports:
+ * - 'default' or { type: 'default' }
+ * - UUID string or { type: 'template_id', template_id: string }
+ * - Human-readable template name (auto-matched against data source templates)
+ *
+ * @param notion - Notion Client instance
+ * @param dataSourceId - The parent data_source_id
+ * @param templateInput - template parameter (string, object, or JSON string)
+ * @param templateIdInput - template_id parameter (UUID string)
+ * @param timezoneInput - optional timezone
+ */
+export async function resolveTemplateConfig(
+  notion: Client,
+  dataSourceId: string,
+  templateInput?: any,
+  templateIdInput?: string,
+  timezoneInput?: string
+): Promise<TemplateConfig | undefined> {
+  if (templateInput === undefined && templateIdInput === undefined) {
+    return undefined
+  }
+
+  // Handle explicit template_id parameter
+  if (templateIdInput && typeof templateIdInput === 'string' && templateIdInput.trim()) {
+    return {
+      type: 'template_id',
+      template_id: templateIdInput.trim(),
+      ...(timezoneInput ? { timezone: timezoneInput } : {})
+    }
+  }
+
+  let raw = templateInput
+  if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      // Continue as plain string if JSON parse fails
+    }
+  }
+
+  // Handle object input
+  if (typeof raw === 'object' && raw !== null) {
+    const tz = raw.timezone || timezoneInput
+    if (raw.type === 'default') {
+      return { type: 'default', ...(tz ? { timezone: tz } : {}) }
+    }
+    if (raw.type === 'none') {
+      return { type: 'none' }
+    }
+    if (raw.type === 'template_id' && raw.template_id) {
+      return { type: 'template_id', template_id: raw.template_id, ...(tz ? { timezone: tz } : {}) }
+    }
+    if (raw.template_id) {
+      return { type: 'template_id', template_id: raw.template_id, ...(tz ? { timezone: tz } : {}) }
+    }
+    return raw as TemplateConfig
+  }
+
+  // Handle string input
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim()
+    if (!trimmed) return undefined
+
+    const lower = trimmed.toLowerCase()
+    if (lower === 'default') {
+      return { type: 'default', ...(timezoneInput ? { timezone: timezoneInput } : {}) }
+    }
+    if (lower === 'none') {
+      return { type: 'none' }
+    }
+
+    if (isValidNotionId(trimmed)) {
+      return {
+        type: 'template_id',
+        template_id: trimmed,
+        ...(timezoneInput ? { timezone: timezoneInput } : {})
+      }
+    }
+
+    // Resolve template name by querying data source templates
+    const templates = await autoPaginate(async (cursor) => {
+      const response: any = await notion.dataSources.listTemplates({
+        data_source_id: dataSourceId,
+        start_cursor: cursor,
+        page_size: 100
+      })
+      return {
+        results: response.templates || response.results || [],
+        next_cursor: response.next_cursor,
+        has_more: response.has_more
+      }
+    })
+
+    const target = lower
+    // 1. Exact match (case-insensitive & trimmed)
+    let matched = templates.find((t: any) => {
+      const name = extractTemplateName(t).trim().toLowerCase()
+      return name === target
+    })
+
+    // 2. Substring fallback if not found
+    if (!matched) {
+      const substringMatches = templates.filter((t: any) => {
+        const name = extractTemplateName(t).trim().toLowerCase()
+        return name.includes(target) || target.includes(name)
+      })
+      if (substringMatches.length === 1) {
+        matched = substringMatches[0]
+      }
+    }
+
+    if (matched) {
+      return {
+        type: 'template_id',
+        template_id: (matched as any).id,
+        ...(timezoneInput ? { timezone: timezoneInput } : {})
+      }
+    }
+
+    const availableNames = templates.map((t: any) => extractTemplateName(t)).filter(Boolean)
+    const availableListStr = availableNames.length > 0 ? availableNames.map((n) => `"${n}"`).join(', ') : '(none)'
+    throw new NotionMCPError(
+      `Template "${trimmed}" not found in database. Available templates: ${availableListStr}`,
+      'NOT_FOUND',
+      `Choose one of the available templates (${availableListStr}) or use template: "default"`
+    )
+  }
+
+  return undefined
+}
+
 /**
  * Create page with title and content
  * Maps to: POST /v1/pages + PATCH /v1/blocks/{id}/children
@@ -332,6 +503,19 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
   if (input.icon) pageData.icon = formatIcon(input.icon)
   if (input.cover) pageData.cover = formatCover(input.cover)
 
+  if (parent.data_source_id && (input.template !== undefined || input.template_id !== undefined)) {
+    const templateConfig = await resolveTemplateConfig(notion, parent.data_source_id, input.template, input.template_id)
+    if (templateConfig) {
+      pageData.template = templateConfig
+    }
+  } else if (parent.type === 'page_id' && (input.template !== undefined || input.template_id !== undefined)) {
+    throw new NotionMCPError(
+      'Templates can only be applied when creating pages in a database/data source, but parent is a page.',
+      'VALIDATION_ERROR',
+      'Provide a database ID as parent_id when using template.'
+    )
+  }
+
   const page = (await notion.pages.create(pageData)) as PageObjectResponse
 
   // Add content if provided (supports content, markdown, or new_str aliases)
@@ -339,9 +523,10 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
   if (pageContent) {
     const { blocks } = markdownToBlocks(pageContent)
     if (blocks.length > 0) {
+      const sanitized = sanitizeBlocksForAppend(blocks as any)
       await notion.blocks.children.append({
         block_id: page.id,
-        children: blocks as any
+        children: sanitized as any
       })
     }
   }
