@@ -146,7 +146,7 @@ export async function updateDatabasePages(notion: Client, input: DatabasesInput)
   const normalizedItems: Array<{ page_id: string; properties: Record<string, any> }> = []
   for (let i = 0; i < items.length; i++) {
     const raw: any = items[i]
-    if (!raw || raw.properties === null) {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.properties === null) {
       throw new NotionMCPError(
         `Item at index ${i} in the pages array is missing the "properties" key`,
         'VALIDATION_ERROR',
@@ -155,8 +155,20 @@ export async function updateDatabasePages(notion: Client, input: DatabasesInput)
     }
 
     let properties = raw.properties
+    if (typeof properties === 'string') {
+      properties = parseMaybeJSON(properties, 'properties')
+    }
+
     if (properties === undefined) {
-      const { page_id: _p, id: _i, template: _t, template_id: _ti, ...flatProps } = raw
+      const {
+        page_id: _p,
+        id: _i,
+        template: _t,
+        template_id: _ti,
+        database_id: _d,
+        data_source_id: _ds,
+        ...flatProps
+      } = raw
       if (Object.keys(flatProps).length > 0) {
         properties = flatProps
       } else {
