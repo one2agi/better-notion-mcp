@@ -80,6 +80,18 @@ Each aggregation accepts an optional `alias` for the result key. Response: `{ ag
 ### group_by
 Group rows by a property value and compute per-group aggregations. Use for breakdowns like "tasks per owner" or "sum of revenue per region".
 
+- `group_by`: accepts either a property name string shorthand (e.g. `"Status"`) or object `{"property": "Status"}`.
+- `aggregations`: optional! If omitted or empty, automatically defaults to `[{"type": "count"}]`.
+
+```json
+{
+  "action": "group_by",
+  "database_id": "xxx",
+  "group_by": "Status"
+}
+```
+
+Or with custom aggregations:
 ```json
 {
   "action": "group_by",
@@ -104,8 +116,28 @@ Group rows by a property value and compute per-group aggregations. Use for break
 ```
 
 ### create_page
+Create pages in a database. Supports flat object rows, property aliases, and initial Markdown body content (One-Call Closure):
+
+**1. Batch create with flat objects and Markdown body:**
 ```json
-{"action": "create_page", "database_id": "xxx", "pages": [{"properties": {"Name": "Task 1", "Status": "Todo"}}]}
+{
+  "action": "create_page",
+  "database_id": "xxx",
+  "pages": [
+    {"Name": "Task 1", "Status": "Todo", "content": "# Scope\nInitial requirements..."},
+    {"Name": "Task 2", "Status": "In Progress"}
+  ]
+}
+```
+
+**2. Single page create with `properties` alias and `content`:**
+```json
+{
+  "action": "create_page",
+  "database_id": "xxx",
+  "properties": {"Name": "Bug Report", "Severity": "High"},
+  "content": "> [!IMPORTANT]\n> Production incident reproduction steps"
+}
 ```
 
 ### update_page
@@ -141,8 +173,13 @@ Update database pages (supports single page, homogeneous batch, and heterogeneou
 > **Performance tip**: Providing `database_id` automatically activates single-pass Schema pre-resolution, sharing the column mapping across all batch items and cutting API network round-trips by ~50%.
 
 ### delete_page
+Bulk archive / soft-delete pages. Accepts string array or JSON-stringified array via `page_ids`, or heterogeneous array via `pages`:
 ```json
 {"action": "delete_page", "page_ids": ["yyy", "zzz"]}
+```
+Or via `pages`:
+```json
+{"action": "delete_page", "pages": [{"id": "yyy"}, "zzz"]}
 ```
 
 ### update_database

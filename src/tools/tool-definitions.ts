@@ -172,7 +172,7 @@ export const TOOLS = [
   {
     name: 'databases',
     description:
-      'Database schema, query, views (table, board, calendar, timeline, gallery, list, form, chart), and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search)\n- aggregate (database_id, aggregations[{type,property,alias}]): count/sum/avg/min/max/unique_count\n- group_by (database_id, group_by{property}, aggregations): group rows by a property, compute per-group stats\n- create_page (database_id, pages[{properties, template?}] | page_properties, template?)\n- update_page (page_id+page_properties | page_ids+page_properties | pages[{page_id/id, properties}] -> database_id)\n- delete_page (database_id, page_ids)\n- create_data_source / update_data_source / update_database / list_templates\n- create_view (database_id, name, type -> chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, anonymous_submissions, submission_permissions, quick_filters, configuration, filters, sorts, placement, position): supports table, board, calendar, timeline, gallery, list, form, chart\n- list_views (database_id -> limit)\n- get_view (view_id)\n- update_view (view_id -> name, type, chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, quick_filters, configuration, filters, sorts)\n- delete_view (view_id)\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
+      'Database schema, query, views (table, board, calendar, timeline, gallery, list, form, chart), and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search)\n- aggregate (database_id, aggregations[{type,property,alias}]): count/sum/avg/min/max/unique_count\n- group_by (database_id, group_by{property}, aggregations?): group rows by a property, compute per-group stats (defaults to count)\n- create_page (database_id, pages[{properties, content?, template?}] | page_properties/properties, content?, template?)\n- update_page (page_id+page_properties | page_ids+page_properties | pages[{page_id/id, properties}] -> database_id)\n- delete_page (database_id, page_ids | pages)\n- create_data_source / update_data_source / update_database / list_templates\n- create_view (database_id, name, type -> chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, anonymous_submissions, submission_permissions, quick_filters, configuration, filters, sorts, placement, position): supports table, board, calendar, timeline, gallery, list, form, chart\n- list_views (database_id -> limit)\n- get_view (view_id)\n- update_view (view_id -> name, type, chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, quick_filters, configuration, filters, sorts)\n- delete_view (view_id)\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
     annotations: {
       title: 'Databases',
       readOnlyHint: false,
@@ -214,7 +214,11 @@ export const TOOLS = [
         parent_id: { type: 'string', description: 'Parent page ID (for create/update_database)' },
         title: { type: 'string', description: 'Title (for database or data source)' },
         description: { type: 'string', description: 'Description' },
-        properties: { type: 'object', description: 'Schema properties (for create/update data source)' },
+        properties: {
+          type: 'object',
+          description:
+            'Schema properties (for create/update data source) or page properties (alias for page_properties in create_page/update_page)'
+        },
         is_inline: { type: 'boolean', description: 'Display as inline (for create/update_database)' },
         icon: {
           type: 'string',
@@ -252,13 +256,13 @@ export const TOOLS = [
             },
             required: ['type']
           },
-          description: 'Aggregation specs (for aggregate/group_by actions)'
+          description: 'Aggregation specs (for aggregate/group_by actions; optional for group_by, defaults to count)'
         },
         group_by: {
           description:
             'Group-by config: property name string (e.g. "阶段") or object {property: string, ...} for aggregate/views'
         },
-        page_id: { type: 'string', description: 'Single page ID (for update_page)' },
+        page_id: { type: 'string', description: 'Single page ID (for update_page or delete_page)' },
         page_ids: {
           type: 'array',
           items: { type: 'string' },
@@ -266,12 +270,21 @@ export const TOOLS = [
         },
         page_properties: {
           type: 'object',
-          description: 'Page properties to update (for update_page; applies to page_id or page_ids)'
+          description: 'Page properties (alias: properties; for create_page or update_page)'
+        },
+        content: {
+          type: 'string',
+          description: 'Initial Markdown body content to append when creating page(s) via create_page'
+        },
+        markdown: {
+          type: 'string',
+          description: 'Alias for content (Markdown body content for create_page)'
         },
         pages: {
           type: 'array',
           items: { type: 'object' },
-          description: 'Array of pages for bulk create/update: [{page_id/id, properties} | {page_id/id, ...flatProps}]'
+          description:
+            'Array of pages for bulk create/update/delete: [{properties, content?} | {...flatProps, content?} | {page_id/id, ...}]'
         },
         template: {
           description:
