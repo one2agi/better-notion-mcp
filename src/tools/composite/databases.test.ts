@@ -820,6 +820,38 @@ describe('databases', () => {
       expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'p-1' }))
     })
 
+    it('should reuse schema from database_id once across all batch items without retrieving each page', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-1',
+        data_sources: [{ id: 'ds-1' }]
+      })
+      mockNotion.dataSources.retrieve.mockResolvedValueOnce({
+        id: 'ds-1',
+        properties: {
+          文本: { id: 'text_id', type: 'rich_text', rich_text: {} }
+        }
+      })
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'p-1' }).mockResolvedValueOnce({ id: 'p-2' })
+
+      await databases(notion, {
+        action: 'update_page',
+        database_id: 'db-1',
+        pages: [
+          { page_id: 'p-1', properties: { 文本: '值1' } },
+          { page_id: 'p-2', properties: { 文本: '值2' } }
+        ]
+      })
+
+      expect(mockNotion.pages.retrieve).not.toHaveBeenCalled()
+      expect(mockNotion.pages.update).toHaveBeenCalledTimes(2)
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page_id: 'p-1',
+          properties: { 文本: { rich_text: [expect.objectContaining({ text: { content: '值1', link: null } })] } }
+        })
+      )
+    })
+
     it('should throw when neither pages nor page_id+page_properties provided', async () => {
       await expect(databases(notion, { action: 'update_page' })).rejects.toThrow(
         'pages or page_id+page_properties required'

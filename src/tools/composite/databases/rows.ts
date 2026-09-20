@@ -4,7 +4,12 @@
  */
 
 import type { Client } from '@notionhq/client'
-import { getDataSourceSchema, resolveDataSourceId, resolvePageSchema } from '../../helpers/data-source.js'
+import {
+  getDataSourceSchema,
+  getSchemaTypeMap,
+  resolveDataSourceId,
+  resolvePageSchema
+} from '../../helpers/data-source.js'
 import { NotionMCPError, retryWithBackoff } from '../../helpers/errors.js'
 import { parseMaybeJSON } from '../../helpers/json-input.js'
 import { processBatches } from '../../helpers/pagination.js'
@@ -174,6 +179,17 @@ export async function updateDatabasePages(notion: Client, input: DatabasesInput)
     })
   }
 
+  let sharedSchema: Record<string, string> | undefined
+  const containerId = input.data_source_id || input.database_id
+  if (containerId) {
+    try {
+      const { dataSourceId } = await resolveDataSourceId(notion, containerId)
+      sharedSchema = await getSchemaTypeMap(notion, dataSourceId)
+    } catch {
+      // Fall back gracefully to per-page lookup
+    }
+  }
+
   const results = await processBatches(
     normalizedItems,
     async (item) => {
@@ -181,7 +197,7 @@ export async function updateDatabasePages(notion: Client, input: DatabasesInput)
         throw new NotionMCPError('page_id required for each item', 'VALIDATION_ERROR', 'Provide page_id')
       }
 
-      const schemaTypeMap = await resolvePageSchema(notion, item.page_id)
+      const schemaTypeMap = sharedSchema ?? (await resolvePageSchema(notion, item.page_id))
 
       const converted = convertToNotionProperties(item.properties, schemaTypeMap)
       const properties = sanitizeReadonlyProperties(converted, { mode: 'update' })
