@@ -70,6 +70,52 @@ describe('databases/containers', () => {
       }
       expect(normalizePropertyOptions(input)).toEqual(input)
     })
+
+    it('normalizes string arrays under options key like { select: { options: ["A", "B"] } }', () => {
+      const input = {
+        Priority: { select: { options: ['P0', 'P1'] } },
+        Status: { status: { options: ['Todo', 'Done'] } }
+      }
+      const normalized = normalizePropertyOptions(input)
+      expect(normalized).toEqual({
+        Priority: { select: { options: [{ name: 'P0' }, { name: 'P1' }] } },
+        Status: { status: { options: [{ name: 'Todo' }, { name: 'Done' }] } }
+      })
+    })
+
+    it('normalizes flat type declaration like { type: "select", options: ["A", "B"] }', () => {
+      const input = {
+        Priority: { type: 'select', options: ['P0', 'P1'] },
+        Title: { type: 'title' },
+        Completed: { type: 'checkbox' },
+        Estimate: { type: 'number' },
+        Notes: { type: 'rich_text' }
+      }
+      const normalized = normalizePropertyOptions(input)
+      expect(normalized).toEqual({
+        Priority: { select: { options: [{ name: 'P0' }, { name: 'P1' }] } },
+        Title: { title: {} },
+        Completed: { checkbox: {} },
+        Estimate: { number: {} },
+        Notes: { rich_text: {} }
+      })
+    })
+
+    it('normalizes string shorthand types like { Title: "title", Completed: "checkbox" }', () => {
+      const input = {
+        Title: 'title',
+        Completed: 'checkbox',
+        Count: 'number',
+        Desc: 'rich_text'
+      }
+      const normalized = normalizePropertyOptions(input)
+      expect(normalized).toEqual({
+        Title: { title: {} },
+        Completed: { checkbox: {} },
+        Count: { number: {} },
+        Desc: { rich_text: {} }
+      })
+    })
   })
 
   describe('validateTitleProperty', () => {
@@ -77,6 +123,22 @@ describe('databases/containers', () => {
       expect(() => {
         validateTitleProperty({
           Name: { title: {} },
+          Description: { rich_text: {} }
+        })
+      }).not.toThrow()
+    })
+
+    it('accepts title declared via { type: "title" } or "title"', () => {
+      expect(() => {
+        validateTitleProperty({
+          Name: { type: 'title' },
+          Description: { rich_text: {} }
+        })
+      }).not.toThrow()
+
+      expect(() => {
+        validateTitleProperty({
+          Name: 'title',
           Description: { rich_text: {} }
         })
       }).not.toThrow()
@@ -159,6 +221,36 @@ describe('databases/containers', () => {
             properties: {
               Name: { title: {} },
               Status: { select: { options: [{ name: '待处理' }, { name: '已处理' }] } }
+            }
+          }
+        })
+      )
+    })
+
+    it('normalizes flat type declarations and string shorthands in createDatabase', async () => {
+      mockNotion.databases.create.mockResolvedValueOnce({
+        id: 'db-789',
+        url: 'https://notion.so/db-789'
+      })
+
+      await createDatabase(notion, {
+        action: 'create',
+        parent_id: 'parent-1',
+        title: 'Ergonomic Roadmap',
+        properties: {
+          Name: { type: 'title' },
+          Status: { type: 'select', options: ['P0', 'P1'] },
+          Done: 'checkbox'
+        }
+      })
+
+      expect(mockNotion.databases.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initial_data_source: {
+            properties: {
+              Name: { title: {} },
+              Status: { select: { options: [{ name: 'P0' }, { name: 'P1' }] } },
+              Done: { checkbox: {} }
             }
           }
         })

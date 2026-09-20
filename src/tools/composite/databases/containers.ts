@@ -28,22 +28,74 @@ import type {
 /**
  * Normalize property schema options: converts array-style multi_select/select/status
  * (e.g. { multi_select: [...] }) to the object-style format Notion expects
- * ({ multi_select: { options: [...] } }).
+ * ({ multi_select: { options: [...] } }). Also normalizes:
+ * - String arrays in options: { options: ['A', 'B'] } -> { options: [{ name: 'A' }, { name: 'B' }] }
+ * - Flat type declarations: { type: 'select', options: ['A'] } -> { select: { options: [{ name: 'A' }] } }
+ *   or { type: 'title' } -> { title: {} }
+ * - String shorthand types: { Title: 'title' } -> { Title: { title: {} } }
  */
 export function normalizePropertyOptions(schema: Record<string, any>): Record<string, any> {
   const typesWithOptions = ['multi_select', 'select', 'status'] as const
+  const knownSimpleTypes = [
+    'title',
+    'rich_text',
+    'number',
+    'checkbox',
+    'date',
+    'people',
+    'files',
+    'url',
+    'email',
+    'phone_number'
+  ] as const
+
   const result: Record<string, any> = {}
-  for (const [key, value] of Object.entries(schema)) {
+  for (const [key, rawValue] of Object.entries(schema)) {
+    const value = rawValue
+
+    // 1. Shorthand string types: e.g. "title" -> { title: {} }
+    if (typeof value === 'string') {
+      const lower = value.toLowerCase()
+      if (knownSimpleTypes.includes(lower as any) || typesWithOptions.includes(lower as any)) {
+        result[key] = { [lower]: {} }
+        continue
+      }
+    }
+
+    // 2. Flat { type: '...', ... } declarations: e.g. { type: 'title' } -> { title: {} }
+    //    or { type: 'select', options: ['A', 'B'] } -> { select: { options: [...] } }
+    if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.type === 'string') {
+      const typeName = value.type.toLowerCase()
+      const { type: _, ...rest } = value
+      if (typesWithOptions.some((t) => t === typeName)) {
+        const rawOptions = Array.isArray(rest.options)
+          ? rest.options.map((opt: any) => (typeof opt === 'string' ? { name: opt } : opt))
+          : (rest.options ?? [])
+        result[key] = {
+          [typeName]: {
+            ...rest,
+            options: rawOptions
+          }
+        }
+        continue
+      }
+      result[key] = {
+        [typeName]: rest
+      }
+      continue
+    }
+
+    // 3. Nested object or array recursion
     if (value && typeof value === 'object' && !Array.isArray(value)) {
-      // Recurse into nested property objects (e.g. { multi_select: { ... } })
       result[key] = normalizePropertyOptions(value)
     } else if (Array.isArray(value)) {
-      // Array-valued property — check if it matches a known option-carrier type
       const lowerKey = key.toLowerCase()
       if (typesWithOptions.some((t) => lowerKey === t)) {
         result[key] = {
           options: value.map((opt) => (typeof opt === 'string' ? { name: opt } : opt))
         }
+      } else if (lowerKey === 'options') {
+        result[key] = value.map((opt) => (typeof opt === 'string' ? { name: opt } : opt))
       } else {
         result[key] = value
       }
@@ -62,8 +114,13 @@ export function validateTitleProperty(properties: Record<string, any>): void {
   const values = Object.values(properties)
   for (let i = 0; i < values.length; i++) {
     const value = values[i]
-    if (value && typeof value === 'object' && 'title' in value) {
+    if (typeof value === 'string' && value.toLowerCase() === 'title') {
       return
+    }
+    if (value && typeof value === 'object') {
+      if ('title' in value || value.type === 'title') {
+        return
+      }
     }
   }
   throw new NotionMCPError(
