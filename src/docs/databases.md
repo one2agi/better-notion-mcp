@@ -35,8 +35,19 @@ Example:
 ## Actions
 
 ### create
+Create a new database with initial data source. Supports ergonomic property schema declarations (e.g. `{ type: "title" }`, `"title"`, `{ select: ["Todo", "Done"] }`, `{ type: "select", options: ["Todo", "Done"] }`, or `"checkbox"`):
 ```json
-{"action": "create", "parent_id": "xxx", "title": "Tasks", "properties": {"Status": {"select": {"options": [{"name": "Todo"}, {"name": "Done"}]}}}}
+{
+  "action": "create",
+  "parent_id": "xxx",
+  "title": "Tasks",
+  "properties": {
+    "Name": { "type": "title" },
+    "Status": { "type": "select", "options": ["Todo", "Done"] },
+    "Completed": "checkbox",
+    "Estimate": "number"
+  }
+}
 ```
 
 ### get
