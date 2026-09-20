@@ -41,7 +41,9 @@ export function normalizePropertyOptions(schema: Record<string, any>): Record<st
       // Array-valued property — check if it matches a known option-carrier type
       const lowerKey = key.toLowerCase()
       if (typesWithOptions.some((t) => lowerKey === t)) {
-        result[key] = { options: value }
+        result[key] = {
+          options: value.map((opt) => (typeof opt === 'string' ? { name: opt } : opt))
+        }
       } else {
         result[key] = value
       }
@@ -84,12 +86,18 @@ export async function createDatabase(notion: Client, input: DatabasesInput): Pro
     )
   }
 
+  const rawProperties = parseMaybeJSON(input.properties, 'properties')
+  const properties = normalizePropertyOptions(rawProperties ?? {})
+
+  // Notion requires at least one title-type property in the schema
+  validateTitleProperty(properties)
+
   // API 2025-09-03: properties go under initial_data_source
   const dbData: any = {
     parent: { type: 'page_id', page_id: input.parent_id },
     title: [RichText.text(input.title)],
     initial_data_source: {
-      properties: parseMaybeJSON(input.properties, 'properties')
+      properties
     }
   }
 

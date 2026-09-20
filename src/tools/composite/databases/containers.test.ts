@@ -52,6 +52,18 @@ describe('databases/containers', () => {
       })
     })
 
+    it('normalizes string array options like ["A", "B"] into [{ name: "A" }, { name: "B" }]', () => {
+      const input = {
+        Category: { select: ['Tech', 'Design'] },
+        Tags: { multi_select: ['AI', 'MCP'] }
+      }
+      const normalized = normalizePropertyOptions(input)
+      expect(normalized).toEqual({
+        Category: { select: { options: [{ name: 'Tech' }, { name: 'Design' }] } },
+        Tags: { multi_select: { options: [{ name: 'AI' }, { name: 'MCP' }] } }
+      })
+    })
+
     it('leaves already normalized options unchanged', () => {
       const input = {
         Tags: { multi_select: { options: [{ name: 'A' }] } }
@@ -123,6 +135,47 @@ describe('databases/containers', () => {
         url: 'https://notion.so/db-123',
         created: true
       })
+    })
+
+    it('normalizes array-style options and validates title property in createDatabase', async () => {
+      mockNotion.databases.create.mockResolvedValueOnce({
+        id: 'db-456',
+        url: 'https://notion.so/db-456'
+      })
+
+      await createDatabase(notion, {
+        action: 'create',
+        parent_id: 'parent-1',
+        title: 'Project Roadmap',
+        properties: {
+          Name: { title: {} },
+          Status: { select: ['待处理', '已处理'] }
+        }
+      })
+
+      expect(mockNotion.databases.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initial_data_source: {
+            properties: {
+              Name: { title: {} },
+              Status: { select: { options: [{ name: '待处理' }, { name: '已处理' }] } }
+            }
+          }
+        })
+      )
+    })
+
+    it('throws VALIDATION_ERROR in createDatabase if title property is missing', async () => {
+      await expect(
+        createDatabase(notion, {
+          action: 'create',
+          parent_id: 'parent-1',
+          title: 'No Title DB',
+          properties: {
+            Status: { select: [{ name: 'Done' }] }
+          }
+        })
+      ).rejects.toThrowError(/must include a title property/)
     })
   })
 
