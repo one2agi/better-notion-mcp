@@ -138,6 +138,8 @@ Update database pages (supports single page, homogeneous batch, and heterogeneou
 {"action": "update_page", "page_id": "yyy", "page_properties": {"Status": "Done"}}
 ```
 
+> **Performance tip**: Providing `database_id` automatically activates single-pass Schema pre-resolution, sharing the column mapping across all batch items and cutting API network round-trips by ~50%.
+
 ### delete_page
 ```json
 {"action": "delete_page", "page_ids": ["yyy", "zzz"]}

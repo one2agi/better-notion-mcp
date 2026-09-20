@@ -849,6 +849,47 @@ describe('databases', () => {
       )
     })
 
+    it('should exclude database_id and data_source_id container keys from flat properties', async () => {
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'p-1' })
+
+      await databases(notion, {
+        action: 'update_page',
+        pages: [{ id: 'p-1', database_id: 'db-xxx', data_source_id: 'ds-xxx', Status: 'Done' } as any]
+      })
+
+      expect(mockNotion.pages.update).toHaveBeenCalledWith({
+        page_id: 'p-1',
+        properties: { Status: { select: { name: 'Done' } } }
+      })
+    })
+
+    it('should throw validation error when pages contains string primitive instead of object', async () => {
+      await expect(
+        databases(notion, {
+          action: 'update_page',
+          pages: ['p-1', 'p-2'] as any
+        })
+      ).rejects.toMatchObject({
+        code: 'VALIDATION_ERROR',
+        message: expect.stringContaining('index 0')
+      })
+    })
+
+    it('should fall back gracefully to per-page schema resolution when database_id pre-resolution fails', async () => {
+      mockNotion.databases.retrieve.mockRejectedValueOnce({ code: 'object_not_found' })
+      mockNotion.dataSources.retrieve.mockRejectedValueOnce({ code: 'object_not_found' })
+      mockNotion.pages.update.mockResolvedValueOnce({ id: 'p-1' })
+
+      const result = (await databases(notion, {
+        action: 'update_page',
+        database_id: 'invalid-db',
+        pages: [{ page_id: 'p-1', properties: { Status: 'Done' } }]
+      })) as UpdateDatabasePageResponse
+
+      expect(result.processed).toBe(1)
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(expect.objectContaining({ page_id: 'p-1' }))
+    })
+
     it('should throw when neither pages nor page_id+page_properties provided', async () => {
       await expect(databases(notion, { action: 'update_page' })).rejects.toThrow(
         'pages or page_id+page_properties required'
