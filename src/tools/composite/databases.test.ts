@@ -791,10 +791,7 @@ describe('databases', () => {
 
       const result = (await databases(notion, {
         action: 'update_page',
-        pages: [
-          { id: 'p-1', Status: 'Done' } as any,
-          { page_id: 'p-2', properties: { Status: 'Active' } }
-        ]
+        pages: [{ id: 'p-1', Status: 'Done' } as any, { page_id: 'p-2', properties: { Status: 'Active' } }]
       })) as UpdateDatabasePageResponse
 
       expect(result.action).toBe('update_page')
