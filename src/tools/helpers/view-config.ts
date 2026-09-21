@@ -192,8 +192,8 @@ function coerceBoolean(val: any): boolean {
   return Boolean(val)
 }
 
-export const VALID_FORM_PERMISSIONS = ['none', 'comment_only', 'reader', 'read_and_write', 'editor'] as const
-export const PERMISSION_SYNONYMS: Record<string, string> = {
+const VALID_FORM_PERMISSIONS = ['none', 'comment_only', 'reader', 'read_and_write', 'editor'] as const
+const PERMISSION_SYNONYMS: Record<string, string> = {
   readonly: 'reader',
   read: 'reader',
   edit: 'editor',
@@ -205,7 +205,7 @@ export const PERMISSION_SYNONYMS: Record<string, string> = {
 /**
  * Build a form view configuration with ergonomic alias mapping and permission validation.
  */
-export function buildFormConfiguration(inputConfig: Record<string, any> = {}): any {
+function buildFormConfiguration(inputConfig: Record<string, any> = {}): any {
   const config: any = { ...inputConfig }
 
   const closedVal = config.is_form_closed ?? config.closed ?? config.is_closed
@@ -245,9 +245,9 @@ export function buildFormConfiguration(inputConfig: Record<string, any> = {}): a
   }
 }
 
-export const VALID_CHART_TYPES = ['column', 'bar', 'line', 'donut', 'number'] as const
-export const VALID_GROUP_STYLES = ['normal', 'percent', 'side_by_side'] as const
-export const GROUP_STYLE_SYNONYMS: Record<string, string> = {
+const VALID_CHART_TYPES = ['column', 'bar', 'line', 'donut', 'number'] as const
+const VALID_GROUP_STYLES = ['normal', 'percent', 'side_by_side'] as const
+const GROUP_STYLE_SYNONYMS: Record<string, string> = {
   stacked: 'normal',
   stack: 'normal',
   clustered: 'side_by_side',
@@ -259,7 +259,7 @@ export const GROUP_STYLE_SYNONYMS: Record<string, string> = {
   percentage: 'percent'
 }
 
-export const VALID_REFERENCE_LINE_COLORS = [
+const VALID_REFERENCE_LINE_COLORS = [
   'gray',
   'lightgray',
   'brown',
@@ -276,7 +276,7 @@ export const VALID_REFERENCE_LINE_COLORS = [
  * Normalize reference lines to satisfy Notion API schema contract:
  * requires `color` and `dash_style`.
  */
-export function normalizeReferenceLines(input: any): any[] | undefined {
+function normalizeReferenceLines(input: any): any[] | undefined {
   if (input === undefined || input === null) return undefined
   const lines = Array.isArray(input) ? input : [input]
   return lines.map((item) => {
@@ -305,7 +305,7 @@ export function normalizeReferenceLines(input: any): any[] | undefined {
  * Infers appropriate aggregator based on schema property type.
  * Enforces Reverse Test Defense: aggregator 'count' MUST NOT contain property_id.
  */
-export function buildChartAggregation(aggInput: any, schema?: Record<string, any>): any {
+function buildChartAggregation(aggInput: any, schema?: Record<string, any>): any {
   if (!aggInput) return undefined
 
   if (typeof aggInput === 'string') {
@@ -380,7 +380,7 @@ export function buildChartAggregation(aggInput: any, schema?: Record<string, any
  * defensive manual sort injection on group_by (x_axis / stack_by),
  * number KPI card mapping, and subtype parameter sanitization.
  */
-export function buildChartConfiguration(inputConfig: Record<string, any> = {}, schema?: Record<string, any>): any {
+function buildChartConfiguration(inputConfig: Record<string, any> = {}, schema?: Record<string, any>): any {
   const rawChartType = inputConfig.chart_type
   if (rawChartType) {
     const normalizedType = String(rawChartType).toLowerCase().trim()

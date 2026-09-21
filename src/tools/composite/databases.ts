@@ -4,22 +4,9 @@
  */
 
 import type { Client } from '@notionhq/client'
-import {
-  clearDataSourceCache,
-  getDataSourceSchema,
-  getSchemaTypeMap,
-  resolutionCache,
-  resolveDataSourceId,
-  resolvePageSchema,
-  schemaCache
-} from '../helpers/data-source.js'
+import { resolutionCache, schemaCache } from '../helpers/data-source.js'
 import { throwUnknownAction, withErrorHandling } from '../helpers/errors.js'
-import {
-  aggregateDatabase,
-  computeAggregation,
-  fetchAllDataSourcePages,
-  groupByDatabase
-} from './databases/analytics.js'
+import { aggregateDatabase, groupByDatabase } from './databases/analytics.js'
 import {
   createDatabase,
   createDataSource,
@@ -33,37 +20,8 @@ import { createDatabasePages, deleteDatabasePages, updateDatabasePages } from '.
 import type { DatabasesInput, DatabasesResponse } from './databases/types.js'
 import { createView, deleteView, getView, listViews, updateView } from './databases/views.js'
 
-export {
-  createDatabase,
-  createDataSource,
-  getDatabase,
-  listDataSourceTemplates,
-  normalizePropertyOptions,
-  queryDatabase,
-  updateDatabaseContainer,
-  updateDataSource,
-  validateTitleProperty
-} from './databases/containers.js'
 export * from './databases/types.js'
-
-export { createView, deleteView, getView, listViews, updateView } from './databases/views.js'
-
-export {
-  aggregateDatabase,
-  clearDataSourceCache,
-  computeAggregation,
-  createDatabasePages,
-  deleteDatabasePages,
-  fetchAllDataSourcePages,
-  getDataSourceSchema,
-  getSchemaTypeMap,
-  groupByDatabase,
-  resolutionCache,
-  resolveDataSourceId,
-  resolvePageSchema,
-  schemaCache,
-  updateDatabasePages
-}
+export { resolutionCache, schemaCache }
 
 /**
  * Unified databases tool - handles all database operations

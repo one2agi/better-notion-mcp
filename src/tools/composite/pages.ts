@@ -11,12 +11,7 @@ import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling
 import { formatIcon } from '../helpers/icons.js'
 import { isValidNotionId } from '../helpers/id.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
-import {
-  blocksToMarkdown,
-  markdownToBlocks,
-  sanitizeBlocksForAppend,
-  sanitizeNotionMarkdown
-} from '../helpers/markdown.js'
+import { blocksToMarkdown, markdownToBlocks, sanitizeBlocksForAppend } from '../helpers/markdown.js'
 import {
   type GetPageMarkdownResult,
   getPageMarkdown,
@@ -52,23 +47,11 @@ export type {
   GetPageMarkdownResult,
   GetPagePropertyResult,
   InsertMarkdownResult,
-  PageMarkdownAPI,
   ReplaceContentRangeResult,
   ReplaceContentResult,
   UpdateContentResult
 }
-export {
-  clearPageTitleCache,
-  duplicatePage,
-  getPageMarkdown,
-  getPageProperty,
-  insertPageMarkdown,
-  replacePageContent,
-  replacePageContentRange,
-  resolvePageTitle,
-  sanitizeNotionMarkdown,
-  updatePageContent
-}
+export { clearPageTitleCache }
 
 export interface CreatePageResult {
   action: 'create'

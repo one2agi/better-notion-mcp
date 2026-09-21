@@ -1,0 +1,10 @@
+{
+  "$schema": "https://unpkg.com/knip@5/overview.json",
+  "entry": ["src/main.ts", "src/create-server.ts", "src/worker.ts", "scripts/*.{js,mjs,ts}", "tests/**/*.{js,mjs,ts}"],
+  "project": ["src/**/*.ts", "scripts/**/*.{js,mjs,ts}", "tests/**/*.{js,mjs,ts}"],
+  "ignoreBinaries": ["uv", "rundll32", "xdg-open"],
+  "ignoreExportsUsedInFile": {
+    "interface": true,
+    "type": true
+  }
+}
