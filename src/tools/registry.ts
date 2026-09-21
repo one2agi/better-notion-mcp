@@ -37,20 +37,6 @@ import {
   VALID_HELP_TOOLS_STRING
 } from './tool-definitions.js'
 
-// Re-export tool and resource definitions for backward compatibility
-export {
-  ALL_TOOL_NAMES,
-  ALL_TOOL_NAMES_STRING,
-  AVAILABLE_RESOURCE_URIS,
-  PRECOMPUTED_RESOURCES,
-  RESOURCE_MAP,
-  RESOURCES,
-  TOKEN_FREE_TOOLS,
-  TOOLS,
-  VALID_HELP_TOOL_NAMES,
-  VALID_HELP_TOOLS_STRING
-} from './tool-definitions.js'
-
 /**
  * Register all tools with MCP server
  * @param notionClientFactory - Returns a Notion Client.

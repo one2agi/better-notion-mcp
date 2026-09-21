@@ -16,7 +16,7 @@ export interface PropertyCodec<T = any> {
   toScalar?(notionProp: any): number | string | boolean | string[] | null
 }
 
-export const PAGE_ID_REGEX = /([a-f0-9]{32})/
+const PAGE_ID_REGEX = /([a-f0-9]{32})/
 
 /** Extract a 32-char hex page ID from a Notion URL, or return the input as-is if it's already a raw ID */
 export function extractPageId(value: any): string {
@@ -52,7 +52,7 @@ export function toRelation(value: any): { relation: { id: string }[] } {
   return value
 }
 
-export const titleCodec: PropertyCodec = {
+const titleCodec: PropertyCodec = {
   type: 'title',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -76,7 +76,7 @@ export const titleCodec: PropertyCodec = {
   }
 }
 
-export const richTextCodec: PropertyCodec = {
+const richTextCodec: PropertyCodec = {
   type: 'rich_text',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -100,7 +100,7 @@ export const richTextCodec: PropertyCodec = {
   }
 }
 
-export const numberCodec: PropertyCodec = {
+const numberCodec: PropertyCodec = {
   type: 'number',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -123,7 +123,7 @@ export const numberCodec: PropertyCodec = {
   }
 }
 
-export const checkboxCodec: PropertyCodec = {
+const checkboxCodec: PropertyCodec = {
   type: 'checkbox',
   toNotion(value) {
     if (value === null || value === undefined) {
@@ -142,7 +142,7 @@ export const checkboxCodec: PropertyCodec = {
   }
 }
 
-export const selectCodec: PropertyCodec = {
+const selectCodec: PropertyCodec = {
   type: 'select',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -161,7 +161,7 @@ export const selectCodec: PropertyCodec = {
   }
 }
 
-export const multiSelectCodec: PropertyCodec = {
+const multiSelectCodec: PropertyCodec = {
   type: 'multi_select',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -189,7 +189,7 @@ export const multiSelectCodec: PropertyCodec = {
   }
 }
 
-export const statusCodec: PropertyCodec = {
+const statusCodec: PropertyCodec = {
   type: 'status',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -208,7 +208,7 @@ export const statusCodec: PropertyCodec = {
   }
 }
 
-export const dateCodec: PropertyCodec = {
+const dateCodec: PropertyCodec = {
   type: 'date',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -232,7 +232,7 @@ export const dateCodec: PropertyCodec = {
   }
 }
 
-export const urlCodec: PropertyCodec = {
+const urlCodec: PropertyCodec = {
   type: 'url',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -248,7 +248,7 @@ export const urlCodec: PropertyCodec = {
   }
 }
 
-export const emailCodec: PropertyCodec = {
+const emailCodec: PropertyCodec = {
   type: 'email',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -264,7 +264,7 @@ export const emailCodec: PropertyCodec = {
   }
 }
 
-export const phoneNumberCodec: PropertyCodec = {
+const phoneNumberCodec: PropertyCodec = {
   type: 'phone_number',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -280,7 +280,7 @@ export const phoneNumberCodec: PropertyCodec = {
   }
 }
 
-export const relationCodec: PropertyCodec = {
+const relationCodec: PropertyCodec = {
   type: 'relation',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -297,7 +297,7 @@ export const relationCodec: PropertyCodec = {
   }
 }
 
-export const peopleCodec: PropertyCodec = {
+const peopleCodec: PropertyCodec = {
   type: 'people',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -325,7 +325,7 @@ export const peopleCodec: PropertyCodec = {
   }
 }
 
-export const filesCodec: PropertyCodec = {
+const filesCodec: PropertyCodec = {
   type: 'files',
   toNotion(value) {
     if (value === null || value === undefined || value === '') {
@@ -356,7 +356,7 @@ export const filesCodec: PropertyCodec = {
 }
 
 // Readonly Codecs
-export const formulaCodec: PropertyCodec = {
+const formulaCodec: PropertyCodec = {
   type: 'formula',
   isReadonly: true,
   toNotion(value) {
@@ -389,7 +389,7 @@ export const formulaCodec: PropertyCodec = {
   }
 }
 
-export const rollupCodec: PropertyCodec = {
+const rollupCodec: PropertyCodec = {
   type: 'rollup',
   isReadonly: true,
   toNotion(value) {
@@ -403,7 +403,7 @@ export const rollupCodec: PropertyCodec = {
   }
 }
 
-export const createdTimeCodec: PropertyCodec = {
+const createdTimeCodec: PropertyCodec = {
   type: 'created_time',
   isReadonly: true,
   toNotion(value) {
@@ -417,7 +417,7 @@ export const createdTimeCodec: PropertyCodec = {
   }
 }
 
-export const lastEditedTimeCodec: PropertyCodec = {
+const lastEditedTimeCodec: PropertyCodec = {
   type: 'last_edited_time',
   isReadonly: true,
   toNotion(value) {
@@ -431,7 +431,7 @@ export const lastEditedTimeCodec: PropertyCodec = {
   }
 }
 
-export const createdByCodec: PropertyCodec = {
+const createdByCodec: PropertyCodec = {
   type: 'created_by',
   isReadonly: true,
   toNotion(value) {
@@ -445,7 +445,7 @@ export const createdByCodec: PropertyCodec = {
   }
 }
 
-export const lastEditedByCodec: PropertyCodec = {
+const lastEditedByCodec: PropertyCodec = {
   type: 'last_edited_by',
   isReadonly: true,
   toNotion(value) {
@@ -459,7 +459,7 @@ export const lastEditedByCodec: PropertyCodec = {
   }
 }
 
-export const uniqueIdCodec: PropertyCodec = {
+const uniqueIdCodec: PropertyCodec = {
   type: 'unique_id',
   isReadonly: true,
   toNotion(value) {
@@ -475,7 +475,7 @@ export const uniqueIdCodec: PropertyCodec = {
   }
 }
 
-export const verificationCodec: PropertyCodec = {
+const verificationCodec: PropertyCodec = {
   type: 'verification',
   isReadonly: true,
   toNotion(value) {
@@ -489,7 +489,7 @@ export const verificationCodec: PropertyCodec = {
   }
 }
 
-export const buttonCodec: PropertyCodec = {
+const buttonCodec: PropertyCodec = {
   type: 'button',
   isReadonly: true,
   toNotion(value) {

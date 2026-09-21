@@ -3,7 +3,7 @@ import { NotionMCPError } from './errors.js'
 import { normalizeId } from './id.js'
 
 /** 5 minutes TTL for cached schemas and resolved IDs */
-export const SCHEMA_CACHE_TTL = 5 * 60 * 1000
+const SCHEMA_CACHE_TTL = 5 * 60 * 1000
 
 /** Cache for database/data_source ID resolution */
 export const resolutionCache = new Map<string, { databaseId: string; dataSourceId: string; expiresAt: number }>()
