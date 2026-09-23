@@ -71,7 +71,9 @@ function createMention(
 }
 
 // Regular expressions for block parsing
-const CALLOUT_REGEX = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR|DANGER)\](?:\{([^}]+)\})?\s*(.*)/i
+const CALLOUT_REGEX =
+  /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR|DANGER)\]\s*(?:\{([^}]+)\})?\s*(.*)/i
+const HTML_CALLOUT_OPEN_REGEX = /^<callout(?:\s+([^>]*))?>/i
 const IMAGE_REGEX = /^\s*!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/
 const BOOKMARK_REGEX = /^\s*\[\s*(bookmark|embed|书签|网页书签)\s*\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/i
 const CHECKED_LIST_REGEX = /^\s*[-*+]\s\[([ xX])\](?:\s|$)/
@@ -196,6 +198,14 @@ class MarkdownParser {
     const calloutMatch = line.match(CALLOUT_REGEX)
     if (calloutMatch) {
       const calloutData = parseCalloutBlock(this.lines, i, calloutMatch)
+      this.blocks.push(calloutData.block)
+      return calloutData.endIndex
+    }
+
+    // HTML Callout <callout color="..." icon="...">
+    const htmlCalloutMatch = trimmedLine.match(HTML_CALLOUT_OPEN_REGEX)
+    if (htmlCalloutMatch) {
+      const calloutData = parseHtmlCallout(this.lines, i, htmlCalloutMatch)
       this.blocks.push(calloutData.block)
       return calloutData.endIndex
     }
@@ -351,7 +361,20 @@ function calloutToMarkdown(block: NotionBlock, lines: string[]): void {
   const calloutText = richTextToMarkdown(block.callout.rich_text)
   const calloutIcon = block.callout.icon?.emoji || ''
   const calloutType = getCalloutTypeFromIcon(calloutIcon)
-  lines.push(`> [!${calloutType}] ${calloutText}`)
+
+  const attrs: string[] = []
+  if (block.callout.color && block.callout.color !== 'default') {
+    attrs.push(`color="${block.callout.color}"`)
+  }
+  const defaultIcon = CALLOUT_ICONS[calloutType] || 'ℹ️'
+  if (calloutIcon && calloutIcon !== defaultIcon) {
+    attrs.push(`icon="${calloutIcon}"`)
+  }
+
+  const attrStr = attrs.length > 0 ? `{${attrs.join(' ')}}` : ''
+  const prefix = attrStr ? `> [!${calloutType}]${attrStr}` : `> [!${calloutType}]`
+  lines.push(calloutText ? `${prefix} ${calloutText}` : prefix)
+
   if (block.callout.children?.length > 0) {
     const childMd = blocksToMarkdown(block.callout.children)
     lines.push(childMd.replace(/^/gm, '> '))
@@ -889,6 +912,57 @@ function parseCalloutBlock(lines: string[], startIndex: number, match: RegExpMat
   return { block: createCallout(calloutContent || calloutType, icon, color), endIndex: i }
 }
 
+function parseHtmlCallout(lines: string[], startIndex: number, match: RegExpMatchArray): ParseResult {
+  const attrStr = match[1] || ''
+  let color = 'default'
+  let icon = 'ℹ️'
+
+  const colorMatch = attrStr.match(/color="([^"]+)"/)
+  if (colorMatch) color = colorMatch[1]
+  const iconMatch = attrStr.match(/icon="([^"]+)"/)
+  if (iconMatch) icon = iconMatch[1]
+
+  const firstLine = lines[startIndex]
+  const openTagEnd = firstLine.indexOf('>')
+  const remainder = openTagEnd !== -1 ? firstLine.slice(openTagEnd + 1) : ''
+
+  // Single-line callout: <callout ...>content</callout>
+  if (remainder.includes('</callout>')) {
+    const closeIdx = remainder.indexOf('</callout>')
+    const innerText = remainder.slice(0, closeIdx).trim()
+    return {
+      block: createCallout(innerText, icon, color),
+      endIndex: startIndex
+    }
+  }
+
+  const contentLines: string[] = []
+  if (remainder.trim()) {
+    contentLines.push(remainder.trim())
+  }
+
+  let i = startIndex + 1
+  while (i < lines.length) {
+    const currentLine = lines[i]
+    if (currentLine.includes('</callout>')) {
+      const closeIdx = currentLine.indexOf('</callout>')
+      const beforeClose = currentLine.slice(0, closeIdx)
+      if (beforeClose.trim()) {
+        contentLines.push(beforeClose.trim())
+      }
+      break
+    }
+    contentLines.push(currentLine)
+    i++
+  }
+
+  const innerText = contentLines.join('\n').trim()
+  return {
+    block: createCallout(innerText, icon, color),
+    endIndex: i < lines.length ? i : lines.length - 1
+  }
+}
+
 function parseCodeBlock(lines: string[], startIndex: number, line: string): ParseResult & { warning?: string } {
   const language = line.slice(3).trim()
   const codeLines: string[] = []
@@ -1197,7 +1271,7 @@ const CALLOUT_ICONS: Record<string, string> = {
   DANGER: '❌'
 }
 
-const CALLOUT_COLORS: Record<string, string> = {
+export const CALLOUT_COLORS: Record<string, string> = {
   NOTE: 'default',
   TIP: 'default',
   IMPORTANT: 'default',
@@ -1573,6 +1647,12 @@ export function sanitizeNotionMarkdown(md: string): string {
 
   // 1. Remove <empty-block/> tags
   let cleaned = md.replace(/<empty-block\s*\/?>/gi, '')
+
+  // 2. Normalize <unknown ... alt="bookmark"/> and <unknown ... alt="embed"/>
+  cleaned = cleaned.replace(/<unknown\b[^>]*\burl="([^"]+)"[^>]*\balt="bookmark"[^>]*\/?>/gi, '[bookmark]($1)')
+  cleaned = cleaned.replace(/<unknown\b[^>]*\balt="bookmark"[^>]*\burl="([^"]+)"[^>]*\/?>/gi, '[bookmark]($1)')
+  cleaned = cleaned.replace(/<unknown\b[^>]*\burl="([^"]+)"[^>]*\balt="embed"[^>]*\/?>/gi, '[embed]($1)')
+  cleaned = cleaned.replace(/<unknown\b[^>]*\balt="embed"[^>]*\burl="([^"]+)"[^>]*\/?>/gi, '[embed]($1)')
 
   // 2. Convert simple HTML tables to GFM tables
   cleaned = cleaned.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_match, tableBody) => {
