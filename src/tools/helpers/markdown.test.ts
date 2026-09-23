@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { NotionBlock, RichText } from './markdown'
-import { blocksToMarkdown, extractPlainText, markdownToBlocks, parseRichText, sanitizeNotionMarkdown } from './markdown'
+import {
+  blocksToMarkdown,
+  CALLOUT_COLORS,
+  extractPlainText,
+  markdownToBlocks,
+  parseRichText,
+  sanitizeNotionMarkdown
+} from './markdown'
 
 // ============================================================
 // Helpers
@@ -396,6 +403,108 @@ describe('markdownToBlocks', () => {
       expect(blocks[0].callout.color).toBe('blue_background')
       expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: '📌' })
       expect(blocks[0].callout.rich_text[0].plain_text).toBe('Custom styled content')
+    })
+  })
+
+  describe('HTML Callout tag and Unknown bookmark recovery', () => {
+    it('RT-03: should parse <callout color="default" icon="💡"> into native callout block and strip tags', () => {
+      const md = `<callout color="default" icon="💡">
+Clean callout inside HTML tag
+- List item 1
+- List item 2
+</callout>`
+      const { blocks } = markdownToBlocks(md)
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('default')
+      expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: '💡' })
+      expect(blocks[0].callout.rich_text[0].plain_text).toContain('Clean callout inside HTML tag')
+      expect(blocks[0].callout.rich_text[0].plain_text).not.toContain('<callout')
+      expect(blocks[0].callout.rich_text[0].plain_text).not.toContain('</callout>')
+    })
+
+    it('RT-06: should normalize <unknown url="..." alt="bookmark"/> to [bookmark](url) and embed in sanitizeNotionMarkdown', () => {
+      const raw =
+        '# Title\n\n<unknown url="https://github.com" alt="bookmark"/>\n\n<unknown url="https://youtube.com/watch?v=123" alt="embed"/>\n\nSome text'
+      const cleaned = sanitizeNotionMarkdown(raw)
+      expect(cleaned).toContain('[bookmark](https://github.com)')
+      expect(cleaned).toContain('[embed](https://youtube.com/watch?v=123)')
+      expect(cleaned).not.toContain('<unknown')
+    })
+
+    it('should support whitespace before attributes like > [!NOTE] {color="blue_background"} without leaking attributes into content', () => {
+      const { blocks } = markdownToBlocks('> [!NOTE] {color="blue_background"}\n> Some content')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('blue_background')
+      expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: 'ℹ️' })
+      expect(blocks[0].callout.rich_text[0].plain_text).toBe('Some content')
+      expect(blocks[0].callout.rich_text[0].plain_text).not.toContain('{color=')
+    })
+
+    it('should support isolated attributes {color="blue_background"} without icon', () => {
+      const { blocks } = markdownToBlocks('> [!NOTE]{color="blue_background"}\n> Isolated color content')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('blue_background')
+      expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: 'ℹ️' })
+      expect(blocks[0].callout.rich_text[0].plain_text).toBe('Isolated color content')
+    })
+
+    it('should support isolated attributes {icon="📌"} without color', () => {
+      const { blocks } = markdownToBlocks('> [!NOTE]{icon="📌"}\n> Isolated icon content')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('default')
+      expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: '📌' })
+      expect(blocks[0].callout.rich_text[0].plain_text).toBe('Isolated icon content')
+    })
+
+    it('should serialize custom color and custom icon in calloutToMarkdown if non-default', () => {
+      const blockWithBoth: NotionBlock = {
+        object: 'block',
+        type: 'callout',
+        callout: {
+          rich_text: [plainRichText('Custom content')],
+          icon: { type: 'emoji', emoji: '📌' },
+          color: 'blue_background'
+        }
+      } as any
+      const mdWithBoth = blocksToMarkdown([blockWithBoth])
+      expect(mdWithBoth).toContain('{color="blue_background" icon="📌"}')
+
+      const blockWithColorOnly: NotionBlock = {
+        object: 'block',
+        type: 'callout',
+        callout: {
+          rich_text: [plainRichText('Custom color only')],
+          icon: { type: 'emoji', emoji: 'ℹ️' },
+          color: 'red_background'
+        }
+      } as any
+      const mdWithColorOnly = blocksToMarkdown([blockWithColorOnly])
+      expect(mdWithColorOnly).toContain('{color="red_background"}')
+      expect(mdWithColorOnly).not.toContain('icon=')
+
+      const blockWithIconOnly: NotionBlock = {
+        object: 'block',
+        type: 'callout',
+        callout: {
+          rich_text: [plainRichText('Custom icon only')],
+          icon: { type: 'emoji', emoji: '🚀' },
+          color: 'default'
+        }
+      } as any
+      const mdWithIconOnly = blocksToMarkdown([blockWithIconOnly])
+      expect(mdWithIconOnly).toContain('{icon="🚀"}')
+      expect(mdWithIconOnly).not.toContain('color=')
+    })
+
+    it('exports CALLOUT_COLORS dictionary with default color for all alert types', () => {
+      expect(CALLOUT_COLORS).toBeDefined()
+      expect(CALLOUT_COLORS.NOTE).toBe('default')
+      expect(CALLOUT_COLORS.TIP).toBe('default')
+      expect(CALLOUT_COLORS.WARNING).toBe('default')
     })
   })
 
@@ -1008,7 +1117,7 @@ describe('blocksToMarkdown', () => {
           callout: {
             rich_text: [plainRichText('Important info')],
             icon: { type: 'emoji', emoji: '\u2757' },
-            color: 'purple_background'
+            color: 'default'
           }
         }
       ]
@@ -1461,7 +1570,7 @@ describe('blocksToMarkdown', () => {
           callout: {
             rich_text: [plainRichText('Important')],
             icon: { type: 'emoji', emoji: '\u2757' },
-            color: 'red_background',
+            color: 'default',
             children: [
               {
                 object: 'block',
