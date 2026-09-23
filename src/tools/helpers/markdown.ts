@@ -74,6 +74,7 @@ function createMention(
 const CALLOUT_REGEX =
   /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR|DANGER)\]\s*(?:\{([^}]+)\})?\s*(.*)/i
 const HTML_CALLOUT_OPEN_REGEX = /^<callout(?:\s+([^>]*))?>/i
+const HTML_CALLOUT_CLOSE_REGEX = /<\/callout>/i
 const IMAGE_REGEX = /^\s*!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/
 const BOOKMARK_REGEX = /^\s*\[\s*(bookmark|embed|书签|网页书签)\s*\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/i
 const CHECKED_LIST_REGEX = /^\s*[-*+]\s\[([ xX])\](?:\s|$)/
@@ -884,20 +885,33 @@ interface ParseResult {
   endIndex: number
 }
 
+/**
+ * Extract optional `color="..."` and `icon="..."` attributes from a callout attribute string.
+ */
+function extractCalloutAttributes(
+  attrStr?: string,
+  defaultColor = 'default',
+  defaultIcon = 'ℹ️'
+): { color: string; icon: string } {
+  if (!attrStr) {
+    return { color: defaultColor, icon: defaultIcon }
+  }
+  const colorMatch = attrStr.match(/color="([^"]+)"/)
+  const iconMatch = attrStr.match(/icon="([^"]+)"/)
+  return {
+    color: colorMatch ? colorMatch[1] : defaultColor,
+    icon: iconMatch ? iconMatch[1] : defaultIcon
+  }
+}
+
 function parseCalloutBlock(lines: string[], startIndex: number, match: RegExpMatchArray): ParseResult {
   const calloutType = match[1].toUpperCase()
   const attrStr = match[2]
   const inlineContent = match[3]
 
-  let icon = getCalloutIcon(calloutType)
-  let color = getCalloutColor(calloutType)
-
-  if (attrStr) {
-    const colorMatch = attrStr.match(/color="([^"]+)"/)
-    if (colorMatch) color = colorMatch[1]
-    const iconMatch = attrStr.match(/icon="([^"]+)"/)
-    if (iconMatch) icon = iconMatch[1]
-  }
+  const defaultIcon = getCalloutIcon(calloutType)
+  const defaultColor = getCalloutColor(calloutType)
+  const { color, icon } = extractCalloutAttributes(attrStr, defaultColor, defaultIcon)
 
   const contentLines: string[] = inlineContent ? [inlineContent] : []
   let i = startIndex
@@ -912,24 +926,21 @@ function parseCalloutBlock(lines: string[], startIndex: number, match: RegExpMat
   return { block: createCallout(calloutContent || calloutType, icon, color), endIndex: i }
 }
 
+/**
+ * Parses an HTML-style callout block (`<callout color="..." icon="...">...</callout>`).
+ * Handles single-line and multi-line callouts with case-insensitive tag matching.
+ */
 function parseHtmlCallout(lines: string[], startIndex: number, match: RegExpMatchArray): ParseResult {
-  const attrStr = match[1] || ''
-  let color = 'default'
-  let icon = 'ℹ️'
-
-  const colorMatch = attrStr.match(/color="([^"]+)"/)
-  if (colorMatch) color = colorMatch[1]
-  const iconMatch = attrStr.match(/icon="([^"]+)"/)
-  if (iconMatch) icon = iconMatch[1]
+  const { color, icon } = extractCalloutAttributes(match[1], 'default', 'ℹ️')
 
   const firstLine = lines[startIndex]
   const openTagEnd = firstLine.indexOf('>')
   const remainder = openTagEnd !== -1 ? firstLine.slice(openTagEnd + 1) : ''
 
   // Single-line callout: <callout ...>content</callout>
-  if (remainder.includes('</callout>')) {
-    const closeIdx = remainder.indexOf('</callout>')
-    const innerText = remainder.slice(0, closeIdx).trim()
+  const singleLineCloseMatch = remainder.match(HTML_CALLOUT_CLOSE_REGEX)
+  if (singleLineCloseMatch && singleLineCloseMatch.index !== undefined) {
+    const innerText = remainder.slice(0, singleLineCloseMatch.index).trim()
     return {
       block: createCallout(innerText, icon, color),
       endIndex: startIndex
@@ -944,9 +955,9 @@ function parseHtmlCallout(lines: string[], startIndex: number, match: RegExpMatc
   let i = startIndex + 1
   while (i < lines.length) {
     const currentLine = lines[i]
-    if (currentLine.includes('</callout>')) {
-      const closeIdx = currentLine.indexOf('</callout>')
-      const beforeClose = currentLine.slice(0, closeIdx)
+    const multiLineCloseMatch = currentLine.match(HTML_CALLOUT_CLOSE_REGEX)
+    if (multiLineCloseMatch && multiLineCloseMatch.index !== undefined) {
+      const beforeClose = currentLine.slice(0, multiLineCloseMatch.index)
       if (beforeClose.trim()) {
         contentLines.push(beforeClose.trim())
       }

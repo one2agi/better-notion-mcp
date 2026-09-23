@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { NotionBlock, RichText } from './markdown'
+import type { NotionBlock, RichText } from './markdown.js'
 import {
   blocksToMarkdown,
   CALLOUT_COLORS,
@@ -7,7 +7,7 @@ import {
   markdownToBlocks,
   parseRichText,
   sanitizeNotionMarkdown
-} from './markdown'
+} from './markdown.js'
 
 // ============================================================
 // Helpers
@@ -421,6 +421,28 @@ Clean callout inside HTML tag
       expect(blocks[0].callout.rich_text[0].plain_text).toContain('Clean callout inside HTML tag')
       expect(blocks[0].callout.rich_text[0].plain_text).not.toContain('<callout')
       expect(blocks[0].callout.rich_text[0].plain_text).not.toContain('</callout>')
+    })
+
+    it('should terminate case-insensitive callout tags (<Callout>...</Callout>) without swallowing subsequent content', () => {
+      const md = '<Callout color="default" icon="💡">Mixed case callout</Callout>\n\nParagraph after callout'
+      const { blocks } = markdownToBlocks(md)
+      expect(blocks).toHaveLength(2)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('default')
+      expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: '💡' })
+      expect(blocks[0].callout.rich_text[0].plain_text).toBe('Mixed case callout')
+      expect(blocks[1].type).toBe('paragraph')
+      expect(blocks[1].paragraph.rich_text[0].plain_text).toBe('Paragraph after callout')
+    })
+
+    it('should terminate multi-line mixed-case callout (<callout>...</CALLOUT>) properly', () => {
+      const md = '<callout color="default" icon="💡">\nMulti-line mixed case\n</CALLOUT>\n\nParagraph after multi-line'
+      const { blocks } = markdownToBlocks(md)
+      expect(blocks).toHaveLength(2)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.rich_text[0].plain_text).toBe('Multi-line mixed case')
+      expect(blocks[1].type).toBe('paragraph')
+      expect(blocks[1].paragraph.rich_text[0].plain_text).toBe('Paragraph after multi-line')
     })
 
     it('RT-06: should normalize <unknown url="..." alt="bookmark"/> to [bookmark](url) and embed in sanitizeNotionMarkdown', () => {
