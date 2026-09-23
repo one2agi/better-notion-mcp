@@ -17,7 +17,6 @@ import {
   getPageMarkdown,
   type InsertMarkdownResult,
   insertPageMarkdown,
-  type PageMarkdownAPI,
   type ReplaceContentRangeResult,
   type ReplaceContentResult,
   replacePageContent,
@@ -648,42 +647,40 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
     })
   }
 
-  // Handle content updates using efficient server-side markdown API (SDK v5.22+)
-  // Decision matrix:
-  //   content present + replace=true   → updateMarkdown replace_content (1 API call)
-  //   content present + replace=false  → updateMarkdown insert_content at end (1 API call)
-  //   append_content present           → updateMarkdown insert_content at end (1 API call)
-  //   content empty/omitted + replace=true → updateMarkdown replace_content with empty string (1 API call)
-  const mdApi = notion.pages as unknown as PageMarkdownAPI
-  const pageContent = input.content ?? input.markdown ?? input.new_str
+  // Handle content updates using client AST pipeline for 100% fidelity (bookmarks, toggles, callouts)
+  const pageContent = input.content ?? input.markdown ?? input.new_str ?? input.append_content
 
-  if (pageContent && input.replace) {
-    // Replace entire page content — single API call
-    await mdApi.updateMarkdown({
-      page_id: input.page_id,
-      type: 'replace_content',
-      replace_content: { new_str: pageContent, allow_deleting_content: true }
-    })
-  } else if (pageContent && !input.replace) {
-    // Append content at end — single API call
-    await mdApi.updateMarkdown({
-      page_id: input.page_id,
-      type: 'insert_content',
-      insert_content: { content: pageContent, position: { type: 'end' } }
-    })
-  } else if (input.append_content) {
-    // Append append_content at end — single API call
-    await mdApi.updateMarkdown({
-      page_id: input.page_id,
-      type: 'insert_content',
-      insert_content: { content: input.append_content, position: { type: 'end' } }
-    })
+  if (pageContent !== undefined && pageContent !== null) {
+    if (input.replace) {
+      // Full content replacement
+      await replacePageContent(notion, {
+        page_id: input.page_id,
+        new_str: pageContent,
+        allow_deleting_content: input.allow_deleting_content
+      })
+    } else if (pageContent.trim().length > 0) {
+      // Content append at end
+      const { blocks } = markdownToBlocks(pageContent)
+      if (blocks.length > 0) {
+        const sanitized = sanitizeBlocksForAppend(blocks as any)
+        const CHUNK_SIZE = 100
+        for (let i = 0; i < sanitized.length; i += CHUNK_SIZE) {
+          const chunk = sanitized.slice(i, i + CHUNK_SIZE)
+          await retryWithBackoff(() =>
+            notion.blocks.children.append({
+              block_id: input.page_id!,
+              children: chunk as any
+            })
+          )
+        }
+      }
+    }
   } else if (input.replace) {
-    // Clear page: replace with empty string — single API call
-    await mdApi.updateMarkdown({
+    // Clear page if replace=true and no content was provided
+    await replacePageContent(notion, {
       page_id: input.page_id,
-      type: 'replace_content',
-      replace_content: { new_str: '', allow_deleting_content: true }
+      new_str: '',
+      allow_deleting_content: input.allow_deleting_content
     })
   }
 
