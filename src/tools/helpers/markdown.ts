@@ -71,7 +71,7 @@ function createMention(
 }
 
 // Regular expressions for block parsing
-const CALLOUT_REGEX = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR|DANGER)\]\s*(.*)/i
+const CALLOUT_REGEX = /^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION|INFO|SUCCESS|ERROR|DANGER)\](?:\{([^}]+)\})?\s*(.*)/i
 const IMAGE_REGEX = /^\s*!\[([^\]]*)\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/
 const BOOKMARK_REGEX = /^\s*\[\s*(bookmark|embed|书签|网页书签)\s*\]\(\s*([^)\s]+)(?:\s+"([^"]+)")?\s*\)\s*$/i
 const CHECKED_LIST_REGEX = /^\s*[-*+]\s\[([ xX])\](?:\s|$)/
@@ -723,7 +723,8 @@ class InlineParser {
               underline: false,
               code: this.code,
               color: 'default'
-            }
+            },
+            plain_text: linkText
           })
 
           this.i = closeParen
@@ -862,7 +863,20 @@ interface ParseResult {
 
 function parseCalloutBlock(lines: string[], startIndex: number, match: RegExpMatchArray): ParseResult {
   const calloutType = match[1].toUpperCase()
-  const contentLines: string[] = match[2] ? [match[2]] : []
+  const attrStr = match[2]
+  const inlineContent = match[3]
+
+  let icon = getCalloutIcon(calloutType)
+  let color = getCalloutColor(calloutType)
+
+  if (attrStr) {
+    const colorMatch = attrStr.match(/color="([^"]+)"/)
+    if (colorMatch) color = colorMatch[1]
+    const iconMatch = attrStr.match(/icon="([^"]+)"/)
+    if (iconMatch) icon = iconMatch[1]
+  }
+
+  const contentLines: string[] = inlineContent ? [inlineContent] : []
   let i = startIndex
 
   // Collect continuation lines (lines starting with >)
@@ -871,8 +885,6 @@ function parseCalloutBlock(lines: string[], startIndex: number, match: RegExpMat
     contentLines.push(lines[i].slice(2))
   }
 
-  const icon = getCalloutIcon(calloutType)
-  const color = getCalloutColor(calloutType)
   const calloutContent = contentLines.join('\n')
   return { block: createCallout(calloutContent || calloutType, icon, color), endIndex: i }
 }
@@ -1186,15 +1198,15 @@ const CALLOUT_ICONS: Record<string, string> = {
 }
 
 const CALLOUT_COLORS: Record<string, string> = {
-  NOTE: 'blue_background',
-  TIP: 'green_background',
-  IMPORTANT: 'purple_background',
-  WARNING: 'yellow_background',
-  CAUTION: 'red_background',
-  INFO: 'blue_background',
-  SUCCESS: 'green_background',
-  ERROR: 'red_background',
-  DANGER: 'red_background'
+  NOTE: 'default',
+  TIP: 'default',
+  IMPORTANT: 'default',
+  WARNING: 'default',
+  CAUTION: 'default',
+  INFO: 'default',
+  SUCCESS: 'default',
+  ERROR: 'default',
+  DANGER: 'default'
 }
 
 const CALLOUT_ICON_MAP: Record<string, string> = {
@@ -1212,7 +1224,7 @@ function getCalloutIcon(type: string): string {
 }
 
 function getCalloutColor(type: string): string {
-  return CALLOUT_COLORS[type] || 'gray_background'
+  return CALLOUT_COLORS[type] || 'default'
 }
 
 function getCalloutTypeFromIcon(icon: string): string {
@@ -1237,7 +1249,8 @@ function createRichText(
       underline: false,
       code: annotations.code || false,
       color: annotations.color || 'default'
-    }
+    },
+    plain_text: content
   }
 }
 
