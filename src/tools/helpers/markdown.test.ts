@@ -249,49 +249,49 @@ describe('markdownToBlocks', () => {
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('callout')
       expect(getRichTextContent(blocks[0])).toBe('This is a note')
-      expect(blocks[0].callout.color).toBe('blue_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('should parse TIP callout', () => {
       const { blocks } = markdownToBlocks('> [!TIP] Helpful tip')
       expect(blocks).toHaveLength(1)
-      expect(blocks[0].callout.color).toBe('green_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('should parse WARNING callout', () => {
       const { blocks } = markdownToBlocks('> [!WARNING] Be careful')
-      expect(blocks[0].callout.color).toBe('yellow_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('should parse IMPORTANT callout', () => {
       const { blocks } = markdownToBlocks('> [!IMPORTANT] Critical info')
-      expect(blocks[0].callout.color).toBe('purple_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('should parse CAUTION callout', () => {
       const { blocks } = markdownToBlocks('> [!CAUTION] Danger zone')
-      expect(blocks[0].callout.color).toBe('red_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('should parse INFO callout', () => {
       const { blocks } = markdownToBlocks('> [!INFO] Information')
-      expect(blocks[0].callout.color).toBe('blue_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('should parse SUCCESS callout', () => {
       const { blocks } = markdownToBlocks('> [!SUCCESS] All passed')
-      expect(blocks[0].callout.color).toBe('green_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('should parse ERROR callout', () => {
       const { blocks } = markdownToBlocks('> [!ERROR] Something failed')
-      expect(blocks[0].callout.color).toBe('red_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
-    it('DANGER callout uses red_background', () => {
+    it('DANGER callout uses clean default color', () => {
       const { blocks } = markdownToBlocks('> [!DANGER] critical')
       expect(blocks[0].type).toBe('callout')
-      expect(blocks[0].callout.color).toBe('red_background')
+      expect(blocks[0].callout.color).toBe('default')
     })
 
     it('DANGER callout is case-insensitive', () => {
@@ -376,6 +376,26 @@ describe('markdownToBlocks', () => {
       const { blocks } = markdownToBlocks('> [!note] lowercase')
       expect(blocks).toHaveLength(1)
       expect(blocks[0].type).toBe('callout')
+    })
+  })
+
+  describe('Callout clean style and attribute enhancements', () => {
+    it('RT-01: should default callout background color to default (clean/transparent) instead of saturated color', () => {
+      const { blocks } = markdownToBlocks('> [!NOTE]\n> Clean note content')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('default')
+      expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: 'ℹ️' })
+      expect(blocks[0].callout.rich_text[0].plain_text).toBe('Clean note content')
+    })
+
+    it('RT-02: should support explicit trailing attributes like {color="blue_background"}', () => {
+      const { blocks } = markdownToBlocks('> [!NOTE]{color="blue_background" icon="📌"}\n> Custom styled content')
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0].type).toBe('callout')
+      expect(blocks[0].callout.color).toBe('blue_background')
+      expect(blocks[0].callout.icon).toEqual({ type: 'emoji', emoji: '📌' })
+      expect(blocks[0].callout.rich_text[0].plain_text).toBe('Custom styled content')
     })
   })
 
