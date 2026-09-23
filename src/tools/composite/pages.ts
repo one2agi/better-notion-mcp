@@ -11,7 +11,7 @@ import { NotionMCPError, retryWithBackoff, throwUnknownAction, withErrorHandling
 import { formatIcon } from '../helpers/icons.js'
 import { isValidNotionId } from '../helpers/id.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
-import { blocksToMarkdown, markdownToBlocks, sanitizeBlocksForAppend } from '../helpers/markdown.js'
+import { blocksToMarkdown } from '../helpers/markdown.js'
 import {
   appendMarkdownBlocks,
   type GetPageMarkdownResult,
@@ -504,14 +504,7 @@ async function createPage(notion: Client, input: PagesInput): Promise<CreatePage
   // Add content if provided (supports content, markdown, or new_str aliases)
   const pageContent = input.content ?? input.markdown ?? input.new_str
   if (pageContent) {
-    const { blocks } = markdownToBlocks(pageContent)
-    if (blocks.length > 0) {
-      const sanitized = sanitizeBlocksForAppend(blocks as any)
-      await notion.blocks.children.append({
-        block_id: page.id,
-        children: sanitized as any
-      })
-    }
+    await appendMarkdownBlocks(notion, page.id, pageContent)
   }
 
   return {

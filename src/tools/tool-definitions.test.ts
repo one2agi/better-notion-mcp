@@ -83,6 +83,11 @@ describe('tool-definitions', () => {
           'replace_content (page_id, new_str): overwrite whole page with high-fidelity markdown (supports bookmarks, toggles, callouts)'
         )
       })
+
+      it('documents callout support with HTML tag and attributes in content_convert description', () => {
+        const contentConvertTool = TOOLS.find((t) => t.name === 'content_convert')
+        expect(contentConvertTool?.description).toContain('<callout')
+      })
     })
   })
 

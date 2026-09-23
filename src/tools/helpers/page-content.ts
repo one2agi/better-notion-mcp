@@ -183,6 +183,7 @@ export async function replacePageContent(notion: Client, input: PageContentInput
 
 /**
  * Parse markdown with client AST engine and batch-append blocks to a page or parent block.
+ * Maps to: PATCH /v1/blocks/{id}/children
  * Uses 100-block chunking per Notion API limits with sanitizeBlocksForAppend and retryWithBackoff.
  * Returns the total number of blocks appended.
  */
