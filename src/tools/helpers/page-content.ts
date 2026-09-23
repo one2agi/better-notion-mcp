@@ -170,26 +170,8 @@ export async function replacePageContent(notion: Client, input: PageContentInput
     )
   }
 
-  // Step 2: Parse new markdown with client AST engine
-  let blockCount = 0
-  if (newStr.trim().length > 0) {
-    const { blocks } = markdownToBlocks(newStr)
-    if (blocks.length > 0) {
-      const sanitized = sanitizeBlocksForAppend(blocks as any)
-      blockCount = sanitized.length
-      // Notion limits block append to 100 blocks per request
-      const CHUNK_SIZE = 100
-      for (let i = 0; i < sanitized.length; i += CHUNK_SIZE) {
-        const chunk = sanitized.slice(i, i + CHUNK_SIZE)
-        await retryWithBackoff(() =>
-          notion.blocks.children.append({
-            block_id: input.page_id!,
-            children: chunk as any
-          })
-        )
-      }
-    }
-  }
+  // Step 2: Parse new markdown with client AST engine and append
+  const blockCount = await appendMarkdownBlocks(notion, input.page_id!, newStr)
 
   return {
     action: 'replace_content',
@@ -197,6 +179,33 @@ export async function replacePageContent(notion: Client, input: PageContentInput
     replaced: true,
     block_count: blockCount
   }
+}
+
+/**
+ * Parse markdown with client AST engine and batch-append blocks to a page or parent block.
+ * Uses 100-block chunking per Notion API limits with sanitizeBlocksForAppend and retryWithBackoff.
+ * Returns the total number of blocks appended.
+ */
+export async function appendMarkdownBlocks(notion: Client, blockId: string, markdown: string): Promise<number> {
+  if (!markdown || markdown.trim().length === 0) {
+    return 0
+  }
+  const { blocks } = markdownToBlocks(markdown)
+  if (blocks.length === 0) {
+    return 0
+  }
+  const sanitized = sanitizeBlocksForAppend(blocks as any)
+  const CHUNK_SIZE = 100
+  for (let i = 0; i < sanitized.length; i += CHUNK_SIZE) {
+    const chunk = sanitized.slice(i, i + CHUNK_SIZE)
+    await retryWithBackoff(() =>
+      notion.blocks.children.append({
+        block_id: blockId,
+        children: chunk as any
+      })
+    )
+  }
+  return sanitized.length
 }
 
 /**

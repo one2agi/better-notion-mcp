@@ -75,6 +75,15 @@ describe('tool-definitions', () => {
       // Quick filters
       expect(props.quick_filters).toBeDefined()
     })
+
+    describe('Tool descriptions contract accuracy', () => {
+      it('should accurately describe replace_content as high-fidelity markdown without demotion', () => {
+        const pagesTool = TOOLS.find((t) => t.name === 'pages')
+        expect(pagesTool?.description).toContain(
+          'replace_content (page_id, new_str): overwrite whole page with high-fidelity markdown (supports bookmarks, toggles, callouts)'
+        )
+      })
+    })
   })
 
   describe('RESOURCES metadata', () => {
