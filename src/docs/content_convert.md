@@ -17,7 +17,8 @@ Most tools (pages, blocks) handle markdown automatically. Use this for preview/v
 - ` ```lang ``` ` - Code blocks
 - `> text` - Blockquotes
 - `---` / `***` - Dividers
-- `> [!TYPE] text` - Callouts (NOTE, TIP, WARNING, IMPORTANT, CAUTION, INFO, SUCCESS, ERROR)
+- `> [!TYPE] text` - Callouts (NOTE, TIP, WARNING, IMPORTANT, CAUTION, INFO, SUCCESS, ERROR). Defaults to clean, elegant styling (`color="default"`). Supports trailing attributes: `> [!NOTE]{color="blue_background" icon="💡"}`.
+- `<callout color="..." icon="...">text</callout>` - Native HTML callout tags (e.g. `<callout color="default" icon="💡">`). Automatically parsed into Notion callout blocks without leaking HTML tags into plain text. Supported colors: `default` (clean transparent/border card), `gray_background`, `blue_background`, etc. Default icon: 💡.
 - `<details><summary>Title</summary>content</details>` - Toggles
 - `| col | col |` with `| --- | --- |` - Tables
 - `![alt](url)` - Images
