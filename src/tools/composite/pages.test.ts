@@ -1373,6 +1373,7 @@ describe('pages', () => {
       expect(appendArgs.block_id).toBe('p1')
       expect(appendArgs.children[0].type).toBe('heading_2')
       expect(appendArgs.children[0].heading_2.is_toggleable).toBe(true)
+      expect(appendArgs.children[0].heading_2.rich_text[0].plain_text).toBe('Heading 2 Toggle')
     })
   })
 

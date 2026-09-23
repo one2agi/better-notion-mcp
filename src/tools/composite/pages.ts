@@ -13,6 +13,7 @@ import { isValidNotionId } from '../helpers/id.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
 import { blocksToMarkdown, markdownToBlocks, sanitizeBlocksForAppend } from '../helpers/markdown.js'
 import {
+  appendMarkdownBlocks,
   type GetPageMarkdownResult,
   getPageMarkdown,
   type InsertMarkdownResult,
@@ -658,22 +659,9 @@ async function updatePage(notion: Client, input: PagesInput): Promise<UpdatePage
         new_str: pageContent,
         allow_deleting_content: input.allow_deleting_content
       })
-    } else if (pageContent.trim().length > 0) {
+    } else {
       // Content append at end
-      const { blocks } = markdownToBlocks(pageContent)
-      if (blocks.length > 0) {
-        const sanitized = sanitizeBlocksForAppend(blocks as any)
-        const CHUNK_SIZE = 100
-        for (let i = 0; i < sanitized.length; i += CHUNK_SIZE) {
-          const chunk = sanitized.slice(i, i + CHUNK_SIZE)
-          await retryWithBackoff(() =>
-            notion.blocks.children.append({
-              block_id: input.page_id!,
-              children: chunk as any
-            })
-          )
-        }
-      }
+      await appendMarkdownBlocks(notion, input.page_id!, pageContent)
     }
   } else if (input.replace) {
     // Clear page if replace=true and no content was provided

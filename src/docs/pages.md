@@ -106,42 +106,39 @@ Move a page to a new parent page.
 - `cover` - External URL (`https://...`) or built-in shorthand (e.g. `gradient_1`, `solid_beige`, `nasa_carina_nebula`)
 - `archived` - Archive status (boolean, for update action)
 
-## Markdown-Native Actions (Notion API 2025-09-03 + SDK v5.22+)
+## Markdown Support & High-Fidelity Engine
 
-Five additional actions use **server-side markdown endpoints** instead of
-block-append round-trips. They are **faster**, **atomic**, and preserve
-**block IDs** (so comments/reactions on the original blocks survive edits).
+All primary page write actions (`create`, `replace_content`, `update` with `content`, and `blocks: append`) are backed by our client-side unified high-fidelity AST engine (`markdownToBlocks`). This guarantees 100% fidelity without silent demotion:
 
-Requires integration token to be issued against Notion API 2025-09-03
-or later. Older tokens fall back to SDK error.
+- **Bookmarks**: `[bookmark](url "caption")` and `[书签](url)` create native Notion bookmark preview blocks.
+- **Toggles**: `<details><summary>## Heading 2 Toggle</summary>body</details>` create native heading toggles with `##` cleanly stripped.
+- **Clean Callouts**: Both GitHub alert syntax `> [!NOTE]` and native HTML `<callout color="default" icon="💡">` create elegant callouts. Default background color is `default` (clean transparent/border card instead of harsh saturated color), with optional inline attributes `{color="..." icon="..."}` for custom styling.
+- **Rich Elements**: Tables, code blocks, dividers, equations ($$), and nested lists are fully supported with complete AST fidelity.
+
+### replace_content
+**DESTRUCTIVE.** Overwrite the entire page content with a single markdown string using the client-side high-fidelity AST engine.
+```json
+{"action": "replace_content", "page_id": "xxx", "new_str": "# New Page\n\n[bookmark](https://github.com \"GitHub\")"}
+```
+- Required: `new_str` (the full new markdown). Accepts `content` or `markdown` as aliases.
+- Optional: `allow_deleting_content` (defaults to `true`).
+Existing blocks are cleared, and new content is parsed and appended via client-side AST in batches of <= 100 blocks. Block IDs from old content are **lost** — use this for full rewrites where rich content fidelity is required.
+
+## Server-Side Markdown Actions (Notion API 2025-09-03 + SDK v5.22+)
+
+Actions that use **Notion server-side markdown endpoints** (`get_markdown`, `insert_markdown`, `update_content`, `replace_content_range`). These are fast, atomic, and preserve existing **block IDs** (so comments/reactions on untouched blocks survive edits).
+
+Requires integration token to be issued against Notion API 2025-09-03 or later. Older tokens fall back to SDK error.
+
+> **Note on Server-Side Parser**: The server-side write endpoints (`insert_markdown`, `update_content`, `replace_content_range`) rely on Notion's hosted markdown engine, which only supports standard CommonMark and may demote special blocks (like `[bookmark]`) to plain text/links. For rich-content operations, use `replace_content`, `update`, or `blocks.append`.
 
 ### get_markdown
 Render the whole page as a single markdown string.
 ```json
 {"action": "get_markdown", "page_id": "xxx"}
 ```
-**Faster than `get`** for long pages: skips per-block JSON parsing.
+**Faster than `get`** for long pages: skips per-block JSON parsing. Unknown bookmark placeholders like `<unknown alt="bookmark"/>` are automatically normalized to `[bookmark](url)` for seamless round-trip fidelity.
 Response: `{ markdown: "...", truncated: false, unknown_block_ids: [] }`
-
-### Server-side vs client-side parser
-
-The 3 write actions replace_content / insert_markdown / update_content use Notion server-side markdown parsing — NOT this MCP client parser. Special block syntax is silently demoted:
-
-- `[bookmark](url)` - demotes to paragraph link
-- `[embed](url)` - demotes to paragraph link
-- `[toc]` - demotes to paragraph
-- `> [!unsupported_callout_type]` - demotes to plain quote
-
-For these features, use `blocks.append` (or `pages.update` + `content`) instead.
-
-### replace_content
-**DESTRUCTIVE.** Overwrite the entire page content with a single markdown string.
-```json
-{"action": "replace_content", "page_id": "xxx", "new_str": "# New Page\n\nAll old content is gone."}
-```
-Required: `new_str` (the full new markdown).
-Optional: `allow_deleting_content` (defaults to `true`).
-Block IDs from old content are **lost** — only use this for full rewrites.
 
 ### insert_markdown
 Insert markdown at a specific position (does not touch existing content).
@@ -170,8 +167,7 @@ Insert markdown at a specific position (does not touch existing content).
 - Allowed only for text-like content; media URLs may not match if Notion re-hosts them
 
 ### replace_content_range
-Replace markdown within a specific range anchor (Notion API 2025-09-03
-range format).
+Replace markdown within a specific range anchor (Notion API 2025-09-03 range format).
 ```json
 {
   "action": "replace_content_range",
@@ -188,10 +184,11 @@ range format).
 | Goal | Best action |
 |---|---|
 | Read whole page as text | `get_markdown` |
-| Replace whole page (atomically) | `replace_content` |
-| Add to start/end of page | `insert_markdown` |
+| Overwrite whole page with rich content (bookmarks, toggles, callouts) | `replace_content` |
+| Add rich content to end or update properties | `update` (with `content`, `replace: false`) |
+| Add text to start/end in-place (preserves block IDs) | `insert_markdown` |
 | Change specific phrases/words | `update_content` (search & replace) |
 | Replace a specific known range | `replace_content_range` |
 | Modify a single block in place | `blocks: update` |
 
-For `[bookmark]`/`[embed]`/`[toc]` content, use `blocks.append` (or `pages.update` + `content`) - see server vs client note above.
+For rich content with `[bookmark]`/toggles/callouts, use `pages.create`, `pages.replace_content`, `pages.update` + `content`, or `blocks.append`.

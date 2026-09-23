@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  appendMarkdownBlocks,
   type GetPageMarkdownResult,
   getPageMarkdown,
   type InsertMarkdownResult,
@@ -303,6 +304,38 @@ describe('page-content helper', () => {
       expect(result.replaced).toBe(true)
       expect(deleteMock).not.toHaveBeenCalled()
       expect(appendMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // appendMarkdownBlocks
+  // ---------------------------------------------------------------------------
+  describe('appendMarkdownBlocks', () => {
+    it('returns 0 and does not call append when markdown is empty or whitespace', async () => {
+      const appendMock = vi.fn()
+      const notion = {
+        blocks: { children: { append: appendMock } }
+      } as any
+
+      expect(await appendMarkdownBlocks(notion, 'p1', '')).toBe(0)
+      expect(await appendMarkdownBlocks(notion, 'p1', '   ')).toBe(0)
+      expect(appendMock).not.toHaveBeenCalled()
+    })
+
+    it('parses markdown and appends chunked blocks with <=100 batch limit', async () => {
+      const appendMock = vi.fn().mockResolvedValue({ results: [] })
+      const notion = {
+        blocks: { children: { append: appendMock } }
+      } as any
+
+      const md = Array.from({ length: 105 }, (_, i) => `Paragraph ${i}`).join('\n\n')
+      const count = await appendMarkdownBlocks(notion, 'p1', md)
+
+      expect(count).toBe(105)
+      expect(appendMock).toHaveBeenCalledTimes(2)
+      expect(appendMock.mock.calls[0][0].block_id).toBe('p1')
+      expect(appendMock.mock.calls[0][0].children).toHaveLength(100)
+      expect(appendMock.mock.calls[1][0].children).toHaveLength(5)
     })
   })
 
