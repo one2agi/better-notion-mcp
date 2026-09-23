@@ -12,17 +12,19 @@ import { formatIcon } from '../helpers/icons.js'
 import { isValidNotionId } from '../helpers/id.js'
 import { parseMaybeJSON } from '../helpers/json-input.js'
 import { blocksToMarkdown } from '../helpers/markdown.js'
+import type {
+  GetPageMarkdownResult,
+  InsertMarkdownResult,
+  ReplaceContentRangeResult,
+  ReplaceContentResult,
+  UpdateContentResult
+} from '../helpers/page-content.js'
 import {
   appendMarkdownBlocks,
-  type GetPageMarkdownResult,
   getPageMarkdown,
-  type InsertMarkdownResult,
   insertPageMarkdown,
-  type ReplaceContentRangeResult,
-  type ReplaceContentResult,
   replacePageContent,
   replacePageContentRange,
-  type UpdateContentResult,
   updatePageContent
 } from '../helpers/page-content.js'
 import { type DuplicatePageResult, duplicatePage } from '../helpers/page-duplicate.js'
