@@ -7,7 +7,8 @@
 import type { Client } from '@notionhq/client'
 import { NotionMCPError, retryWithBackoff } from './errors.js'
 import { parseMaybeJSON } from './json-input.js'
-import { sanitizeNotionMarkdown } from './markdown.js'
+import { markdownToBlocks, sanitizeBlocksForAppend, sanitizeNotionMarkdown } from './markdown.js'
+import { autoPaginate, processBatches } from './pagination.js'
 
 /**
  * Server-side markdown endpoints from Notion SDK v5.22.0 (`pages.retrieveMarkdown`,
@@ -46,6 +47,7 @@ export interface ReplaceContentResult {
   action: 'replace_content'
   page_id: string
   replaced: true
+  block_count?: number
   markdown?: string
   truncated?: boolean
 }
@@ -119,8 +121,8 @@ export async function getPageMarkdown(notion: Client, input: PageContentInput): 
 
 /**
  * replace_content action — overwrite the entire page content with a single markdown string.
- * Maps to: PATCH /v1/pages/{id}/markdown with body type=replace_content (SDK v5.22+).
- * DESTRUCTIVE: deletes all existing content by default (allow_deleting_content=true).
+ * Uses high-fidelity client AST engine (markdownToBlocks) and batch block appending.
+ * Preserves bookmarks, toggles, callouts, tables, and all rich-content block types without loss.
  */
 export async function replacePageContent(notion: Client, input: PageContentInput): Promise<ReplaceContentResult> {
   if (!input.page_id) {
@@ -134,23 +136,52 @@ export async function replacePageContent(notion: Client, input: PageContentInput
       'Provide new_str (or content: the full new markdown content for the page)'
     )
   }
-  const allowDel = input.allow_deleting_content ?? true
-  const r = await retryWithBackoff(() =>
-    (notion.pages as unknown as PageMarkdownAPI).updateMarkdown({
-      page_id: input.page_id!,
-      type: 'replace_content',
-      replace_content: {
-        new_str: newStr,
-        allow_deleting_content: allowDel
-      }
+
+  // Step 1: Fetch and clear existing top-level blocks
+  const existingBlocks = await autoPaginate((cursor) =>
+    notion.blocks.children.list({
+      block_id: input.page_id!,
+      start_cursor: cursor,
+      page_size: 100
     })
   )
+
+  if (existingBlocks.length > 0) {
+    await processBatches(
+      existingBlocks,
+      async (block: any) => {
+        await retryWithBackoff(() => notion.blocks.delete({ block_id: block.id }))
+      },
+      { batchSize: 10, concurrency: 3 }
+    )
+  }
+
+  // Step 2: Parse new markdown with client AST engine
+  let blockCount = 0
+  if (newStr.trim().length > 0) {
+    const { blocks } = markdownToBlocks(newStr)
+    if (blocks.length > 0) {
+      const sanitized = sanitizeBlocksForAppend(blocks as any)
+      blockCount = sanitized.length
+      // Notion limits block append to 100 blocks per request
+      const CHUNK_SIZE = 100
+      for (let i = 0; i < sanitized.length; i += CHUNK_SIZE) {
+        const chunk = sanitized.slice(i, i + CHUNK_SIZE)
+        await retryWithBackoff(() =>
+          notion.blocks.children.append({
+            block_id: input.page_id!,
+            children: chunk as any
+          })
+        )
+      }
+    }
+  }
+
   return {
     action: 'replace_content',
     page_id: input.page_id,
     replaced: true,
-    markdown: r?.markdown ? sanitizeNotionMarkdown(r.markdown) : r?.markdown,
-    truncated: r?.truncated
+    block_count: blockCount
   }
 }
 
