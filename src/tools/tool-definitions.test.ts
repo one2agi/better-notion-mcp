@@ -88,6 +88,13 @@ describe('tool-definitions', () => {
         const contentConvertTool = TOOLS.find((t) => t.name === 'content_convert')
         expect(contentConvertTool?.description).toContain('<callout')
       })
+
+      it('should accurately describe file_uploads max size as 10MB direct to prevent OOM errors', () => {
+        const fileUploadsTool = TOOLS.find((t) => t.name === 'file_uploads')
+        expect(fileUploadsTool).toBeDefined()
+        expect(fileUploadsTool!.description).toContain('Max 10MB direct')
+        expect(fileUploadsTool!.description).not.toContain('Max 20MB direct')
+      })
     })
   })
 

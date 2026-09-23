@@ -5,13 +5,13 @@ Upload, manage, and retrieve files in Notion. Supports single and multi-part upl
 
 ## Workflow
 
-### Single-part upload (default, files ≤ 20MB)
+### Single-part upload (default, files ≤ 10MB)
 1. `create` - Create an upload session (get file_upload_id)
 2. `send` - Send file data as base64 (auto-finalizes to `status='uploaded'`)
 3. (optional) `complete` - No-op for single-part; returns `note: 'Upload already finalized by send(); complete() is multi-part-only.'`
 4. Use the file_upload_id in page/block content to reference the uploaded file
 
-### Multi-part upload (files > 20MB)
+### Multi-part upload (files > 10MB)
 1. `create` with `mode='multi_part'` and `number_of_parts` - Create an upload session
 2. `send` - Send each part with `part_number` (1..N)
 3. `complete` - **Required** to finalize; only valid in `status='pending'` + `mode='multi_part'`
