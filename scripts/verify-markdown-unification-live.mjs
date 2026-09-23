@@ -122,7 +122,10 @@ try {
   console.log('   pages.get content 内容预览:\n------------------------------------')
   console.log(getRes.content)
   console.log('------------------------------------')
-  assert.ok(getRes.content.includes('[bookmark](https://github.com "GitHub 官方")'), 'pages.get 导出的内容必须包含高保真书签链接与标题')
+  assert.ok(
+    getRes.content.includes('[bookmark](https://github.com "GitHub 官方")'),
+    'pages.get 导出的内容必须包含高保真书签链接与标题'
+  )
   assert.ok(getRes.content.includes('<summary>## 核心架构设计</summary>'), 'pages.get 导出的内容必须包含折叠大标题')
   assert.ok(getRes.content.includes('> [!NOTE] 默认素雅纯净卡片'), 'pages.get 导出的内容必须包含素雅 Alert')
   console.log('   ✅ pages.get 校验通过: 客户端 AST 生成的 Markdown 100% 完美保真！\n')
@@ -137,10 +140,7 @@ try {
   console.log(markdownRes.markdown)
   console.log('------------------------------------')
 
-  assert.ok(
-    markdownRes.markdown.includes('[bookmark]('),
-    '导出的 Markdown 必须包含还原后的 [bookmark](url)'
-  )
+  assert.ok(markdownRes.markdown.includes('[bookmark]('), '导出的 Markdown 必须包含还原后的 [bookmark](url)')
   assert.ok(
     !markdownRes.markdown.includes('<unknown'),
     '导出的 Markdown 中严禁泄露 Notion 官方服务端的 <unknown ... alt="bookmark"/> 垃圾占位符'
