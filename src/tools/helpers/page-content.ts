@@ -123,6 +123,10 @@ export async function getPageMarkdown(notion: Client, input: PageContentInput): 
  * replace_content action — overwrite the entire page content with a single markdown string.
  * Uses high-fidelity client AST engine (markdownToBlocks) and batch block appending.
  * Preserves bookmarks, toggles, callouts, tables, and all rich-content block types without loss.
+ * Maps to:
+ * - GET /v1/blocks/{id}/children
+ * - DELETE /v1/blocks/{id}
+ * - PATCH /v1/blocks/{id}/children
  */
 export async function replacePageContent(notion: Client, input: PageContentInput): Promise<ReplaceContentResult> {
   if (!input.page_id) {
@@ -139,12 +143,22 @@ export async function replacePageContent(notion: Client, input: PageContentInput
 
   // Step 1: Fetch and clear existing top-level blocks
   const existingBlocks = await autoPaginate((cursor) =>
-    notion.blocks.children.list({
-      block_id: input.page_id!,
-      start_cursor: cursor,
-      page_size: 100
-    })
+    retryWithBackoff(() =>
+      notion.blocks.children.list({
+        block_id: input.page_id!,
+        start_cursor: cursor,
+        page_size: 100
+      })
+    )
   )
+
+  if (input.allow_deleting_content === false && existingBlocks.length > 0) {
+    throw new NotionMCPError(
+      'Cannot delete existing content when allow_deleting_content is false',
+      'VALIDATION_ERROR',
+      'Set allow_deleting_content: true to allow overwriting existing page content'
+    )
+  }
 
   if (existingBlocks.length > 0) {
     await processBatches(

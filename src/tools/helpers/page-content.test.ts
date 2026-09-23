@@ -243,6 +243,67 @@ describe('page-content helper', () => {
       expect(appendMock.mock.calls[0][0].children).toHaveLength(100)
       expect(appendMock.mock.calls[1][0].children).toHaveLength(20)
     })
+
+    it('throws VALIDATION_ERROR when allow_deleting_content is false and page has existing blocks', async () => {
+      const listMock = vi.fn().mockResolvedValue({
+        results: [{ id: 'block-1' }],
+        has_more: false,
+        next_cursor: null
+      })
+      const deleteMock = vi.fn()
+      const appendMock = vi.fn()
+
+      const notion = {
+        blocks: {
+          children: {
+            list: listMock,
+            append: appendMock
+          },
+          delete: deleteMock
+        }
+      } as any
+
+      await expect(
+        replacePageContent(notion, {
+          page_id: 'target-page-id',
+          new_str: 'New content',
+          allow_deleting_content: false
+        })
+      ).rejects.toThrow('Cannot delete existing content when allow_deleting_content is false')
+
+      expect(deleteMock).not.toHaveBeenCalled()
+      expect(appendMock).not.toHaveBeenCalled()
+    })
+
+    it('allows replacing when allow_deleting_content is false but page has no existing blocks', async () => {
+      const listMock = vi.fn().mockResolvedValue({
+        results: [],
+        has_more: false,
+        next_cursor: null
+      })
+      const deleteMock = vi.fn()
+      const appendMock = vi.fn().mockResolvedValue({ results: [] })
+
+      const notion = {
+        blocks: {
+          children: {
+            list: listMock,
+            append: appendMock
+          },
+          delete: deleteMock
+        }
+      } as any
+
+      const result = await replacePageContent(notion, {
+        page_id: 'target-page-id',
+        new_str: 'New content',
+        allow_deleting_content: false
+      })
+
+      expect(result.replaced).toBe(true)
+      expect(deleteMock).not.toHaveBeenCalled()
+      expect(appendMock).toHaveBeenCalledTimes(1)
+    })
   })
 
   // ---------------------------------------------------------------------------

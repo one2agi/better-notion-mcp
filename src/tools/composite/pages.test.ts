@@ -16,13 +16,7 @@ vi.mock('../helpers/markdown.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../helpers/markdown.js')>()
   return {
     ...actual,
-    markdownToBlocks: vi.fn((md: string) => {
-      if (!md) return { blocks: [], warnings: [] }
-      return {
-        blocks: [{ type: 'paragraph', paragraph: { rich_text: [{ text: { content: md } }] } }],
-        warnings: []
-      }
-    }),
+    markdownToBlocks: vi.fn((md: string) => actual.markdownToBlocks(md)),
     blocksToMarkdown: vi.fn((blocks: any[]) => {
       if (!blocks.length) return ''
       return '# Mock markdown'
@@ -51,10 +45,10 @@ function createMockNotion() {
     blocks: {
       retrieve: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      delete: vi.fn().mockResolvedValue({ id: 'deleted' }),
       children: {
-        list: vi.fn(),
-        append: vi.fn()
+        list: vi.fn().mockResolvedValue({ results: [], has_more: false, next_cursor: null }),
+        append: vi.fn().mockResolvedValue({ results: [] })
       }
     }
   }
@@ -983,7 +977,7 @@ describe('pages', () => {
 
     it('updates content using markdown alias', async () => {
       mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
-      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({ markdown: 'Appended content' })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
 
       const result = (await pages(mockNotion as any, {
         action: 'update',
@@ -992,11 +986,13 @@ describe('pages', () => {
       })) as UpdatePageResult
 
       expect(result.updated).toBe(true)
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'page-1',
-        type: 'insert_content',
-        insert_content: { content: 'Appended content', position: { type: 'end' } }
-      })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'page-1',
+          children: expect.any(Array)
+        })
+      )
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     it('updates archived status', async () => {
@@ -1223,7 +1219,12 @@ describe('pages', () => {
 
     it('replaces content by deleting old blocks and appending new when replace is true', async () => {
       mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
-      mockNotion.pages.updateMarkdown.mockResolvedValue({ markdown: '# New Content' })
+      mockNotion.blocks.children.list.mockResolvedValueOnce({
+        results: [{ id: 'b-old' }],
+        has_more: false,
+        next_cursor: null
+      })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
 
       await pages(mockNotion as any, {
         action: 'update',
@@ -1233,18 +1234,20 @@ describe('pages', () => {
         replace: true
       })
 
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'page-1',
-        type: 'replace_content',
-        replace_content: { new_str: '# New Content', allow_deleting_content: true }
-      })
-      expect(mockNotion.blocks.delete).not.toHaveBeenCalled()
-      expect(mockNotion.blocks.children.append).not.toHaveBeenCalled()
+      expect(mockNotion.blocks.children.list).toHaveBeenCalledWith(expect.objectContaining({ block_id: 'page-1' }))
+      expect(mockNotion.blocks.delete).toHaveBeenCalledWith({ block_id: 'b-old' })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'page-1',
+          children: expect.any(Array)
+        })
+      )
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     it('appends content when content is provided but replace is false/missing', async () => {
       mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
-      mockNotion.pages.updateMarkdown.mockResolvedValue({ markdown: '# Appended Content' })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
 
       await pages(mockNotion as any, {
         action: 'update',
@@ -1252,17 +1255,19 @@ describe('pages', () => {
         content: '# Appended Content'
       })
 
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'page-1',
-        type: 'insert_content',
-        insert_content: { content: '# Appended Content', position: { type: 'end' } }
-      })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'page-1',
+          children: expect.any(Array)
+        })
+      )
       expect(mockNotion.blocks.delete).not.toHaveBeenCalled()
-      expect(mockNotion.blocks.children.append).not.toHaveBeenCalled()
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     it('appends content without deleting existing blocks', async () => {
-      mockNotion.pages.updateMarkdown.mockResolvedValue({ markdown: '## Appended Section' })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
 
       await pages(mockNotion as any, {
         action: 'update',
@@ -1270,18 +1275,24 @@ describe('pages', () => {
         append_content: '## Appended Section'
       })
 
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'page-1',
-        type: 'insert_content',
-        insert_content: { content: '## Appended Section', position: { type: 'end' } }
-      })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'page-1',
+          children: expect.any(Array)
+        })
+      )
       expect(mockNotion.blocks.delete).not.toHaveBeenCalled()
-      expect(mockNotion.blocks.children.append).not.toHaveBeenCalled()
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     // Boundary case (Issue 1): replace=true with empty content should still clear the page
     it('clears all existing blocks when replace=true and content is empty string', async () => {
-      mockNotion.pages.updateMarkdown.mockResolvedValue({ markdown: '' })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+      mockNotion.blocks.children.list.mockResolvedValueOnce({
+        results: [{ id: 'b-old' }],
+        has_more: false,
+        next_cursor: null
+      })
 
       await pages(mockNotion as any, {
         action: 'update',
@@ -1290,17 +1301,19 @@ describe('pages', () => {
         replace: true
       })
 
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'page-1',
-        type: 'replace_content',
-        replace_content: { new_str: '', allow_deleting_content: true }
-      })
-      expect(mockNotion.blocks.delete).not.toHaveBeenCalled()
+      expect(mockNotion.blocks.children.list).toHaveBeenCalledWith(expect.objectContaining({ block_id: 'page-1' }))
+      expect(mockNotion.blocks.delete).toHaveBeenCalledWith({ block_id: 'b-old' })
       expect(mockNotion.blocks.children.append).not.toHaveBeenCalled()
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     it('clears all existing blocks when replace=true and content field is omitted', async () => {
-      mockNotion.pages.updateMarkdown.mockResolvedValue({ markdown: '' })
+      mockNotion.pages.update.mockResolvedValue({ id: 'page-1' })
+      mockNotion.blocks.children.list.mockResolvedValueOnce({
+        results: [{ id: 'b-old' }],
+        has_more: false,
+        next_cursor: null
+      })
 
       await pages(mockNotion as any, {
         action: 'update',
@@ -1308,13 +1321,10 @@ describe('pages', () => {
         replace: true
       })
 
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'page-1',
-        type: 'replace_content',
-        replace_content: { new_str: '', allow_deleting_content: true }
-      })
-      expect(mockNotion.blocks.delete).not.toHaveBeenCalled()
+      expect(mockNotion.blocks.children.list).toHaveBeenCalledWith(expect.objectContaining({ block_id: 'page-1' }))
+      expect(mockNotion.blocks.delete).toHaveBeenCalledWith({ block_id: 'b-old' })
       expect(mockNotion.blocks.children.append).not.toHaveBeenCalled()
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     it('skips pages.update when only content changes', async () => {
@@ -1331,6 +1341,38 @@ describe('pages', () => {
 
     it('throws without page_id', async () => {
       await expect(pages(mockNotion as any, { action: 'update', title: 'Oops' })).rejects.toThrow('page_id is required')
+    })
+  })
+
+  describe('updatePage high-fidelity content pipeline', () => {
+    it('RT-05: should use client AST for content append when replace=false (no updateMarkdown)', async () => {
+      const appendMock = vi.fn().mockResolvedValue({ results: [] })
+      const updatePageMock = vi.fn().mockResolvedValue({ id: 'p1' })
+
+      const notion = {
+        pages: {
+          update: updatePageMock
+        },
+        blocks: {
+          children: {
+            append: appendMock
+          }
+        }
+      } as any
+
+      const result = await pages(notion, {
+        action: 'update',
+        page_id: 'p1',
+        content: '<details><summary>## Heading 2 Toggle</summary>\nBody\n</details>',
+        replace: false
+      })
+
+      expect(result.action).toBe('update')
+      expect(appendMock).toHaveBeenCalledTimes(1)
+      const appendArgs = appendMock.mock.calls[0][0]
+      expect(appendArgs.block_id).toBe('p1')
+      expect(appendArgs.children[0].type).toBe('heading_2')
+      expect(appendArgs.children[0].heading_2.is_toggleable).toBe(true)
     })
   })
 
@@ -2044,13 +2086,12 @@ describe('pages', () => {
   // ---------------------------------------------------------------------------
   describe('replace_content', () => {
     it('replaces whole page content with new_str', async () => {
-      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
-        object: 'page_markdown',
-        id: 'p1',
-        markdown: 'NEW',
-        truncated: false,
-        unknown_block_ids: []
+      mockNotion.blocks.children.list.mockResolvedValueOnce({
+        results: [{ id: 'b-old' }],
+        has_more: false,
+        next_cursor: null
       })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
 
       const result = await pages(mockNotion as any, {
         action: 'replace_content',
@@ -2059,21 +2100,24 @@ describe('pages', () => {
       })
 
       expect(result).toMatchObject({ action: 'replace_content', page_id: 'p1', replaced: true })
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'p1',
-        type: 'replace_content',
-        replace_content: { new_str: 'NEW', allow_deleting_content: true }
-      })
+      expect(mockNotion.blocks.children.list).toHaveBeenCalledWith(expect.objectContaining({ block_id: 'p1' }))
+      expect(mockNotion.blocks.delete).toHaveBeenCalledWith({ block_id: 'b-old' })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'p1',
+          children: expect.any(Array)
+        })
+      )
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     it('accepts content alias instead of new_str', async () => {
-      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
-        object: 'page_markdown',
-        id: 'p1',
-        markdown: 'ALIASED',
-        truncated: false,
-        unknown_block_ids: []
+      mockNotion.blocks.children.list.mockResolvedValueOnce({
+        results: [],
+        has_more: false,
+        next_cursor: null
       })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
 
       const result = await pages(
         mockNotion as any,
@@ -2085,11 +2129,13 @@ describe('pages', () => {
       )
 
       expect(result).toMatchObject({ action: 'replace_content', page_id: 'p1', replaced: true })
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'p1',
-        type: 'replace_content',
-        replace_content: { new_str: 'ALIASED', allow_deleting_content: true }
-      })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'p1',
+          children: expect.any(Array)
+        })
+      )
+      expect(mockNotion.pages.updateMarkdown).not.toHaveBeenCalled()
     })
 
     it('throws without new_str', async () => {
