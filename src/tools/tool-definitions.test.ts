@@ -102,6 +102,14 @@ describe('tool-definitions', () => {
         expect(wsTool!.description).toContain('- info: bot user identity, type, and bot owner info')
         expect(wsTool!.description).not.toContain('workspace name, plan')
       })
+
+      it('should expose limit parameter in users tool inputSchema and description', () => {
+        const usersTool = TOOLS.find((t) => t.name === 'users')
+        expect(usersTool).toBeDefined()
+        expect(usersTool!.description).toContain('- list (-> limit):')
+        expect((usersTool!.inputSchema.properties as any).limit).toBeDefined()
+        expect((usersTool!.inputSchema.properties as any).limit.type).toBe('number')
+      })
     })
   })
 
