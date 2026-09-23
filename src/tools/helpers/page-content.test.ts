@@ -17,6 +17,13 @@ function createMockNotion() {
     pages: {
       retrieveMarkdown: vi.fn(),
       updateMarkdown: vi.fn()
+    },
+    blocks: {
+      children: {
+        list: vi.fn().mockResolvedValue({ results: [], has_more: false, next_cursor: null }),
+        append: vi.fn().mockResolvedValue({ results: [] })
+      },
+      delete: vi.fn().mockResolvedValue({ id: 'deleted' })
     }
   }
 }
@@ -82,13 +89,6 @@ describe('page-content helper', () => {
   // ---------------------------------------------------------------------------
   describe('replacePageContent', () => {
     it('replaces page content with new_str', async () => {
-      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
-        object: 'page_markdown',
-        id: 'p1',
-        markdown: 'NEW',
-        truncated: false
-      })
-
       const result: ReplaceContentResult = await replacePageContent(mockNotion as any, {
         page_id: 'p1',
         new_str: 'NEW'
@@ -98,34 +98,29 @@ describe('page-content helper', () => {
         action: 'replace_content',
         page_id: 'p1',
         replaced: true,
-        markdown: 'NEW',
-        truncated: false
+        block_count: 1
       })
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'p1',
-        type: 'replace_content',
-        replace_content: { new_str: 'NEW', allow_deleting_content: true }
-      })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'p1',
+          children: expect.any(Array)
+        })
+      )
     })
 
     it('accepts content alias instead of new_str', async () => {
-      mockNotion.pages.updateMarkdown.mockResolvedValueOnce({
-        object: 'page_markdown',
-        id: 'p1',
-        markdown: 'ALIASED'
-      })
-
       const result = await replacePageContent(mockNotion as any, {
         page_id: 'p1',
         content: 'ALIASED'
       })
 
-      expect(result).toMatchObject({ action: 'replace_content', page_id: 'p1', replaced: true })
-      expect(mockNotion.pages.updateMarkdown).toHaveBeenCalledWith({
-        page_id: 'p1',
-        type: 'replace_content',
-        replace_content: { new_str: 'ALIASED', allow_deleting_content: true }
-      })
+      expect(result).toMatchObject({ action: 'replace_content', page_id: 'p1', replaced: true, block_count: 1 })
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          block_id: 'p1',
+          children: expect.any(Array)
+        })
+      )
     })
 
     it('throws when page_id is missing', async () => {
@@ -138,6 +133,115 @@ describe('page-content helper', () => {
       await expect(replacePageContent(mockNotion as any, { page_id: 'p1' })).rejects.toThrow(
         'new_str is required for replace_content action'
       )
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // replacePageContent high-fidelity AST pipeline (RT-04, RT-07, RT-08)
+  // ---------------------------------------------------------------------------
+  describe('replacePageContent high-fidelity AST pipeline', () => {
+    it('RT-04: should clear existing blocks and batch-append parsed client blocks (including bookmarks)', async () => {
+      const listMock = vi.fn().mockResolvedValue({
+        results: [{ id: 'block-1' }, { id: 'block-2' }],
+        has_more: false,
+        next_cursor: null
+      })
+      const deleteMock = vi.fn().mockResolvedValue({ id: 'deleted' })
+      const appendMock = vi.fn().mockResolvedValue({ results: [] })
+      const updateMarkdownMock = vi.fn()
+
+      const notion = {
+        blocks: {
+          children: {
+            list: listMock,
+            append: appendMock
+          },
+          delete: deleteMock
+        },
+        pages: {
+          updateMarkdown: updateMarkdownMock
+        }
+      } as any
+
+      const result = await replacePageContent(notion, {
+        page_id: 'target-page-id',
+        new_str: '# Heading\n\n[bookmark](https://github.com "GitHub")'
+      })
+
+      expect(result.replaced).toBe(true)
+      // 1. Cleared old blocks
+      expect(deleteMock).toHaveBeenCalledWith({ block_id: 'block-1' })
+      expect(deleteMock).toHaveBeenCalledWith({ block_id: 'block-2' })
+      // 2. Appended new blocks via client AST
+      expect(appendMock).toHaveBeenCalledTimes(1)
+      const appendArgs = appendMock.mock.calls[0][0]
+      expect(appendArgs.block_id).toBe('target-page-id')
+      expect(appendArgs.children[1].type).toBe('bookmark')
+      expect(appendArgs.children[1].bookmark.url).toBe('https://github.com')
+      // 3. updateMarkdown was NOT called
+      expect(updateMarkdownMock).not.toHaveBeenCalled()
+    })
+
+    it('RT-07: should handle empty new_str by clearing all blocks and appending nothing', async () => {
+      const listMock = vi.fn().mockResolvedValue({
+        results: [{ id: 'block-1' }],
+        has_more: false,
+        next_cursor: null
+      })
+      const deleteMock = vi.fn().mockResolvedValue({ id: 'deleted' })
+      const appendMock = vi.fn()
+
+      const notion = {
+        blocks: {
+          children: {
+            list: listMock,
+            append: appendMock
+          },
+          delete: deleteMock
+        }
+      } as any
+
+      const result = await replacePageContent(notion, {
+        page_id: 'target-page-id',
+        new_str: ''
+      })
+
+      expect(result.replaced).toBe(true)
+      expect(result.block_count).toBe(0)
+      expect(deleteMock).toHaveBeenCalledWith({ block_id: 'block-1' })
+      expect(appendMock).not.toHaveBeenCalled()
+    })
+
+    it('RT-08: should chunk append calls into batches of <=100 blocks for large documents', async () => {
+      const listMock = vi.fn().mockResolvedValue({
+        results: [],
+        has_more: false,
+        next_cursor: null
+      })
+      const deleteMock = vi.fn().mockResolvedValue({ id: 'deleted' })
+      const appendMock = vi.fn().mockResolvedValue({ results: [] })
+
+      const notion = {
+        blocks: {
+          children: {
+            list: listMock,
+            append: appendMock
+          },
+          delete: deleteMock
+        }
+      } as any
+
+      const md = Array.from({ length: 120 }, (_, i) => `Paragraph line ${i}`).join('\n\n')
+      const result = await replacePageContent(notion, {
+        page_id: 'target-page-id',
+        new_str: md
+      })
+
+      expect(result.replaced).toBe(true)
+      expect(result.block_count).toBe(120)
+      expect(appendMock).toHaveBeenCalledTimes(2)
+      expect(appendMock.mock.calls[0][0].children).toHaveLength(100)
+      expect(appendMock.mock.calls[1][0].children).toHaveLength(20)
     })
   })
 
