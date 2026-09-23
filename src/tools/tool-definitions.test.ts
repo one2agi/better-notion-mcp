@@ -95,6 +95,13 @@ describe('tool-definitions', () => {
         expect(fileUploadsTool!.description).toContain('Max 10MB direct')
         expect(fileUploadsTool!.description).not.toContain('Max 20MB direct')
       })
+
+      it('should accurately describe workspace.info without promising unavailable workspace name or plan', () => {
+        const wsTool = TOOLS.find((t) => t.name === 'workspace')
+        expect(wsTool).toBeDefined()
+        expect(wsTool!.description).toContain('- info: bot user identity, type, and bot owner info')
+        expect(wsTool!.description).not.toContain('workspace name, plan')
+      })
     })
   })
 
