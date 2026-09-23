@@ -20,7 +20,7 @@ environment.
 ```json
 {"action": "info"}
 ```
-Returns bot owner, workspace details.
+Returns bot identity (id, name, type) and bot owner info.
 
 ### search
 ```json
