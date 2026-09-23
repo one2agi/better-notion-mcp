@@ -441,7 +441,7 @@ export const TOOLS = [
   {
     name: 'users',
     description:
-      'Get user information.\n\nActions (required params):\n- list: all workspace users (requires admin permissions)\n- get (user_id): single user info\n- me: current bot/integration user\n- from_workspace: extract users from accessible pages (use if list fails)',
+      'Get user information.\n\nActions (required params):\n- list (-> limit): all workspace users (requires admin permissions)\n- get (user_id): single user info\n- me: current bot/integration user\n- from_workspace (-> limit): extract users from accessible pages (use if list fails)',
     annotations: {
       title: 'Users',
       readOnlyHint: true,
@@ -456,7 +456,8 @@ export const TOOLS = [
           type: 'string',
           enum: ['list', 'get', 'me', 'from_workspace']
         },
-        user_id: { type: 'string', description: 'User ID (for get action)' }
+        user_id: { type: 'string', description: 'User ID (for get action)' },
+        limit: { type: 'number', description: 'Max results for list or from_workspace' }
       },
       required: ['action']
     }
