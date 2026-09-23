@@ -345,6 +345,28 @@ describe('pages', () => {
       })
     })
 
+    it('chunks content into batches of 100 blocks when creating page with large content (>100 blocks)', async () => {
+      mockNotion.pages.create.mockResolvedValue({ id: 'page-large', url: 'https://notion.so/page-large' })
+      mockNotion.blocks.children.append.mockResolvedValue({ results: [] })
+
+      const largeContent = Array.from({ length: 150 }, (_, i) => `Paragraph ${i + 1}`).join('\n\n')
+
+      await pages(mockNotion as any, {
+        action: 'create',
+        title: 'Large Content Page',
+        parent_id: 'parent-1',
+        content: largeContent
+      })
+
+      expect(mockNotion.blocks.children.append).toHaveBeenCalledTimes(2)
+      expect(mockNotion.blocks.children.append).toHaveBeenNthCalledWith(1, {
+        block_id: 'page-large',
+        children: expect.any(Array)
+      })
+      expect(mockNotion.blocks.children.append.mock.calls[0][0].children).toHaveLength(100)
+      expect(mockNotion.blocks.children.append.mock.calls[1][0].children).toHaveLength(50)
+    })
+
     it('creates page with icon and cover', async () => {
       mockNotion.pages.create.mockResolvedValue({ id: 'page-5', url: 'https://notion.so/page-5' })
 
