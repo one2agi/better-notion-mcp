@@ -1,6 +1,6 @@
 # Better Notion MCP
 
-mcp-name: io.github.faize/better-notion-mcp
+mcp-name: io.github.one2agi/better-notion-mcp
 
 **Markdown-first Notion for AI agents -- pages, databases, blocks, and comments in one call.**
 
@@ -25,7 +25,9 @@ mcp-name: io.github.faize/better-notion-mcp
 ## Features
 
 - **Markdown in, Markdown out** -- human-readable content instead of raw JSON blocks
-- **8 composite tools, 46 actions** -- one call instead of chaining 2+ atomic Notion endpoints (plus `config` and `help`)
+- **8 composite tools, 53 actions** -- one call instead of chaining 2+ atomic Notion endpoints (plus `config` and `help`)
+- **Atomic metadata & content updates** -- update page body, title, icon, and cover in a single `replace_content` transaction
+- **High-fidelity AST parser** -- native Notion callouts, toggles, bookmarks, table cell line-breaks (`<br>`), and syntax shielding
 - **Auto-pagination and bulk operations** -- no manual cursor handling or looping
 - **Tiered token optimization** -- ~77% reduction via compressed descriptions + on-demand `help` tool
 - **Dual transport** -- local stdio (integration token) or remote HTTP (OAuth 2.1, no token to paste)
@@ -72,24 +74,28 @@ Then configure your MCP client with the installed binary:
 
 ### 3. Docker (stdio)
 
-Run with Docker:
+Build and run locally with Docker:
 
 ```bash
-docker run --rm -i -e NOTION_TOKEN=ntn_your_token_here faize/better-notion-mcp:latest
+# Build the Docker image
+docker build -t better-notion-mcp .
+
+# Run container in stdio mode
+docker run --rm -i -e NOTION_TOKEN=ntn_your_token_here better-notion-mcp
 ```
 
 ## Tools
 
-Eight composite Notion tools (46 actions) plus two infrastructure tools (`config`, `help`):
+Eight composite Notion tools (53 actions) plus two infrastructure tools (`config`, `help`):
 
 | Tool | Actions | Description |
 |:-----|:--------|:------------|
-| `pages` | `create`, `get`, `get_property`, `update`, `move`, `archive`, `restore`, `duplicate`, `get_markdown`, `replace_content`, `insert_markdown`, `update_content`, `replace_content_range` | Create, read, update, and organize pages; native markdown (Notion SDK v5.22+) |
-| `databases` | `create`, `get`, `query`, `create_page`, `update_page`, `delete_page`, `create_data_source`, `update_data_source`, `update_database`, `list_templates`, `aggregate`, `group_by` | Database CRUD, page management, and analytics (count/sum/avg/group) |
+| `pages` | `create`, `get`, `get_property`, `update`, `move`, `archive`, `restore`, `duplicate`, `get_markdown`, `replace_content`, `insert_markdown`, `update_content`, `replace_content_range` | Create, read, update, and organize pages; native markdown (Notion SDK v5.22+); atomic metadata updates (`icon`, `cover`, `title`) |
+| `databases` | `create`, `get`, `query`, `create_page`, `update_page`, `delete_page`, `create_data_source`, `update_data_source`, `update_database`, `list_templates`, `aggregate`, `group_by`, `create_view`, `list_views`, `get_view`, `update_view`, `delete_view` | Database CRUD, page management, views lifecycle, and analytics (count/sum/avg/group) |
 | `blocks` | `get`, `children`, `append`, `update`, `delete` | Read and manipulate block content |
 | `users` | `list`, `get`, `me`, `from_workspace` | List and retrieve user information |
 | `workspace` | `info`, `search` | Workspace metadata and cross-workspace search |
-| `comments` | `list`, `get`, `create` | Page comments and discussion replies |
+| `comments` | `list`, `get`, `create`, `update`, `delete` | Page and block comments full lifecycle (list, get, create discussion/reply, update, delete) |
 | `content_convert` | `markdown-to-blocks`, `blocks-to-markdown` | Convert between Markdown and Notion blocks (uses a `direction` parameter) |
 | `file_uploads` | `create`, `send`, `complete`, `retrieve`, `list` | Upload files to Notion (single or multi-part) |
 | `config` | `status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | Inspect and manage credential state and configuration lifecycle |
@@ -144,7 +150,7 @@ docker run -p 8080:8080 \
   -e PUBLIC_URL=https://your-domain.com \
   -e NOTION_OAUTH_CLIENT_ID=your-client-id \
   -e NOTION_OAUTH_CLIENT_SECRET=your-client-secret \
-  faize/better-notion-mcp:latest
+  better-notion-mcp
 ```
 
 ## Deploy to Cloudflare
@@ -185,9 +191,9 @@ How better-notion-mcp stacks up against direct competitors in each pillar:
 | Capability | better-notion-mcp | makenotion/notion-mcp-server | suekou/mcp-notion-server | awkoy/notion-mcp-server |
 |---|---|---|---|---|
 | Markdown in / out | Yes (round-trip on pages + blocks) | No (raw Notion JSON) | partial (experimental, append + opt-in convert) | Yes (round-trip + GFM) |
-| Composite tool design | Yes (8 composite tools, 46 actions) | No (22 endpoint-mapped tools) | partial (simplified + raw JSON tools) | Yes (2 dispatch tools, 35+ ops) |
+| Composite tool design | Yes (8 composite tools, 53 actions) | No (22 endpoint-mapped tools) | partial (simplified + raw JSON tools) | Yes (2 dispatch tools, 35+ ops) |
 | File uploads to Notion | Yes (`file_uploads`, single + multi-part) | No | No | Yes (`upload_file`, single + multi-part) |
-| Comments | Yes (`comments`: list/get/create) | Yes | Yes | Yes |
+| Comments | Yes (`comments`: list/get/create/update/delete) | Yes | Yes | Yes |
 | Remote HTTP + OAuth 2.1 transport | Yes (per-JWT-sub multi-user) | partial (HTTP + bearer token, no OAuth) | No (stdio token only) | No (stdio token only) |
 | Self-hostable | Yes (Docker, own OAuth app) | Yes | Yes | Yes |
 | License | MIT | ? | MIT | MIT |

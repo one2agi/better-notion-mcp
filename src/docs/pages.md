@@ -121,7 +121,7 @@ All primary page write actions (`create`, `replace_content`, `update` with `cont
 {"action": "replace_content", "page_id": "xxx", "new_str": "# New Page\n\n[bookmark](https://github.com \"GitHub\")"}
 ```
 - Required: `new_str` (the full new markdown). Accepts `content` or `markdown` as aliases.
-- Optional: `allow_deleting_content` (defaults to `true`).
+- Optional: `allow_deleting_content` (defaults to `true`), `icon`, `cover`, `title` (atomically updates page metadata in the same call).
 Existing blocks are cleared, and new content is parsed and appended via client-side AST in batches of <= 100 blocks. Block IDs from old content are **lost** — use this for full rewrites where rich content fidelity is required.
 
 ## Server-Side Markdown Actions (Notion API 2025-09-03 + SDK v5.22+)
