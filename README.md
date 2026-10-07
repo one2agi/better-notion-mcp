@@ -7,7 +7,7 @@ mcp-name: io.github.faize/better-notion-mcp
 <!-- Badge Row 1: Status -->
 [![CI](https://github.com/faize/better-notion-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/faize/better-notion-mcp/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/faize/better-notion-mcp/graph/badge.svg?token=D7FSDVVTAN)](https://codecov.io/gh/faize/better-notion-mcp)
-[![npm](https://img.shields.io/npm/v/@faize/better-notion-mcp?logo=npm&logoColor=white)](https://www.npmjs.com/package/@faize/better-notion-mcp)
+[![npm](https://img.shields.io/npm/v/@faize555/better-notion-mcp?logo=npm&logoColor=white)](https://www.npmjs.com/package/@faize555/better-notion-mcp)
 [![Docker](https://img.shields.io/docker/v/faize/better-notion-mcp?label=docker&logo=docker&logoColor=white&sort=semver)](https://hub.docker.com/r/faize/better-notion-mcp)
 [![License: MIT](https://img.shields.io/github/license/faize/better-notion-mcp)](LICENSE)
 
@@ -84,7 +84,7 @@ Run directly via `npx` without manual installation (Node.js >= 24) with a Notion
   "mcpServers": {
     "better-notion-mcp": {
       "command": "npx",
-      "args": ["-y", "@faize/better-notion-mcp@latest"],
+      "args": ["-y", "@faize555/better-notion-mcp@latest"],
       "env": { "NOTION_TOKEN": "ntn_your_token_here" }
     }
   }
@@ -96,7 +96,7 @@ Run directly via `npx` without manual installation (Node.js >= 24) with a Notion
 Install globally on your machine:
 
 ```bash
-npm install -g @faize/better-notion-mcp
+npm install -g @faize555/better-notion-mcp
 ```
 
 Then configure your MCP client with the installed binary:
