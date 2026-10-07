@@ -2284,3 +2284,149 @@ describe('sanitizeNotionMarkdown', () => {
     expect(cleaned).toContain('| Bitwise OR | a \\| b |')
   })
 })
+
+describe('table cell line break (<br> <-> \\n)', () => {
+  it('should convert <br> inside table cells to \\n in Notion table block', () => {
+    const md = '| Header 1 | Header 2 |\n| --- | --- |\n| Line 1<br>Line 2<br/>Line 3 | Normal |'
+    const { blocks } = markdownToBlocks(md)
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].type).toBe('table')
+    const rows = (blocks[0] as any).table.children
+    expect(rows).toHaveLength(2)
+    const cellRichText = rows[1].table_row.cells[0]
+    const content = cellRichText.map((rt: any) => rt.text.content).join('')
+    expect(content).toBe('Line 1\nLine 2\nLine 3')
+  })
+
+  it('should serialize table cell \\n back to <br> in blocksToMarkdown', () => {
+    const tableBlock: any = {
+      object: 'block',
+      type: 'table',
+      table: {
+        table_width: 2,
+        has_column_header: true,
+        has_row_header: false,
+        children: [
+          {
+            object: 'block',
+            type: 'table_row',
+            table_row: {
+              cells: [
+                [
+                  {
+                    type: 'text',
+                    text: { content: 'Col 1' },
+                    annotations: {
+                      bold: false,
+                      italic: false,
+                      strikethrough: false,
+                      underline: false,
+                      code: false,
+                      color: 'default'
+                    },
+                    plain_text: 'Col 1'
+                  }
+                ],
+                [
+                  {
+                    type: 'text',
+                    text: { content: 'Col 2' },
+                    annotations: {
+                      bold: false,
+                      italic: false,
+                      strikethrough: false,
+                      underline: false,
+                      code: false,
+                      color: 'default'
+                    },
+                    plain_text: 'Col 2'
+                  }
+                ]
+              ]
+            }
+          },
+          {
+            object: 'block',
+            type: 'table_row',
+            table_row: {
+              cells: [
+                [
+                  {
+                    type: 'text',
+                    text: { content: 'Line 1\nLine 2' },
+                    annotations: {
+                      bold: false,
+                      italic: false,
+                      strikethrough: false,
+                      underline: false,
+                      code: false,
+                      color: 'default'
+                    },
+                    plain_text: 'Line 1\nLine 2'
+                  }
+                ],
+                [
+                  {
+                    type: 'text',
+                    text: { content: 'Single' },
+                    annotations: {
+                      bold: false,
+                      italic: false,
+                      strikethrough: false,
+                      underline: false,
+                      code: false,
+                      color: 'default'
+                    },
+                    plain_text: 'Single'
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    }
+    const md = blocksToMarkdown([tableBlock])
+    expect(md).toContain('| Line 1<br>Line 2 | Single |')
+  })
+
+  it('should preserve table cell line breaks as <br> through round-trip', () => {
+    const inputMd = '| Header 1 | Header 2 |\n| --- | --- |\n| Multi<br>Line | Normal |'
+    const { blocks } = markdownToBlocks(inputMd)
+    const outputMd = blocksToMarkdown(blocks)
+    expect(outputMd).toContain('| Multi<br>Line | Normal |')
+  })
+})
+
+describe('inline code literal protection', () => {
+  it('should not flip bold state when code span contains asterisks e.g. `git checkout **`', () => {
+    const result = parseRichText('Use `git checkout **` here')
+    expect(result).toHaveLength(3)
+    expect(result[0].text.content).toBe('Use ')
+    expect(result[0].annotations.bold).toBe(false)
+    expect(result[0].annotations.code).toBe(false)
+
+    expect(result[1].text.content).toBe('git checkout **')
+    expect(result[1].annotations.code).toBe(true)
+    expect(result[1].annotations.bold).toBe(false)
+
+    expect(result[2].text.content).toBe(' here')
+    expect(result[2].annotations.bold).toBe(false)
+    expect(result[2].annotations.code).toBe(false)
+  })
+
+  it('should not contaminate subsequent text with bold annotations after code span', () => {
+    const result = parseRichText('`**important**` normal text')
+    const normalPart = result.find((rt) => rt.text.content === ' normal text')
+    expect(normalPart).toBeDefined()
+    expect(normalPart!.annotations.bold).toBe(false)
+  })
+
+  it('should properly handle bold around inline code **`code`**', () => {
+    const result = parseRichText('**`bold code`**')
+    const codePart = result.find((rt) => rt.text.content === 'bold code')
+    expect(codePart).toBeDefined()
+    expect(codePart!.annotations.code).toBe(true)
+    expect(codePart!.annotations.bold).toBe(true)
+  })
+})

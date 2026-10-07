@@ -5,10 +5,14 @@
  */
 
 import type { Client } from '@notionhq/client'
+import { formatCover } from './covers.js'
+import { resolvePageSchema } from './data-source.js'
 import { NotionMCPError, retryWithBackoff } from './errors.js'
+import { formatIcon } from './icons.js'
 import { parseMaybeJSON } from './json-input.js'
 import { markdownToBlocks, sanitizeBlocksForAppend, sanitizeNotionMarkdown } from './markdown.js'
 import { autoPaginate, processBatches } from './pagination.js'
+import { findTitleColumnName } from './properties.js'
 
 /**
  * Server-side markdown endpoints from Notion SDK v5.22.0 (`pages.retrieveMarkdown`,
@@ -50,6 +54,7 @@ export interface ReplaceContentResult {
   block_count?: number
   markdown?: string
   truncated?: boolean
+  metadata_updated?: true
 }
 
 export interface InsertMarkdownResult {
@@ -96,6 +101,9 @@ export interface PageContentInput {
       }>
     | string
   allow_deleting_content?: boolean
+  icon?: string | null
+  cover?: string | null
+  title?: string
   [key: string]: any
 }
 
@@ -141,6 +149,22 @@ export async function replacePageContent(notion: Client, input: PageContentInput
     )
   }
 
+  const metadataUpdates: Record<string, any> = {}
+  if (input.icon !== undefined) {
+    metadataUpdates.icon = input.icon === null || input.icon === '' ? null : formatIcon(input.icon)
+  }
+  if (input.cover !== undefined) {
+    metadataUpdates.cover = input.cover === null || input.cover === '' ? null : formatCover(input.cover)
+  }
+  if (input.title !== undefined) {
+    const schemaTypeMap = await resolvePageSchema(notion, input.page_id!)
+    const titleCol = (schemaTypeMap && findTitleColumnName(schemaTypeMap)) || 'title'
+    metadataUpdates.properties = { [titleCol]: { title: [{ type: 'text', text: { content: input.title } }] } }
+  }
+  if (Object.keys(metadataUpdates).length > 0) {
+    await retryWithBackoff(() => notion.pages.update({ page_id: input.page_id!, ...metadataUpdates } as any))
+  }
+
   // Step 1: Fetch and clear existing top-level blocks
   const existingBlocks = await autoPaginate((cursor) =>
     retryWithBackoff(() =>
@@ -177,7 +201,8 @@ export async function replacePageContent(notion: Client, input: PageContentInput
     action: 'replace_content',
     page_id: input.page_id,
     replaced: true,
-    block_count: blockCount
+    block_count: blockCount,
+    metadata_updated: Object.keys(metadataUpdates).length > 0 ? true : undefined
   }
 }
 
