@@ -17,7 +17,8 @@ function createMockNotion() {
   return {
     pages: {
       retrieveMarkdown: vi.fn(),
-      updateMarkdown: vi.fn()
+      updateMarkdown: vi.fn(),
+      update: vi.fn().mockResolvedValue({ id: 'p1' })
     },
     blocks: {
       children: {
@@ -133,6 +134,33 @@ describe('page-content helper', () => {
     it('throws when new_str and aliases are missing', async () => {
       await expect(replacePageContent(mockNotion as any, { page_id: 'p1' })).rejects.toThrow(
         'new_str is required for replace_content action'
+      )
+    })
+
+    it('updates page metadata (icon, cover, title) when provided in replace_content', async () => {
+      const result = await replacePageContent(mockNotion as any, {
+        page_id: 'p1',
+        new_str: 'NEW CONTENT',
+        icon: '🚀',
+        cover: 'gradient_1',
+        title: 'New Title'
+      })
+
+      expect(result).toMatchObject({
+        action: 'replace_content',
+        page_id: 'p1',
+        replaced: true,
+        block_count: 1
+      })
+      expect(mockNotion.pages.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page_id: 'p1',
+          icon: { type: 'emoji', emoji: '🚀' },
+          cover: { type: 'external', external: { url: expect.stringContaining('gradients_1.png') } },
+          properties: expect.objectContaining({
+            title: expect.anything()
+          })
+        })
       )
     })
   })

@@ -415,7 +415,8 @@ function tableToMarkdown(block: NotionBlock, lines: string[]): void {
       for (let i = 0; i < rawCells.length; i++) {
         // Optimization: Consolidate row cell rendering and header separator generation
         // into a single loop, eliminating redundant array mappings on cell data.
-        rowStr += ` ${richTextToMarkdown(rawCells[i])} |`
+        const cellMd = richTextToMarkdown(rawCells[i]).replace(/\n/g, '<br>')
+        rowStr += ` ${cellMd} |`
         if (isFirstRowHeader) {
           headerSep += ' --- |'
         }
@@ -778,6 +779,26 @@ class InlineParser {
     }
     // Code `text`
     if (char === '`') {
+      const closeIdx = this.text.indexOf('`', this.i + 1)
+      if (closeIdx !== -1) {
+        this.flushCurrent()
+        const codeContent = this.text.slice(this.i + 1, closeIdx)
+        this.richText.push({
+          type: 'text',
+          text: { content: codeContent, link: null },
+          annotations: {
+            bold: this.bold,
+            italic: this.italic,
+            strikethrough: this.strikethrough,
+            underline: false,
+            code: true,
+            color: 'default'
+          },
+          plain_text: codeContent
+        })
+        this.i = closeIdx
+        return true
+      }
       this.flushCurrent()
       this.code = !this.code
       return true
@@ -1537,7 +1558,10 @@ function createTable(headers: string[], rows: string[][], hasHeader: boolean): N
     object: 'block',
     type: 'table_row',
     table_row: {
-      cells: headers.map((h) => parseRichText(h))
+      cells: headers.map((h) => {
+        const sanitizedCell = (h || '').replace(/<br\s*\/?>/gi, '\n')
+        return parseRichText(sanitizedCell)
+      })
     }
   })
 
@@ -1545,7 +1569,9 @@ function createTable(headers: string[], rows: string[][], hasHeader: boolean): N
   for (const row of rows) {
     const cells = []
     for (let c = 0; c < tableWidth; c++) {
-      cells.push(parseRichText(row[c] || ''))
+      const rawCell = row[c] || ''
+      const sanitizedCell = rawCell.replace(/<br\s*\/?>/gi, '\n')
+      cells.push(parseRichText(sanitizedCell))
     }
     allRows.push({
       object: 'block',
