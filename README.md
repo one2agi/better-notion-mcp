@@ -74,22 +74,47 @@ mcp-name: io.github.faize/better-notion-mcp
 
 ## Install
 
-Run with `npx` (Node.js >= 24) and a Notion integration token from <https://www.notion.so/my-integrations> (starts with `ntn_`):
+### 1. Zero-Install with `npx` (Recommended)
+
+Run directly via `npx` without manual installation (Node.js >= 24) with a Notion integration token from <https://www.notion.so/my-integrations> (starts with `ntn_`):
 
 ```jsonc
-// MCP client config (e.g. .mcp.json / Claude Code / Cursor)
+// MCP client config (e.g. Claude Desktop / Cursor / Windsurf / .mcp.json)
 {
   "mcpServers": {
     "better-notion-mcp": {
       "command": "npx",
-      "args": ["--yes", "@faize/better-notion-mcp@latest"],
+      "args": ["-y", "@faize/better-notion-mcp@latest"],
       "env": { "NOTION_TOKEN": "ntn_your_token_here" }
     }
   }
 }
 ```
 
-Or run the published Docker image (stdio):
+### 2. Global Install via `npm`
+
+Install globally on your machine:
+
+```bash
+npm install -g @faize/better-notion-mcp
+```
+
+Then configure your MCP client with the installed binary:
+
+```jsonc
+{
+  "mcpServers": {
+    "better-notion-mcp": {
+      "command": "better-notion-mcp",
+      "env": { "NOTION_TOKEN": "ntn_your_token_here" }
+    }
+  }
+}
+```
+
+### 3. Docker (stdio)
+
+Run the published Docker image:
 
 ```bash
 docker run --rm -i -e NOTION_TOKEN=ntn_your_token_here faize/better-notion-mcp:latest
