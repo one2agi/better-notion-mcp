@@ -16,6 +16,7 @@ mcp-name: io.github.one2agi/better-notion-mcp
 - [Install](#install)
 - [Tools](#tools)
 - [Configuration](#configuration)
+- [Remote OAuth 部署与使用 (Self-Hosted)](#remote-oauth-部署与使用-self-hosted-oauth-21)
 - [Deploy to Cloudflare](#deploy-to-cloudflare)
 - [Comparison](#comparison)
 - [Security & Trust Model](#security--trust-model)
@@ -134,24 +135,93 @@ Eight composite Notion tools (53 actions) plus two infrastructure tools (`config
 | `PORT` | No | `0` (OS-assigned) | Server port; set explicitly (e.g. `8080`) to bind a fixed port |
 | `HOST` | No | - | Bind address (http mode) |
 
-### Self-Hosting (Remote Mode)
+## Remote OAuth 部署与使用 (Self-Hosted OAuth 2.1)
 
-You can self-host the remote server with your own Notion OAuth app.
+适用场景：**无需用户或 Agent 手动复制粘贴 Notion Token**。通过自建远程 OAuth 2.1 鉴权服务，支持 Google Gemini Spark、Claude Desktop、Cursor 等任何 AI Agent 客户端通过标准协议一键弹窗授权并安全调用。
 
-**Prerequisites:**
-1. Create a **Public Integration** at <https://www.notion.so/my-integrations>
-2. Set the redirect URI to `https://your-domain.com/callback`
-3. Note your `client_id` and `client_secret`
+### 1. 服务端部署（3 步完成）
 
-```bash
-docker run -p 8080:8080 \
-  -e TRANSPORT_MODE=http \
-  -e PORT=8080 \
-  -e PUBLIC_URL=https://your-domain.com \
-  -e NOTION_OAUTH_CLIENT_ID=your-client-id \
-  -e NOTION_OAUTH_CLIENT_SECRET=your-client-secret \
-  better-notion-mcp
+#### 步骤 1：创建 Notion Public Integration
+1. 访问 [Notion 开发者中心](https://www.notion.so/my-integrations) 新建集成；
+2. 类型选择 **Public（公共集成）**；
+3. **Redirect URIs** 填写：`https://<你的域名>/callback`；
+4. 勾选所需读写权限，保存并获取 **Client ID** 与 **Client Secret**。
+
+#### 步骤 2：Docker 运行服务
+创建 `docker-compose.yml`：
+
+```yaml
+services:
+  better-notion-mcp:
+    image: better-notion-mcp:latest
+    container_name: better-notion-mcp
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - TRANSPORT_MODE=http
+      - MCP_TRANSPORT=http
+      - PORT=8080
+      - HOST=0.0.0.0
+      - PUBLIC_URL=https://<你的域名>
+      - NOTION_OAUTH_CLIENT_ID=<你的 Client ID>
+      - NOTION_OAUTH_CLIENT_SECRET=<你的 Client Secret>
+      - CREDENTIAL_SECRET=<32字节随机hex密钥>
 ```
+
+> **提示**：`CREDENTIAL_SECRET` 用于生成 EdDSA 签名密钥，保证容器重启后 OAuth 身份不失效（可通过 `openssl rand -hex 32` 生成）。
+
+#### 步骤 3：配置 Nginx HTTPS 反向代理
+必须开启 HTTPS 并支持 Streamable HTTP / SSE 长连接：
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name <你的域名>;
+
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 300s;
+    }
+}
+```
+
+验证服务健康：`curl https://<你的域名>/health` 返回 `{"status":"ok"}` 即部署成功。
+
+---
+
+### 2. 客户端接入使用
+
+#### 接入方式 A：Google Gemini Spark (官方连接应用)
+1. 打开 [Gemini Spark Connected Apps](https://gemini.google.com/spark/apps)；
+2. 点击 **Add a custom app**，在 **MCP Server URL** 输入：`https://<你的域名>/mcp`；
+3. 服务端内置 RFC 8414 与 RFC 7591 协议，Gemini 会**自动探测端点**，无需手动配置 Client Secret；
+4. 点击 **Connect** -> 确认 Google 账号绑定 -> 自动跳转 Notion 授权页面并确认；
+5. 授权成功后，在 Gemini 对话框中直接输入 `@<你的应用名> 列出我的页面` 即可使用。
+
+#### 接入方式 B：Cursor / Claude Desktop / 通用 Agent 客户端
+在支持远程 MCP 的客户端配置中，直接指定服务地址：
+
+```jsonc
+{
+  "mcpServers": {
+    "better-notion": {
+      "url": "https://<你的域名>/mcp"
+    }
+  }
+}
+```
+客户端发起请求时，会自动通过 OAuth 2.1 PKCE 引导在浏览器中完成授权并静默换取 Token。
 
 ## Deploy to Cloudflare
 
