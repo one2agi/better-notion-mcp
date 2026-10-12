@@ -1,7 +1,9 @@
 # Better Notion MCP
 
-> **基于社区优秀项目 [n24q02m/better-notion-mcp](https://github.com/n24q02m/notion)（现名 `n24q02m/notion`）演进的独立增强版，由 [one2agi](https://one2agi.com) 独立维护。**  
-> 专为 AI Agent（Claude, Cursor, Antigravity 等）深度打造的高保真 Markdown 读写管线与企业级 Notion MCP 基础设施。
+[🇨🇳 简体中文](README.md) · [🇺🇸 English](README.en.md)
+
+> **基于社区优秀开源项目 [n24q02m/better-notion-mcp](https://github.com/n24q02m/notion)（现名 `n24q02m/notion`）演进的独立增强版，由 [one2agi](https://one2agi.com) 独立维护。**  
+> 专为现代 AI Agent（Claude, Cursor, Antigravity, Gemini Spark 等）深度重构的高保真 Markdown 读写管线与企业级 Notion MCP 基础设施。
 
 [🌐 官方网站](https://one2agi.com) · [🧭 导航知识库](https://way.one2agi.com) · [💬 交流社区](https://one2agi.com) · [📦 仓库主页](https://github.com/one2agi/better-notion-mcp)
 
@@ -12,169 +14,169 @@
 [![Node.js](https://img.shields.io/badge/Node.js-5FA04E?logo=nodedotjs&logoColor=white)](#)
 [![Notion](https://img.shields.io/badge/Notion_API-000000?logo=notion&logoColor=white)](#)
 
-## Table of contents
+---
 
-- [设计哲学与特点](#设计哲学与特点)
-- [Features](#features)
-- [Install](#install)
-- [Tools](#tools)
-- [Configuration](#configuration)
-- [Remote OAuth 部署与使用 (Self-Hosted)](#remote-oauth-部署与使用-self-hosted-oauth-21)
-- [Comparison](#comparison)
-- [Security & Trust Model](#security--trust-model)
-- [Build from Source](#build-from-source)
+## 目录
+
+- [设计哲学：为什么拒绝官方 API 的粗暴堆砌？](#设计哲学为什么拒绝官方-api-的粗暴堆砌)
+- [核心特性](#核心特性)
+- [工具矩阵 (10 大工具)](#工具矩阵-10-大工具)
+- [快速安装与配置](#快速安装与配置)
+  - [1. npx 免安装即用 (推荐)](#1-npx-免安装即用-推荐)
+  - [2. 全局安装](#2-全局安装)
+  - [3. Docker 容器运行](#3-docker-容器运行)
+- [环境配置参考](#环境配置参考)
+- [私有化部署：Remote OAuth 2.1 服务](#私有化部署remote-oauth-21-服务)
+- [源码级架构对比](#源码级架构对比)
+- [安全与沙盒架构](#安全与沙盒架构)
+- [源码构建与测试](#源码构建与测试)
 - [项目起源与致敬](#项目起源与致敬)
-- [License](#license)
+- [许可证](#许可证)
 
-## 设计哲学与特点
+---
 
-### 为什么拒绝原生 Notion API 的粗暴堆砌？
+## 设计哲学：为什么拒绝官方 API 的粗暴堆砌？
 
 市面上多数 Notion MCP 仅仅是将官方 20+ 个原子 REST API 机械映射，导致 AI Agent 在实际落地中频频“翻车”：上下文撑爆、JSON Block 语法死板、工具频频选错、偶发限流即崩溃。
 
 Better Notion MCP 秉承 4 条直率犀利的设计哲学：
 
-#### 1. Markdown-First：AI 呼吸的是文本，不是层层嵌套的 JSON 垃圾
-* **痛点**：Notion 原生 API 采用极度碎片化的 Block 模型，一篇简短页面就会解包出成千上万行带有 `rich_text`、`annotations` 的臃肿 JSON，瞬间吞噬模型宝贵的 Context 窗口。
-* **解法**：**全链路「Markdown 进，Markdown 出」**。内置高保真 AST 双向解析器，无论是 Callout、Toggle、分栏、代码高亮还是复合表格，在 Agent 视野中均呈现为自然、干净的 Markdown。Token 消耗**断崖式削减 70% 以上**。
+### 1. Markdown-First：AI 呼吸的是文本，不是层层嵌套的 JSON 垃圾
+* **痛点**：Notion 原生 API 采用极度碎片化的 Block 模型，一篇简短页面就会解包出成千上万行带有 `rich_text`、`annotations` 的臃肿 JSON，瞬间吞噬模型宝贵的 Context 窗口。写内容时还逼迫 Agent 手写反人类的嵌套 Block 结构。
+* **解法**：**全链路「Markdown 进，Markdown 出」**。内置 1700+ 行工业级 AST 双向解析器，无论是 Callout、Toggle、分栏、代码高亮还是复合表格，在 Agent 视野中均呈现为自然、干净的 Markdown。Token 消耗**断崖式削减 70%~90%**。
 
-#### 2. Composite Mega-Tools：拒绝 API 碎片化，收敛决策成本
+### 2. Composite Mega-Tools：拒绝 API 碎片化，收敛决策成本
 * **痛点**：将几十个低级 API 粗暴塞给 Agent，只会让 Schema 长度爆炸，模型在“先查页面、再查块、再改属性”的多轮往返中频频迷失或选错工具。
-* **解法**：**按业务领域收敛为 8 大复合工具（收敛 53 项原子动作）**。`pages`、`databases`、`blocks` 等按业务领域高度内聚。单次调用即可原子更新正文、标题、图标与封面，一击必中，彻底消灭冗余 Roundtrip。
+* **解法**：**按业务领域收敛为 8 大复合工具（收敛 53 项原子动作）+ 2 个系统级工具**。`pages`、`databases`、`blocks` 等按业务领域高度内聚。单次调用即可原子更新正文、标题、图标与封面，一击必中，彻底消灭冗余 Roundtrip。
 
-#### 3. Agent-Native 韧性与自愈：错误不应成为会话的终点
+### 3. Agent-Native 韧性与自愈：错误不应成为会话的终点
 * **痛点**：Notion API 偶发 429 限流、网络抖动或参数轻微偏差，直接抛异常导致整个智能体执行链路夭折。
 * **解法**：**内置指数退避重试（`retryWithBackoff`）与 AI 自愈建议系统（`suggestFixes`）**。当参数缺失或权限异常时，直接返回结构化、可落地的纠错指示，Agent 看完即可就地自我修复，具备真正的生产级无人值守鲁棒性。
 
-#### 4. 纯粹与同构：单机极简，上云坚固
+### 4. 纯粹与同构：单机极简，上云坚固
 * **痛点**：既要本地调试，又要团队多租户接入，往往被迫维护多套代码或绑定复杂的边缘 Serverless 平台。
 * **解法**：**双模同构，剥离冗余胶水层**。本地使用 Stdio + Integration Token 秒级即用；生产环境提供标准 Node.js / Docker 容器，基于 OAuth 2.1 + PKCE 实现多用户安全隔离与会话管理。
 
-## Features
+---
 
-- **Markdown in, Markdown out** -- human-readable content instead of raw JSON blocks
-- **8 composite tools, 53 actions** -- one call instead of chaining 2+ atomic Notion endpoints (plus `config` and `help`)
-- **Atomic metadata & content updates** -- update page body, title, icon, and cover in a single `replace_content` transaction
-- **High-fidelity AST parser** -- native Notion callouts, toggles, bookmarks, table cell line-breaks (`<br>`), and syntax shielding
-- **Auto-pagination and bulk operations** -- no manual cursor handling or looping
-- **Tiered token optimization** -- ~77% reduction via compressed descriptions + on-demand `help` tool
-- **Dual transport** -- local stdio (integration token) or remote HTTP (OAuth 2.1, no token to paste)
+## 核心特性
 
-## Install
+- 📄 **全链路 Markdown 直通**：双向高保真 AST 互转，告别底层繁琐的 Block JSON。
+- 🛠️ **10 大工具完整矩阵**：8 个 Notion 领域复合工具 + 2 个系统基础设施工具，覆盖官方 95% 以上功能。
+- ⚡ **原子多字段覆写**：单次 `replace_content` 即可同时更新正文、标题、图标与封面，无竞态风险。
+- 📚 **分层 Token 优化机制**：常驻描述极致精简（静态开销压缩 ~77%），通过 `help` 工具按需动态查阅完整规范。
+- 🔄 **内核级自动分页与深层遍历**：`autoPaginate` 自动处理游标与子块深搜，长页面与大库全量完整拉取。
+- 🛡️ **生产级安全防护**：敏感凭据在异常链路自动脱敏过滤，杜绝 Token 泄露；HTTP 端支持 OAuth 2.1 PKCE。
+- 🌐 **双模运行架构**：无缝支持本地 Stdio 快速直连与远程 HTTP 多租户授权。
 
-### 1. Zero-Install with `npx` (Recommended)
+---
 
-Run directly via `npx` without manual installation (Node.js >= 24) with a Notion integration token from <https://www.notion.so/my-integrations> (starts with `ntn_`):
+## 工具矩阵 (10 大工具)
+
+系统共注册 **10 个 MCP 工具**，由 8 个业务复合工具与 2 个基础设施工具构成：
+
+| 工具名称 | 支持动作 (Actions) | 功能定位与核心能力 | Token 机制 |
+|:---|:---|:---|:---|
+| **`pages`** | `create`, `get`, `get_property`, `update`, `move`, `archive`, `restore`, `duplicate`, `get_markdown`, `replace_content`, `insert_markdown`, `update_content`, `replace_content_range` (共 13 项) | 页面全生命周期管理；原生 Markdown 读写、原子级元数据修改 (`icon`, `cover`, `title`)、服务端快速渲染 | 依赖 API |
+| **`databases`** | `create`, `get`, `query`, `create_page`, `update_page`, `delete_page`, `create_data_source`, `update_data_source`, `update_database`, `list_templates`, `aggregate`, `group_by`, `create_view`, `list_views`, `get_view`, `update_view`, `delete_view` (共 17 项) | 数据库 Schema 治理、多维视图配置、数据行批量 CRUD、分组聚合统计 (count/sum/avg) | 依赖 API |
+| **`blocks`** | `get`, `children`, `append`, `update`, `delete` (共 5 项) | 页面内部细粒度块级操作；树状层级遍历与增删改查 | 依赖 API |
+| **`workspace`** | `info`, `search` (共 2 项) | 跨工作区全局模糊检索与元数据查询 | 依赖 API |
+| **`users`** | `list`, `get`, `me`, `from_workspace` (共 4 项) | 团队成员、协作人及机器人身份检索 | 依赖 API |
+| **`comments`** | `list`, `get`, `create`, `update`, `delete` (共 5 项) | 页面/块级评论讨论全生命周期管理，自动规避官方 OAuth 404 Bug | 依赖 API |
+| **`content_convert`** | `markdown-to-blocks`, `blocks-to-markdown` (共 2 方向) | 纯本地离线 AST 转换引擎，可在本地将 Markdown 文本转换为 Notion Block，无需远程调用 | **纯本地离线 (免 Token)** |
+| **`file_uploads`** | `create`, `send`, `complete`, `retrieve`, `list` (共 5 项) | 上传本地文件与附件至 Notion，原生支持大文件分片断点续传 | 依赖 API |
+| **`help`** | 指定 `tool_name` | **分层 Token 优化核心**：动态拉取指定工具的详尽参数手册与使用范例 | **纯本地离线 (免 Token)** |
+| **`config`** | `status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` (共 6 项) | **运行时自治核心**：动态检查凭证有效性、探测与重载配置，免去重启客户端的麻烦 | **纯本地离线 (免 Token)** |
+
+> **关于复合对象参数的特别说明**：针对对象或数组类型的参数（如 `properties`, `filters`, `sorts` 等），工具原生支持直接传入标准 JSON 对象，亦支持传入字符串形式的 JSON（针对 Claude Code 等对嵌套 XML 序列化有退化截断的客户端做了自动解包兼容）。
+
+---
+
+## 快速安装与配置
+
+### 1. npx 免安装即用 (推荐)
+
+无需手动下载安装，只需拥有 Node.js (>= 24) 与 Notion 集成 Token（前往 [Notion Integrations](https://www.notion.so/my-integrations) 创建，以 `ntn_` 开头）：
+
+在您的 AI 客户端（如 Claude Desktop, Cursor, Antigravity, Windsurf）配置文件中添加：
 
 ```jsonc
-// MCP client config (e.g. Claude Desktop / Cursor / Windsurf / Antigravity / .mcp.json)
 {
   "mcpServers": {
     "better-notion-mcp": {
       "command": "npx",
       "args": ["-y", "@faize555/better-notion-mcp@latest"],
-      "env": { "NOTION_TOKEN": "ntn_your_token_here" }
+      "env": {
+        "NOTION_TOKEN": "ntn_your_integration_token_here"
+      }
     }
   }
 }
 ```
 
-### 2. Global Install via `npm`
+### 2. 全局安装
 
-Install globally on your machine:
+通过 npm 进行全局安装：
 
 ```bash
 npm install -g @faize555/better-notion-mcp
 ```
 
-Then configure your MCP client with the installed binary:
+客户端配置：
 
 ```jsonc
 {
   "mcpServers": {
     "better-notion-mcp": {
       "command": "better-notion-mcp",
-      "env": { "NOTION_TOKEN": "ntn_your_token_here" }
+      "env": {
+        "NOTION_TOKEN": "ntn_your_integration_token_here"
+      }
     }
   }
 }
 ```
 
-### 3. Docker (stdio)
+### 3. Docker 容器运行 (Stdio 模式)
 
-Build and run locally with Docker:
+使用 Docker 构建并在本地 stdio 管道中运行：
 
 ```bash
-# Build the Docker image
+# 构建镜像
 docker build -t better-notion-mcp .
 
-# Run container in stdio mode
-docker run --rm -i -e NOTION_TOKEN=ntn_your_token_here better-notion-mcp
+# 启动容器
+docker run --rm -i -e NOTION_TOKEN=ntn_your_integration_token_here better-notion-mcp
 ```
 
-## Tools
+---
 
-Eight composite Notion tools (53 actions) plus two infrastructure tools (`config`, `help`):
+## 环境配置参考
 
-| Tool | Actions | Description |
-|:-----|:--------|:------------|
-| `pages` | `create`, `get`, `get_property`, `update`, `move`, `archive`, `restore`, `duplicate`, `get_markdown`, `replace_content`, `insert_markdown`, `update_content`, `replace_content_range` | Create, read, update, and organize pages; native markdown (Notion SDK v5.22+); atomic metadata updates (`icon`, `cover`, `title`) |
-| `databases` | `create`, `get`, `query`, `create_page`, `update_page`, `delete_page`, `create_data_source`, `update_data_source`, `update_database`, `list_templates`, `aggregate`, `group_by`, `create_view`, `list_views`, `get_view`, `update_view`, `delete_view` | Database CRUD, page management, views lifecycle, and analytics (count/sum/avg/group) |
-| `blocks` | `get`, `children`, `append`, `update`, `delete` | Read and manipulate block content |
-| `users` | `list`, `get`, `me`, `from_workspace` | List and retrieve user information |
-| `workspace` | `info`, `search` | Workspace metadata and cross-workspace search |
-| `comments` | `list`, `get`, `create`, `update`, `delete` | Page and block comments full lifecycle (list, get, create discussion/reply, update, delete) |
-| `content_convert` | `markdown-to-blocks`, `blocks-to-markdown` | Convert between Markdown and Notion blocks (uses a `direction` parameter) |
-| `file_uploads` | `create`, `send`, `complete`, `retrieve`, `list` | Upload files to Notion (single or multi-part) |
-| `config` | `status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | Inspect and manage credential state and configuration lifecycle |
-| `help` | - | Get full documentation for any composite tool (`tool_name` parameter) |
+| 配置项 | 必填 | 默认值 | 作用说明 |
+|:---|:---|:---|:---|
+| `NOTION_TOKEN` | 是 (本地模式) | - | Notion 内部集成访问凭证 (`ntn_...`) |
+| `TRANSPORT_MODE` / `MCP_TRANSPORT` | 否 | `stdio` | 运行模式；设为 `http` 进入远程多租户服务模式 |
+| `PORT` | 否 | `8080` | 远程 HTTP 服务监听端口 |
+| `HOST` | 否 | `0.0.0.0` | 远程 HTTP 监听地址 |
+| `PUBLIC_URL` | 是 (远程模式) | - | 服务的外部公网访问域名 (用于拼接 OAuth 回调地址) |
+| `NOTION_OAUTH_CLIENT_ID` | 是 (远程模式) | - | Notion 公共集成 (Public Integration) Client ID |
+| `NOTION_OAUTH_CLIENT_SECRET` | 是 (远程模式) | - | Notion 公共集成 Client Secret |
+| `CREDENTIAL_SECRET` | 否 (远程模式) | - | 32 字节随机 Hex 密钥，用于 EdDSA 签名保持会话跨重启持久化 |
 
-> **Note on nested-object arguments**: Parameters typed as objects/arrays
-> (`properties`, `filters`, `sorts`, `aggregations`, `updates`, etc.) also
-> accept a **JSON string** of the same shape. Required when the calling MCP
-> client serializes arguments as XML (e.g. Claude Code), because XML
-> serialization silently drops nested content to `{}`. Pass
-> `'{"数字":42}'` instead of `{"数字":42}` in that case.
+---
 
-### MCP Resources
+## 私有化部署：Remote OAuth 2.1 服务
 
-| URI | Description |
-|:----|:------------|
-| `notion://docs/pages` | Page operations reference |
-| `notion://docs/databases` | Database operations reference |
-| `notion://docs/blocks` | Block operations reference |
-| `notion://docs/users` | User operations reference |
-| `notion://docs/workspace` | Workspace operations reference |
-| `notion://docs/comments` | Comment operations reference |
-| `notion://docs/content_convert` | Content conversion reference |
-| `notion://docs/file_uploads` | File upload reference |
+适用场景：**团队免密使用**。通过自建远程 OAuth 2.1 服务，使用者无需复制粘贴 Token，点击浏览器一键授权即可使用。
 
-## Configuration
-
-| Variable | Required | Default | Description |
-|:---------|:---------|:--------|:------------|
-| `NOTION_TOKEN` | Yes (stdio) | - | Notion integration token |
-| `TRANSPORT_MODE` / `MCP_TRANSPORT` | No | `stdio` | Set either to `http` for remote mode (or pass `--http`) |
-| `PUBLIC_URL` | No (http) | - | Server's public URL for OAuth redirect links |
-| `NOTION_OAUTH_CLIENT_ID` | Yes (http) | - | Notion Public Integration client ID |
-| `NOTION_OAUTH_CLIENT_SECRET` | Yes (http) | - | Notion Public Integration client secret |
-| `MCP_AUTH_DISABLE` | No (http) | - | Set to `1` to skip Bearer JWT verification when behind an external auth gateway |
-| `PORT` | No | `0` (OS-assigned) | Server port; set explicitly (e.g. `8080`) to bind a fixed port |
-| `HOST` | No | - | Bind address (http mode) |
-
-## Remote OAuth 部署与使用 (Self-Hosted OAuth 2.1)
-
-适用场景：**无需用户或 Agent 手动复制粘贴 Notion Token**。通过自建远程 OAuth 2.1 鉴权服务，支持 Google Gemini Spark、Claude Desktop、Cursor 等任何 AI Agent 客户端通过标准协议一键弹窗授权并安全调用。
-
-### 1. 服务端部署（3 步完成）
-
-#### 步骤 1：创建 Notion Public Integration
+### 1. 创建 Notion Public Integration
 1. 访问 [Notion 开发者中心](https://www.notion.so/my-integrations) 新建集成；
 2. 类型选择 **Public（公共集成）**；
 3. **Redirect URIs** 填写：`https://<你的域名>/callback`；
-4. 勾选所需读写权限，保存并获取 **Client ID** 与 **Client Secret**。
+4. 勾选所需权限，获取 **Client ID** 与 **Client Secret**。
 
-#### 步骤 2：Docker 运行服务
+### 2. Docker Compose 编排启动
 创建 `docker-compose.yml`：
 
 ```yaml
@@ -196,11 +198,9 @@ services:
       - CREDENTIAL_SECRET=<32字节随机hex密钥>
 ```
 
-> **提示**：`CREDENTIAL_SECRET` 用于生成 EdDSA 签名密钥，保证容器重启后 OAuth 身份不失效（可通过 `openssl rand -hex 32` 生成）。
+> **提示**：密钥可通过命令 `openssl rand -hex 32` 快速生成。
 
-#### 步骤 3：配置 Nginx HTTPS 反向代理
-必须开启 HTTPS 并支持 Streamable HTTP / SSE 长连接：
-
+### 3. Nginx 反向代理配置
 ```nginx
 server {
     listen 443 ssl http2;
@@ -223,77 +223,66 @@ server {
 }
 ```
 
-验证服务健康：`curl https://<你的域名>/health` 返回 `{"status":"ok"}` 即部署成功。
+验证健康状态：`curl https://<你的域名>/health` 返回 `{"status":"ok"}` 即部署成功。
 
 ---
 
-### 2. 客户端接入使用
+## 源码级架构对比
 
-#### 接入方式 A：Google Gemini Spark (官方连接应用)
-1. 打开 [Gemini Spark Connected Apps](https://gemini.google.com/spark/apps)；
-2. 点击 **Add a custom app**，在 **MCP Server URL** 输入：`https://<你的域名>/mcp`；
-3. 服务端内置 RFC 8414 与 RFC 7591 协议，Gemini 会**自动探测端点**，无需手动配置 Client Secret；
-4. 点击 **Connect** -> 确认 Google 账号绑定 -> 自动跳转 Notion 授权页面并确认；
-5. 授权成功后，在 Gemini 对话框中直接输入 `@<你的应用名> 列出我的页面` 即可使用。
+| 评估维度 | 官方 Notion MCP (`@notionhq/notion-mcp-server`) | 该项目 (`better-notion-mcp`) |
+|:---|:---|:---|
+| **架构本质** | 基于 OpenAPI 规范机械遍历的泛型 HTTP 反向代理 | 专为大模型上下文、Token 经济与容错重构的语义编译器 |
+| **工具形态** | 20+ 个原子低级端点，入参必须手写深层嵌套 JSON Block | **10 个领域复合工具 (8 业务 + 2 系统)**，入参直观高内聚 |
+| **内容交互** | 强制返回数千行冗余嵌套的原始 Block JSON 树 | 全链路 **高保真 Markdown 双向解析**（节省 Token 70%~90%） |
+| **静态 Token 开销** | 所有端点完整暴露，占用大量常驻 System Prompt 上下文 | **分层 Token 机制**：常驻描述极致精炼，通过 `help` 工具按需查阅 |
+| **分页处理** | 原始 `next_cursor`，要求 Agent 自己编写循环翻页 | 内核级 **`autoPaginate`**，自动深层递归展开所有子块并聚合 |
+| **异常处理** | 原生 HTTP 错误 dump，无修复指引 | 内置 **`suggestFixes` 自愈建议体系** 与指数退避重试 |
+| **离线转换** | 必须发起远程 HTTP 请求 | 内置 **`content_convert`** 纯本地离线 AST 引擎 (免 Token) |
+| **身份与部署** | 仅基础 Stdio 或简单 Bearer Token | **双模同构**：本地 Stdio + 私有化 OAuth 2.1 PKCE 多租户隔离 |
 
-#### 接入方式 B：Cursor / Claude Desktop / 通用 Agent 客户端
-在支持远程 MCP 的客户端配置中，直接指定服务地址：
+---
 
-```jsonc
-{
-  "mcpServers": {
-    "better-notion": {
-      "url": "https://<你的域名>/mcp"
-    }
-  }
-}
-```
-客户端发起请求时，会自动通过 OAuth 2.1 PKCE 引导在浏览器中完成授权并静默换取 Token。
+## 安全与沙盒架构
 
-## Comparison
+- **数据隐私与隔离**：本地 Stdio 模式下仅在您本地操作系统内存中流通，不经过任何第三方中转；HTTP 模式下使用内存化多租户隔离。
+- **敏感信息脱敏**：在错误上报与异常抛出链路中，内核自动过滤敏感的 Token 凭据与安全字段。
+- **OAuth 2.1 + PKCE S256**：防篡改授权验证流程，保障远程授权交换过程安全可信。
 
-How better-notion-mcp stacks up against direct competitors in each pillar:
+---
 
-| Capability | better-notion-mcp | makenotion/notion-mcp-server | suekou/mcp-notion-server | awkoy/notion-mcp-server |
-|---|---|---|---|---|
-| Markdown in / out | Yes (round-trip on pages + blocks) | No (raw Notion JSON) | partial (experimental, append + opt-in convert) | Yes (round-trip + GFM) |
-| Composite tool design | Yes (8 composite tools, 53 actions) | No (22 endpoint-mapped tools) | partial (simplified + raw JSON tools) | Yes (2 dispatch tools, 35+ ops) |
-| File uploads to Notion | Yes (`file_uploads`, single + multi-part) | No | No | Yes (`upload_file`, single + multi-part) |
-| Comments | Yes (`comments`: list/get/create/update/delete) | Yes | Yes | Yes |
-| Remote HTTP + OAuth 2.1 transport | Yes (per-JWT-sub multi-user) | partial (HTTP + bearer token, no OAuth) | No (stdio token only) | No (stdio token only) |
-| Self-hostable | Yes (Docker, own OAuth app) | Yes | Yes | Yes |
-| License | MIT | ? | MIT | MIT |
+## 源码构建与测试
 
-## Security & Trust Model
-
-- **OAuth 2.1 + PKCE S256** -- Secure authorization with code challenge
-- **Rate limiting** -- 120 req/min/IP on HTTP transport
-- **Session owner binding** -- IP check + TTL for pending token binds
-- **Null safety** -- Handles Notion API quirks (comments.list 404, undefined rich_text)
-
-| Mode | Storage | Encryption | Who can read your data? |
-|---|---|---|---|
-| HTTP self-host | In-memory `Map<sub, OAuthToken>` | In-process only | Only you (admin = user) |
-| stdio (local) | Local process memory / env variable | Local OS user isolation | Only your local system |
-
-## Build from Source
+本项目采用 [Bun](https://bun.sh) 与 TypeScript 构建：
 
 ```bash
+# 1. 克隆代码仓库
 git clone https://github.com/one2agi/better-notion-mcp.git
 cd better-notion-mcp
+
+# 2. 安装依赖
 bun install
+
+# 3. 运行本地开发调试
 bun run dev
+
+# 4. 执行全量代码检查与测试套件 (1500+ 测试项)
+bun run check
+bun run test
 ```
+
+---
 
 ## 项目起源与致敬
 
-- **上游原作**：本项目最初源自社区优秀开源先锋 [n24q02m/better-notion-mcp](https://github.com/n24q02m/notion)（作者 [@n24q02m](https://github.com/n24q02m)，现仓库更名为 `notion`）。致敬原作者在 Notion AST 高保真解析与复合工具架构上的奠基性探索！
-- **独立维护的增强版**：本项目当前由 **[one2agi](https://one2agi.com)** 独立维护演进。我们剥离了冗余边缘宿主负担，专注于提供高鲁棒性、双模同构（本地 Stdio + 私有 OAuth HTTP）的企业级交付体验，持续打造高保真自主 Agent 生产工具链。
+- **上游原作**：本项目最初源自社区开源先锋 [n24q02m/better-notion-mcp](https://github.com/n24q02m/notion)（作者 [@n24q02m](https://github.com/n24q02m)，现仓库更名为 `notion`）。致敬原作者在 Notion AST 高保真解析与复合工具架构上的奠基性探索！
+- **独立维护的增强版**：本项目当前由 **[one2agi](https://one2agi.com)** 作为独立增强版持续演进。我们剥离了冗余边缘宿主负担，聚焦于更稳定纯粹的 Node.js/Docker 跨平台基座、中文与复合工作流增强，以及面向生产级自主 Agent 的长期交付。
 
 - **官方网站**: [https://one2agi.com](https://one2agi.com)
 - **AI 导航与知识库**: [https://way.one2agi.com](https://way.one2agi.com)
 - **GitHub 组织**: [https://github.com/one2agi](https://github.com/one2agi)
 
-## License
+---
 
-MIT -- See [LICENSE](LICENSE).
+## 许可证
+
+本项目遵循 [MIT License](LICENSE) 开源协议。
