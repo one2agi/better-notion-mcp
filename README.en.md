@@ -18,7 +18,7 @@
 
 ## Table of Contents
 
-- [Design Philosophy: Why Reject Naive REST Mappings?](#design-philosophy-why-reject-naive-rest-mappings)
+- [Core Architecture Design](#core-architecture-design)
 - [Key Features](#key-features)
 - [Tool Matrix (10 Tools)](#tool-matrix-10-tools)
 - [Quick Start & Installation](#quick-start--installation)
@@ -27,7 +27,6 @@
   - [3. Docker Container (Stdio Mode)](#3-docker-container-stdio-mode)
 - [Configuration Reference](#configuration-reference)
 - [Self-Hosted Deployment: Remote OAuth 2.1](#self-hosted-deployment-remote-oauth-21)
-- [Source-Level Architectural Comparison](#source-level-architectural-comparison)
 - [Security & Sandbox Architecture](#security--sandbox-architecture)
 - [Build from Source & Verification](#build-from-source--verification)
 - [Origin & Attribution](#origin--attribution)
@@ -35,27 +34,21 @@
 
 ---
 
-## Design Philosophy: Why Reject Naive REST Mappings?
+## Core Architecture Design
 
-Most Notion MCP servers mechanically map the official 20+ atomic REST endpoints to tools. In real-world AI Agent execution, this approach frequently fails: context windows get overwhelmed, rigid block JSON syntax triggers errors, tool selection degrades, and transient rate limits cause hard failures.
+Better Notion MCP is engineered specifically for LLM context optimization and autonomous multi-step execution across 4 technical pillars:
 
-Better Notion MCP adheres to 4 core design principles:
+### 1. Markdown-First Semantic Pipeline
+Equipped with an in-house 1,700+ line bi-directional AST compiler. Elements like callouts, toggles, multi-column blocks, syntax-highlighted code, and complex tables render as clean, standard Markdown. Writing content automatically compiles into valid Notion Block trees, **reducing static and interaction token consumption by 70% to 90%**.
 
-### 1. Markdown-First: AI Thinks in Text, Not Nested JSON Blobs
-* **The Problem**: Notion's native Block API is deeply fragmented. A short document expands into thousands of lines of verbose JSON filled with `rich_text`, `annotations`, and type tags, instantly consuming the LLM's context window. Writing content forces the Agent to craft unnatural nested objects.
-* **The Solution**: **Full-pipeline Markdown in, Markdown out**. Equipped with an in-house 1,700+ line AST bi-directional compiler, elements like callouts, toggles, multi-column layouts, syntax-highlighted code blocks, and complex tables are presented to the Agent as clean, standard Markdown. **Token consumption is slashed by 70% to 90%**.
+### 2. Composite Mega-Tools
+Instead of exposing dozens of fragmented low-level endpoints, APIs are consolidated into **8 domain composite tools (53 atomic actions) + 2 infrastructure tools**. A single `pages` action can atomically update body content, title, icon, and cover in one transaction, eliminating redundant network hops.
 
-### 2. Composite Mega-Tools: Cohesive Domains Instead of API Chaos
-* **The Problem**: Exposing dozens of low-level atomic APIs inflates the tool schema, confusing the model during multi-step roundtrips (e.g., query page -> inspect blocks -> update property -> append child block).
-* **The Solution**: **Consolidated into 8 domain composite tools (53 atomic actions) + 2 infrastructure tools**. Domains like `pages`, `databases`, and `blocks` are tightly cohesive. A single action can atomically update body content, title, icon, and cover in a single transaction, eliminating redundant network hops.
+### 3. Agent Resilience & Self-Healing
+Features built-in exponential backoff retries (`retryWithBackoff`) and machine-readable fix advice (`suggestFixes`). When encountering transient rate limits or validation errors, structured fix instructions allow the model to self-correct autonomously without aborting tasks.
 
-### 3. Agent-Native Resilience & Self-Healing: Errors Shouldn't Break Sessions
-* **The Problem**: Notion API errors (transient 429 rate limits, network jitters, or validation mismatches) immediately abort long-running Agent workflows.
-* **The Solution**: **Built-in exponential backoff retries (`retryWithBackoff`) and AI self-healing guidance (`suggestFixes`)**. When parameters or permissions are invalid, structured, actionable fix instructions are returned. The Agent can self-correct immediately without human intervention.
-
-### 4. Pure & Isomorphic: Minimal for Local, Robust for Cloud
-* **The Problem**: Supporting both local hacking and enterprise multi-tenancy often requires juggling disjointed codebases or proprietary serverless runtimes.
-* **The Solution**: **Single isomorphic core without redundant glue code**. Supports instant zero-setup local Stdio with integration tokens, as well as production Docker deployments featuring OAuth 2.1 + PKCE multi-user session isolation.
+### 4. Lightweight & Isomorphic Runtimes
+Seamlessly bridges local developer workflows and enterprise infrastructure: zero-setup local Stdio with integration tokens, or production Docker deployments with OAuth 2.1 + PKCE multi-user session isolation.
 
 ---
 
@@ -88,7 +81,7 @@ The server registers **10 MCP tools** comprising 8 Notion domain composite tools
 | **`help`** | Target `tool_name` | **Core of Tiered Token Optimization**: Dynamically retrieves complete schemas and examples for any composite tool. | **Offline (Token-Free)** |
 | **`config`** | `status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` (6 actions) | **Runtime Autonomy**: Inspects credential health and resets or reloads configuration without restarting the client. | **Offline (Token-Free)** |
 
-> **Note on Complex Arguments**: Parameters typed as objects or arrays (`properties`, `filters`, `sorts`, etc.) accept both raw structured JSON and JSON strings to maintain compatibility with clients that degrade nested structures during serialization.
+> **Note on Complex Arguments**: Parameters typed as objects or arrays (`properties`, `filters`, `sorts`, etc.) accept both raw structured JSON and JSON strings to maintain compatibility across different clients.
 
 ---
 
@@ -224,21 +217,6 @@ server {
 ```
 
 Verify service status: `curl https://<your-domain>/health` should return `{"status":"ok"}`.
-
----
-
-## Source-Level Architectural Comparison
-
-| Dimension | Official Notion MCP (`@notionhq/notion-mcp-server`) | Better Notion MCP (`better-notion-mcp`) |
-|:---|:---|:---|
-| **Core Architecture** | Generic reverse proxy mechanically traversing OpenAPI specs | Purpose-built semantic compiler tailored for LLM contexts & tokens |
-| **Tool Design** | 20+ atomic low-level endpoints with deeply nested JSON input schemas | **10 cohesive tools (8 domain + 2 system)** with clean action contracts |
-| **Content Format** | Dumps raw, deeply nested Notion Block JSON trees | Full-pipeline **high-fidelity Markdown** (70%~90% token reduction) |
-| **Static Token Overhead** | Dumps full OpenAPI schemas into static client prompts | **Tiered token design**: Compact baseline prompts + on-demand `help` |
-| **Pagination** | Returns raw `next_cursor`, requiring manual Agent loops | Kernel-level **`autoPaginate`** with deep recursive block resolution |
-| **Error Handling** | Unprocessed HTTP error dumps with no fix advice | Built-in **`suggestFixes` guidance** and exponential backoff retries |
-| **Local Parsing** | Requires remote HTTP calls | Pure offline local AST engine via **`content_convert`** |
-| **Deployment** | Basic Stdio or raw Bearer HTTP | **Dual-mode isomorphic**: Local Stdio + OAuth 2.1 PKCE multi-tenancy |
 
 ---
 

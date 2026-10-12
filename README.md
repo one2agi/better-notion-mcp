@@ -2,7 +2,7 @@
 
 [🇨🇳 简体中文](README.md) · [🇺🇸 English](README.en.md)
 
-> **基于社区优秀开源项目 [n24q02m/better-notion-mcp](https://github.com/n24q02m/notion)（现名 `n24q02m/notion`）演进的独立增强版，由 [one2agi](https://one2agi.com) 独立维护。**  
+> **基于社区开源项目 [n24q02m/better-notion-mcp](https://github.com/n24q02m/notion)（现名 `n24q02m/notion`）演进的独立增强版，由 [one2agi](https://one2agi.com) 独立维护。**  
 > 专为现代 AI Agent（Claude, Cursor, Antigravity, Gemini Spark 等）深度重构的高保真 Markdown 读写管线与企业级 Notion MCP 基础设施。
 
 [🌐 官方网站](https://one2agi.com) · [🧭 导航知识库](https://way.one2agi.com) · [💬 交流社区](https://one2agi.com) · [📦 仓库主页](https://github.com/one2agi/better-notion-mcp)
@@ -18,7 +18,7 @@
 
 ## 目录
 
-- [设计哲学：为什么拒绝官方 API 的粗暴堆砌？](#设计哲学为什么拒绝官方-api-的粗暴堆砌)
+- [核心架构设计](#核心架构设计)
 - [核心特性](#核心特性)
 - [工具矩阵 (10 大工具)](#工具矩阵-10-大工具)
 - [快速安装与配置](#快速安装与配置)
@@ -27,7 +27,6 @@
   - [3. Docker 容器运行](#3-docker-容器运行)
 - [环境配置参考](#环境配置参考)
 - [私有化部署：Remote OAuth 2.1 服务](#私有化部署remote-oauth-21-服务)
-- [源码级架构对比](#源码级架构对比)
 - [安全与沙盒架构](#安全与沙盒架构)
 - [源码构建与测试](#源码构建与测试)
 - [项目起源与致敬](#项目起源与致敬)
@@ -35,27 +34,21 @@
 
 ---
 
-## 设计哲学：为什么拒绝官方 API 的粗暴堆砌？
+## 核心架构设计
 
-市面上多数 Notion MCP 仅仅是将官方 20+ 个原子 REST API 机械映射，导致 AI Agent 在实际落地中频频“翻车”：上下文撑爆、JSON Block 语法死板、工具频频选错、偶发限流即崩溃。
+Better Notion MCP 专为大语言模型的上下文优化与长链路工具调用设计，确立了 4 项核心技术支柱：
 
-Better Notion MCP 秉承 4 条直率犀利的设计哲学：
+### 1. 全链路 Markdown 语义流 (Markdown-First)
+内置 1700+ 行工业级 AST 双向解析器。无论是 Callout、Toggle、分栏、代码高亮还是复合表格，在 Agent 视野中均呈现为紧凑纯净的 Markdown。写入时自动转为合规的底层 Block 树，**将静态与动态交互 Token 消耗削减 70%~90%**。
 
-### 1. Markdown-First：AI 呼吸的是文本，不是层层嵌套的 JSON 垃圾
-* **痛点**：Notion 原生 API 采用极度碎片化的 Block 模型，一篇简短页面就会解包出成千上万行带有 `rich_text`、`annotations` 的臃肿 JSON，瞬间吞噬模型宝贵的 Context 窗口。写内容时还逼迫 Agent 手写反人类的嵌套 Block 结构。
-* **解法**：**全链路「Markdown 进，Markdown 出」**。内置 1700+ 行工业级 AST 双向解析器，无论是 Callout、Toggle、分栏、代码高亮还是复合表格，在 Agent 视野中均呈现为自然、干净的 Markdown。Token 消耗**断崖式削减 70%~90%**。
+### 2. 领域复合工具设计 (Composite Mega-Tools)
+摒弃碎片化暴露数十个底层原子 API，按业务领域收敛为 **8 大复合工具（53 项原子动作）+ 2 个系统级工具**。以 `pages` 为例，单次调用即可原子更新正文、标题、图标与封面，消灭多轮冗余网络往返。
 
-### 2. Composite Mega-Tools：拒绝 API 碎片化，收敛决策成本
-* **痛点**：将几十个低级 API 粗暴塞给 Agent，只会让 Schema 长度爆炸，模型在“先查页面、再查块、再改属性”的多轮往返中频频迷失或选错工具。
-* **解法**：**按业务领域收敛为 8 大复合工具（收敛 53 项原子动作）+ 2 个系统级工具**。`pages`、`databases`、`blocks` 等按业务领域高度内聚。单次调用即可原子更新正文、标题、图标与封面，一击必中，彻底消灭冗余 Roundtrip。
+### 3. 智能体韧性自愈系统 (Agent Resilience & Self-Healing)
+内置指数退避重试（`retryWithBackoff`）与 AI 自愈建议系统（`suggestFixes`）。当遇到限流、抖动或参数校验异常时，直接返回结构化、可落地的纠错指示，赋能 Agent 就地自我修复，保障长流程任务稳定闭环。
 
-### 3. Agent-Native 韧性与自愈：错误不应成为会话的终点
-* **痛点**：Notion API 偶发 429 限流、网络抖动或参数轻微偏差，直接抛异常导致整个智能体执行链路夭折。
-* **解法**：**内置指数退避重试（`retryWithBackoff`）与 AI 自愈建议系统（`suggestFixes`）**。当参数缺失或权限异常时，直接返回结构化、可落地的纠错指示，Agent 看完即可就地自我修复，具备真正的生产级无人值守鲁棒性。
-
-### 4. 纯粹与同构：单机极简，上云坚固
-* **痛点**：既要本地调试，又要团队多租户接入，往往被迫维护多套代码或绑定复杂的边缘 Serverless 平台。
-* **解法**：**双模同构，剥离冗余胶水层**。本地使用 Stdio + Integration Token 秒级即用；生产环境提供标准 Node.js / Docker 容器，基于 OAuth 2.1 + PKCE 实现多用户安全隔离与会话管理。
+### 4. 轻量与同构运行 (Lightweight & Isomorphic)
+支持本地单机与云端多租户同构：本地 Stdio + Token 秒级即用；生产环境提供标准 Node.js / Docker 容器，基于 OAuth 2.1 + PKCE 实现多用户安全隔离与会话管理。
 
 ---
 
@@ -88,7 +81,7 @@ Better Notion MCP 秉承 4 条直率犀利的设计哲学：
 | **`help`** | 指定 `tool_name` | **分层 Token 优化核心**：动态拉取指定工具的详尽参数手册与使用范例 | **纯本地离线 (免 Token)** |
 | **`config`** | `status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` (共 6 项) | **运行时自治核心**：动态检查凭证有效性、探测与重载配置，免去重启客户端的麻烦 | **纯本地离线 (免 Token)** |
 
-> **关于复合对象参数的特别说明**：针对对象或数组类型的参数（如 `properties`, `filters`, `sorts` 等），工具原生支持直接传入标准 JSON 对象，亦支持传入字符串形式的 JSON（针对 Claude Code 等对嵌套 XML 序列化有退化截断的客户端做了自动解包兼容）。
+> **关于复合对象参数的特别说明**：针对对象或数组类型的参数（如 `properties`, `filters`, `sorts` 等），工具原生支持直接传入标准 JSON 对象，亦支持传入字符串形式的 JSON（针对某些客户端嵌套序列化截断做了自动解包兼容）。
 
 ---
 
@@ -224,21 +217,6 @@ server {
 ```
 
 验证健康状态：`curl https://<你的域名>/health` 返回 `{"status":"ok"}` 即部署成功。
-
----
-
-## 源码级架构对比
-
-| 评估维度 | 官方 Notion MCP (`@notionhq/notion-mcp-server`) | 该项目 (`better-notion-mcp`) |
-|:---|:---|:---|
-| **架构本质** | 基于 OpenAPI 规范机械遍历的泛型 HTTP 反向代理 | 专为大模型上下文、Token 经济与容错重构的语义编译器 |
-| **工具形态** | 20+ 个原子低级端点，入参必须手写深层嵌套 JSON Block | **10 个领域复合工具 (8 业务 + 2 系统)**，入参直观高内聚 |
-| **内容交互** | 强制返回数千行冗余嵌套的原始 Block JSON 树 | 全链路 **高保真 Markdown 双向解析**（节省 Token 70%~90%） |
-| **静态 Token 开销** | 所有端点完整暴露，占用大量常驻 System Prompt 上下文 | **分层 Token 机制**：常驻描述极致精炼，通过 `help` 工具按需查阅 |
-| **分页处理** | 原始 `next_cursor`，要求 Agent 自己编写循环翻页 | 内核级 **`autoPaginate`**，自动深层递归展开所有子块并聚合 |
-| **异常处理** | 原生 HTTP 错误 dump，无修复指引 | 内置 **`suggestFixes` 自愈建议体系** 与指数退避重试 |
-| **离线转换** | 必须发起远程 HTTP 请求 | 内置 **`content_convert`** 纯本地离线 AST 引擎 (免 Token) |
-| **身份与部署** | 仅基础 Stdio 或简单 Bearer Token | **双模同构**：本地 Stdio + 私有化 OAuth 2.1 PKCE 多租户隔离 |
 
 ---
 
