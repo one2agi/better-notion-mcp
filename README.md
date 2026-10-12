@@ -1,9 +1,11 @@
 # Better Notion MCP
 
-mcp-name: io.github.one2agi/better-notion-mcp
+> **由 [one2agi](https://one2agi.com) 维护的企业级高保真 Notion MCP 独立增强发行版**  
+> 专为 AI Agent（Claude Desktop, Cursor, Antigravity, Gemini Spark 等）打造的一站式读写调用与高保真 Markdown 解析管线。
 
-**Markdown-first Notion for AI agents -- pages, databases, blocks, and comments in one call.**
+[🌐 官方网站](https://one2agi.com) · [🧭 导航知识库](https://way.one2agi.com) · [💬 交流社区](https://one2agi.com) · [📦 仓库主页](https://github.com/one2agi/better-notion-mcp)
 
+[![Maintained by one2agi](https://img.shields.io/badge/maintained%20by-one2agi-blue?style=flat&logo=github)](https://github.com/one2agi)
 [![npm](https://img.shields.io/npm/v/@faize555/better-notion-mcp?logo=npm&logoColor=white)](https://www.npmjs.com/package/@faize555/better-notion-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](#)
@@ -20,6 +22,7 @@ mcp-name: io.github.one2agi/better-notion-mcp
 - [Comparison](#comparison)
 - [Security & Trust Model](#security--trust-model)
 - [Build from Source](#build-from-source)
+- [About one2agi](#about-one2agi)
 - [License](#license)
 
 ## Features
@@ -256,6 +259,14 @@ cd better-notion-mcp
 bun install
 bun run dev
 ```
+
+## About one2agi
+
+本项目由 [one2agi](https://one2agi.com) 团队持续维护与演进，致力于打造面向生产环境的自主 AI Agent 基础设施、协议工具库与实践标准。
+
+- **官方网站**: [https://one2agi.com](https://one2agi.com)
+- **AI 导航与知识库**: [https://way.one2agi.com](https://way.one2agi.com)
+- **GitHub 组织**: [https://github.com/one2agi](https://github.com/one2agi)
 
 ## License
 

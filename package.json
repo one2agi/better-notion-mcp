@@ -77,11 +77,11 @@
   "main": "build/src/init-server.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/faize/better-notion-mcp.git"
+    "url": "https://github.com/one2agi/better-notion-mcp.git"
   },
-  "author": "faize",
+  "author": "one2agi <hi@one2agi.com>",
   "bugs": {
-    "url": "https://github.com/faize/better-notion-mcp/issues"
+    "url": "https://github.com/one2agi/better-notion-mcp/issues"
   },
-  "homepage": "https://github.com/faize/better-notion-mcp#readme"
+  "homepage": "https://one2agi.com"
 }
