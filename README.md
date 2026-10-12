@@ -17,7 +17,6 @@ mcp-name: io.github.one2agi/better-notion-mcp
 - [Tools](#tools)
 - [Configuration](#configuration)
 - [Remote OAuth 部署与使用 (Self-Hosted)](#remote-oauth-部署与使用-self-hosted-oauth-21)
-- [Deploy to Cloudflare](#deploy-to-cloudflare)
 - [Comparison](#comparison)
 - [Security & Trust Model](#security--trust-model)
 - [Build from Source](#build-from-source)
@@ -222,37 +221,6 @@ server {
 }
 ```
 客户端发起请求时，会自动通过 OAuth 2.1 PKCE 引导在浏览器中完成授权并静默换取 Token。
-
-## Deploy to Cloudflare
-
-Run your own multi-user better-notion-mcp serverless on Cloudflare (Worker + Container + KV).
-
-**Prerequisites:** a Cloudflare account on the **Workers Paid plan** — required for Containers (the Cloudflare free tier does not include Containers) — and the `wrangler` CLI.
-
-1. `git clone https://github.com/one2agi/better-notion-mcp && cd better-notion-mcp`
-2. `wrangler login`
-3. Provision the KV namespace and paste its id into `wrangler.jsonc`:
-   ```bash
-   wrangler kv namespace create better-notion-kv
-   ```
-4. Set secrets:
-   ```bash
-   wrangler secret put CREDENTIAL_SECRET
-   wrangler secret put NOTION_OAUTH_CLIENT_ID
-   wrangler secret put NOTION_OAUTH_CLIENT_SECRET
-   ```
-   `CREDENTIAL_SECRET` is REQUIRED: it derives a deterministic OAuth signing key so
-   user identity survives container recreation.
-5. Push the http image to the CF managed registry and deploy:
-   ```bash
-   wrangler containers push better-notion-mcp:beta
-   wrangler deploy
-   ```
-6. Complete the Notion OAuth flow in the browser at your Worker domain.
-
-Per-user Notion access tokens are encrypted into KV (`MCP_STORAGE_BACKEND=cf-kv`),
-so they survive scale-to-zero. Do NOT set `MCP_AUTH_DISABLE` on a shared/public
-deployment — it collapses all users into a single token bucket.
 
 ## Comparison
 

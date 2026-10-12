@@ -35,15 +35,13 @@
     "lint:fix": "biome lint --write src",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "type-check": "tsc --noEmit && tsc --noEmit -p tsconfig.worker.json",
+    "type-check": "tsc --noEmit",
     "check": "biome check . && bun run type-check",
     "check:fix": "biome check --write . && bun run type-check",
     "prepublishOnly": "bun run build",
     "docker:build": "docker build -t faize/better-notion-mcp:latest .",
     "docker:push": "docker push faize/better-notion-mcp:latest",
-    "docker:run": "docker run --rm -i -e NOTION_TOKEN faize/better-notion-mcp:latest",
-    "cf:dryrun": "node scripts/cf-deploy.mjs --dry-run",
-    "cf:deploy": "node scripts/cf-deploy.mjs"
+    "docker:run": "docker run --rm -i -e NOTION_TOKEN faize/better-notion-mcp:latest"
   },
   "bin": {
     "better-notion-mcp": "bin/cli.mjs"
@@ -58,7 +56,6 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@cloudflare/containers": "^0.3.7",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@n24q02m/mcp-core": "1.18.2",
     "@notionhq/client": "^5.22.0",
@@ -69,7 +66,6 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.5.1",
-    "@cloudflare/workers-types": "^4.20260701.1",
     "@types/node": "^26.0.1",
     "@vitest/coverage-v8": "^4.1.9",
     "esbuild": "^0.28.1",
