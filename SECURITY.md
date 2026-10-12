@@ -11,7 +11,7 @@
 
 If you discover a security vulnerability, please **DO NOT** create a public issue.
 
-Instead, please email: **quangminh2402.dev@gmail.com**
+Instead, please email: **hi@one2agi.com**
 
 Include:
 

@@ -1,32 +1,31 @@
 # Privacy Policy — Better Notion MCP
 
-**Last updated:** 2026-06-16
+**Last updated:** 2026-10-12
 
-## Data Collection
+## Data Collection & Processing
 
-Better Notion MCP acts as a proxy between MCP clients (Claude, Cursor, etc.) and the Notion API. It does **not** collect, store, or transmit any user data beyond what is necessary for the current request.
+Better Notion MCP acts as a secure semantic pipeline between MCP clients (Claude, Cursor, Antigravity, etc.) and the official Notion API. It does **not** collect, store, or transmit any user data, credentials, or workspace content beyond what is necessary to process the immediate tool request.
 
-## OAuth Mode (Remote Server)
+## Stdio Mode (Local Deployment)
 
-When using the remote server at `notion.n24q02m.com`:
+When running locally via `npx`, global `npm`, or Docker in stdio mode:
 
-- **Authentication**: Uses Notion OAuth 2.0.
-- **Token storage**: Your Notion access token is encrypted (AES-GCM) and stored in Cloudflare KV, scoped to your authenticated session (keyed by your OAuth identity) so that no other user can read it and so you do not have to re-authorize after a server restart. It is used only to call the Notion API on your behalf and is never logged.
-- **No content database**: Beyond the encrypted access token above, no Notion page content or session history is persisted between requests.
-- **Logging**: Only anonymous request metadata (timestamps, status codes) is logged for operational monitoring. No Notion content is logged.
+- **Zero External Telemetry**: All data and tool executions stay exclusively within your local machine.
+- **Credential Isolation**: Your `NOTION_TOKEN` is read directly from your local environment variables and is transmitted strictly to `https://api.notion.com`.
 
-## Stdio Mode (Local)
+## OAuth 2.1 Mode (Self-Hosted HTTP)
 
-When running locally via npm or Docker:
+When self-hosting the HTTP server for multi-tenant or team access:
 
-- All data stays on your machine.
-- Your `NOTION_TOKEN` is read from environment variables and never transmitted anywhere except the Notion API.
+- **Authentication**: Uses Notion OAuth 2.1 with PKCE S256 code challenges.
+- **Token Storage**: User tokens are isolated in-memory or securely encrypted per authenticated session identity. Access tokens are used strictly to communicate with the Notion API on behalf of the authorized user.
+- **No Content Database**: No Notion page content, databases, blocks, or conversation history are persisted to external databases.
+- **Credential Sanitization**: The kernel automatically sanitizes all exception traces to strip access tokens and authorization secrets before errors surface to clients.
 
 ## Third-Party Services
 
-- **Notion API** (`api.notion.com`): Your data is subject to [Notion's Privacy Policy](https://www.notion.so/Privacy-Policy-3468d120cf614d4c9014c09f6aab3571).
-- **Cloudflare**: The remote server runs on Cloudflare (Workers + Containers + KV), which also provides DNS proxy and DDoS protection. See [Cloudflare Privacy](https://www.cloudflare.com/privacypolicy/).
+- **Notion API** (`api.notion.com`): Data submitted through tools is subject to [Notion's Privacy Policy](https://www.notion.so/Privacy-Policy-3468d120cf614d4c9014c09f6aab3571).
 
 ## Contact
 
-For privacy questions: n24q02m@gmail.com
+For privacy or security inquiries: **hi@one2agi.com**

@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.faize/better-notion-mcp",
-  "description": "Markdown-first MCP server for Notion API with 8 composite tools and 39 actions.",
+  "name": "io.github.one2agi/better-notion-mcp",
+  "description": "Markdown-first MCP server for Notion API with 10 composite & infra tools and 53 actions.",
   "repository": {
-    "url": "https://github.com/faize/better-notion-mcp.git",
+    "url": "https://github.com/one2agi/better-notion-mcp.git",
     "source": "github"
   },
   "version": "3.7.0",
@@ -27,7 +27,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "docker.io/faize/better-notion-mcp:latest",
+      "identifier": "docker.io/one2agi/better-notion-mcp:latest",
       "runtimeHint": "docker",
       "transport": {
         "type": "stdio"

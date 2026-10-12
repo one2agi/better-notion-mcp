@@ -1,7 +1,7 @@
 {
   "name": "better-notion-mcp",
-  "description": "Markdown-first Notion API integration — 8 composite tools, ~95% coverage",
-  "version": "2.36.0",
+  "description": "Markdown-first Notion API integration — 10 tools (8 composite + 2 infra), 53 actions",
+  "version": "3.7.2",
   "userConfig": {
     "NOTION_TOKEN": {
       "type": "string",
@@ -12,14 +12,14 @@
     }
   },
   "author": {
-    "name": "n24q02m",
-    "url": "https://github.com/n24q02m"
+    "name": "one2agi",
+    "url": "https://github.com/one2agi"
   },
-  "homepage": "https://github.com/n24q02m/better-notion-mcp",
+  "homepage": "https://github.com/one2agi/better-notion-mcp",
   "mcpServers": {
     "better-notion-mcp": {
       "command": "npx",
-      "args": ["--yes", "@n24q02m/better-notion-mcp@latest"],
+      "args": ["--yes", "@faize555/better-notion-mcp@latest"],
       "env": {
         "MCP_TRANSPORT": "stdio",
         "NOTION_TOKEN": "${user_config.NOTION_TOKEN}"

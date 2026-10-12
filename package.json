@@ -39,9 +39,9 @@
     "check": "biome check . && bun run type-check",
     "check:fix": "biome check --write . && bun run type-check",
     "prepublishOnly": "bun run build",
-    "docker:build": "docker build -t faize/better-notion-mcp:latest .",
-    "docker:push": "docker push faize/better-notion-mcp:latest",
-    "docker:run": "docker run --rm -i -e NOTION_TOKEN faize/better-notion-mcp:latest"
+    "docker:build": "docker build -t one2agi/better-notion-mcp:latest .",
+    "docker:push": "docker push one2agi/better-notion-mcp:latest",
+    "docker:run": "docker run --rm -i -e NOTION_TOKEN one2agi/better-notion-mcp:latest"
   },
   "bin": {
     "better-notion-mcp": "bin/cli.mjs"
