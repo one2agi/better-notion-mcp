@@ -124,28 +124,21 @@ async function fetchParentTitle(notion: Client, type: string, id: string): Promi
     if (type === 'data_source_id' && typeof (notion as any).dataSources?.retrieve === 'function') {
       const ds: any = await (notion as any).dataSources.retrieve({ data_source_id: id })
       if (ds && typeof ds === 'object') return getItemTitle(ds)
+      return undefined
     }
     if (type === 'database_id') {
       const db: any = await notion.databases.retrieve({ database_id: id })
       if (!db || typeof db !== 'object') return undefined
       return getItemTitle(db)
     }
-    const page: any = await notion.pages.retrieve({ page_id: id })
-    if (!page || typeof page !== 'object') return undefined
-    return getItemTitle(page)
-  } catch {
-    try {
-      if (type === 'database_id' || type === 'data_source_id') {
-        const page: any = await notion.pages.retrieve({ page_id: id })
-        if (!page || typeof page !== 'object') return undefined
-        return getItemTitle(page)
-      }
-      const db: any = await notion.databases.retrieve({ database_id: id })
-      if (!db || typeof db !== 'object') return undefined
-      return getItemTitle(db)
-    } catch {
-      return undefined
+    if (type === 'page_id') {
+      const page: any = await notion.pages.retrieve({ page_id: id })
+      if (!page || typeof page !== 'object') return undefined
+      return getItemTitle(page)
     }
+    return undefined
+  } catch {
+    return undefined
   }
 }
 
@@ -163,12 +156,6 @@ export async function resolveParentTitles(
       const cleanId = normalizeId(candidate.id).toLowerCase()
       const title = getItemTitle(candidate)
       candidateTitles.set(cleanId, title)
-      if (candidate.object === 'data_source' && candidate.parent?.database_id) {
-        const cleanParentDbId = normalizeId(candidate.parent.database_id).toLowerCase()
-        if (!candidateTitles.has(cleanParentDbId)) {
-          candidateTitles.set(cleanParentDbId, title)
-        }
-      }
     }
   }
 
