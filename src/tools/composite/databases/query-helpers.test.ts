@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearDataSourceCache } from '../../helpers/data-source.js'
 import {
   buildSearchFilter,
+  combineDatabaseFilters,
   formatDatabaseResults,
   getSmartSearchFilter,
   resolveDatabaseFilter
@@ -79,6 +80,19 @@ describe('query-helpers', () => {
     const filter = await getSmartSearchFilter(mockNotion, 'ds-456', 'keyword')
     expect(filter).toEqual({
       or: [{ property: 'Title', rich_text: { contains: 'keyword' } }]
+    })
+  })
+
+  it('combineDatabaseFilters should flatten top-level and arrays without exceeding nesting depth', () => {
+    const viewFilter = { and: [{ property: 'Status', status: { equals: 'In Progress' } }] }
+    const userFilter = { and: [{ property: 'Priority', select: { equals: 'High' } }] }
+
+    const combined = combineDatabaseFilters(viewFilter, userFilter)
+    expect(combined).toEqual({
+      and: [
+        { property: 'Status', status: { equals: 'In Progress' } },
+        { property: 'Priority', select: { equals: 'High' } }
+      ]
     })
   })
 })

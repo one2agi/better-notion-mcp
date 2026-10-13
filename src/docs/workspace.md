@@ -12,7 +12,10 @@ environment.
 
 ## Important
 - Search returns only content **shared with integration**
-- Use `filter.object = "data_source"` for databases
+- Use `filter.object = "data_source"` or `filter.object = "database"` for databases
+- Filtering by custom page/database properties (e.g. `filter.property = "Status"`) is **not supported** by the Notion search API. To filter database records by properties, use `databases.query` instead.
+- Search results automatically resolve and include `parent.title` (e.g. "Roadmap Hub", "Tasks DB", "Workspace") with intelligent caching to avoid redundant API calls.
+- When the search candidate pool reaches safety limits or requested limits with more items available, the response includes `is_truncated: true` and actionable `suggestion` guidance.
 
 ## Actions
 
@@ -29,7 +32,12 @@ Returns bot identity (id, name, type) and bot owner info.
 
 Search databases:
 ```json
-{"action": "search", "query": "tasks", "filter": {"object": "data_source"}}
+{"action": "search", "query": "tasks", "filter": {"object": "database"}}
+```
+
+Filter by parent:
+```json
+{"action": "search", "query": "milestone", "parent_id": "3de4f4cf-c8e2-80f9-acbd-dff14d6ec10e"}
 ```
 
 Sort results:
@@ -38,8 +46,24 @@ Sort results:
 ```
 
 ## Parameters
-- `query` - Search query
-- `filter.object` - "page" or "data_source" (database)
+- `query` - Search query (searches object titles)
+- `parent_id` - Filter search results to direct children of a specific parent page or database ID
+- `filter.object` - "page", "data_source", or "database"
 - `sort.direction` - "ascending" or "descending"
 - `sort.timestamp` - "last_edited_time" or "created_time"
 - `limit` - Max results
+
+## Output Fields
+- `action` - Always "search"
+- `query` - Query string passed
+- `total` - Total results returned
+- `results` - Array of search items:
+  - `id` - Page or database ID
+  - `object` - "page" or "data_source"
+  - `title` - Extracted item title
+  - `url` - Notion page/database URL
+  - `last_edited_time` - ISO timestamp
+  - `database_id` - Database ID for data_source objects
+  - `parent` - Parent container object `{ type, id?, title? }`
+- `is_truncated` - Boolean flag indicating if results were truncated due to pool or limit caps
+- `suggestion` - Actionable guidance if search results were truncated

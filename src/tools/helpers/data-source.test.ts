@@ -18,6 +18,10 @@ const mockNotion = {
   },
   dataSources: {
     retrieve: vi.fn()
+  },
+  views: {
+    list: vi.fn(),
+    retrieve: vi.fn()
   }
 } as any
 
@@ -47,13 +51,168 @@ describe('data-source helper module', () => {
       expect(mockNotion.databases.retrieve).toHaveBeenCalledTimes(1)
     })
 
-    it('throws VALIDATION_ERROR when database has no data sources', async () => {
+    it('throws VALIDATION_ERROR with read-only correction guidance when database has no data sources and cannot penetrate', async () => {
       mockNotion.databases.retrieve.mockResolvedValueOnce({
         id: 'db-empty',
         data_sources: []
       })
 
-      await expect(resolveDataSourceId(mockNotion, 'db-empty')).rejects.toThrow('Database has no data sources')
+      try {
+        await resolveDataSourceId(mockNotion, 'db-empty')
+        expect.fail('Should have thrown')
+      } catch (err: any) {
+        expect(err.code).toBe('VALIDATION_ERROR')
+        expect(err.message).toContain('Database has no data sources')
+        expect(err.suggestion).not.toContain('create_data_source')
+        expect(err.suggestion).toMatch(/permission|source database|relation/i)
+      }
+    })
+
+    it('penetrates linked view container via views.list when data_sources is empty and views.list returns stubs without data_source_id', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-linked-view',
+        data_sources: []
+      })
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: [
+          {
+            object: 'view',
+            id: 'view-tab-1'
+          },
+          {
+            object: 'view',
+            id: 'view-tab-2'
+          }
+        ]
+      })
+      mockNotion.views.retrieve.mockResolvedValueOnce({
+        id: 'view-tab-1',
+        data_source_id: 'ds-from-linked-view',
+        filter: { property: 'Status', status: { equals: 'In Progress' } },
+        sorts: [{ property: 'Date', direction: 'ascending' }]
+      })
+
+      const res = await resolveDataSourceId(mockNotion, 'db-linked-view')
+      expect(res).toEqual({
+        databaseId: 'db-linked-view',
+        dataSourceId: 'ds-from-linked-view',
+        viewId: 'view-tab-1',
+        viewFilter: { property: 'Status', status: { equals: 'In Progress' } },
+        viewSorts: [{ property: 'Date', direction: 'ascending' }],
+        isLinkedView: true
+      })
+      expect(mockNotion.views.list).toHaveBeenCalledWith({
+        database_id: 'dblinkedview',
+        page_size: 10
+      })
+      expect(mockNotion.views.retrieve).toHaveBeenCalledWith({
+        view_id: 'viewtab1'
+      })
+
+      // Check cache on second call
+      const resCached = await resolveDataSourceId(mockNotion, 'db-linked-view')
+      expect(resCached).toEqual(res)
+      expect(mockNotion.databases.retrieve).toHaveBeenCalledTimes(1)
+      expect(mockNotion.views.list).toHaveBeenCalledTimes(1)
+      expect(mockNotion.views.retrieve).toHaveBeenCalledTimes(1)
+    })
+
+    it('penetrates linked view with explicit viewId', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-linked-view-2',
+        data_sources: []
+      })
+      mockNotion.views.retrieve.mockResolvedValueOnce({
+        id: 'view-tab-2',
+        data_source_id: 'ds-from-tab-2',
+        filter: { property: 'Status', status: { equals: 'Done' } },
+        sorts: [{ property: 'Priority', direction: 'descending' }]
+      })
+
+      const res = await resolveDataSourceId(mockNotion, 'db-linked-view-2', { viewId: 'view-tab-2' })
+      expect(res).toEqual({
+        databaseId: 'db-linked-view-2',
+        dataSourceId: 'ds-from-tab-2',
+        viewId: 'view-tab-2',
+        viewFilter: { property: 'Status', status: { equals: 'Done' } },
+        viewSorts: [{ property: 'Priority', direction: 'descending' }],
+        isLinkedView: true
+      })
+    })
+
+    it('resolves explicit viewId on entity database with data_sources', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-entity-1',
+        data_sources: [{ id: 'ds-main-entity' }]
+      })
+      mockNotion.views.retrieve.mockResolvedValueOnce({
+        id: 'view-custom-tab',
+        data_source_id: 'ds-main-entity',
+        filter: { property: 'Priority', select: { equals: 'Urgent' } },
+        sorts: [{ timestamp: 'created_time', direction: 'ascending' }]
+      })
+
+      const res = await resolveDataSourceId(mockNotion, 'db-entity-1', { viewId: 'view-custom-tab' })
+      expect(res).toEqual({
+        databaseId: 'db-entity-1',
+        dataSourceId: 'ds-main-entity',
+        viewId: 'view-custom-tab',
+        viewFilter: { property: 'Priority', select: { equals: 'Urgent' } },
+        viewSorts: [{ timestamp: 'created_time', direction: 'ascending' }],
+        isLinkedView: false
+      })
+      expect(mockNotion.views.retrieve).toHaveBeenCalledWith({ view_id: 'viewcustomtab' })
+    })
+
+    it('throws NOT_FOUND when specified viewId is not found', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-entity-1',
+        data_sources: [{ id: 'ds-main-entity' }]
+      })
+      const notFoundErr: any = new Error('View not found')
+      notFoundErr.code = 'object_not_found'
+      mockNotion.views.retrieve.mockRejectedValueOnce(notFoundErr)
+
+      await expect(
+        resolveDataSourceId(mockNotion, 'db-entity-1', { viewId: 'view-non-existent' })
+      ).rejects.toMatchObject({
+        code: 'NOT_FOUND',
+        message: 'View "view-non-existent" not found'
+      })
+    })
+
+    it('throws read-only VALIDATION_ERROR when database has no data sources and views.list returns empty', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-no-views',
+        data_sources: []
+      })
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: []
+      })
+
+      try {
+        await resolveDataSourceId(mockNotion, 'db-no-views')
+        expect.fail('Should have thrown')
+      } catch (err: any) {
+        expect(err.code).toBe('VALIDATION_ERROR')
+        expect(err.suggestion).not.toContain('create_data_source')
+      }
+    })
+
+    it('throws read-only VALIDATION_ERROR when views.list throws an error', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce({
+        id: 'db-views-error',
+        data_sources: []
+      })
+      mockNotion.views.list.mockRejectedValueOnce(new Error('Permission denied for views'))
+
+      try {
+        await resolveDataSourceId(mockNotion, 'db-views-error')
+        expect.fail('Should have thrown')
+      } catch (err: any) {
+        expect(err.code).toBe('VALIDATION_ERROR')
+        expect(err.suggestion).not.toContain('create_data_source')
+      }
     })
 
     it('falls back to data_source_id when database retrieve returns object_not_found', async () => {

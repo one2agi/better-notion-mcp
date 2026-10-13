@@ -40,6 +40,13 @@ const mockNotion = {
     children: {
       append: vi.fn()
     }
+  },
+  views: {
+    list: vi.fn(),
+    retrieve: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn()
   }
 }
 
@@ -470,6 +477,200 @@ describe('databases', () => {
 
       await expect(databases(notion, { action: 'query', database_id: 'db-1' })).rejects.toThrow(
         'Database has no data sources'
+      )
+    })
+
+    it('should automatically penetrate Linked View via views.list and query using resolved data_source_id', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse({ data_sources: [] }))
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'v-1',
+            data_source_id: 'ds-linked-target',
+            name: 'Default View'
+          }
+        ]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'page-1',
+            url: 'https://notion.so/page-1',
+            properties: {
+              Name: { type: 'title', title: [{ plain_text: 'Linked Item' }] }
+            }
+          }
+        ],
+        next_cursor: null,
+        has_more: false
+      })
+
+      const res = (await databases(notion, {
+        action: 'query',
+        database_id: 'db-1'
+      })) as QueryDatabaseResponse
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data_source_id: 'ds-linked-target'
+        })
+      )
+      expect(res.data_source_id).toBe('ds-linked-target')
+      expect(res.results[0].Name).toBe('Linked Item')
+    })
+
+    it('should merge view filter and user filter with AND when both exist', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse({ data_sources: [] }))
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'v-1',
+            data_source_id: 'ds-linked-target',
+            filter: { property: 'Status', status: { equals: 'In Progress' } }
+          }
+        ]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+
+      await databases(notion, {
+        action: 'query',
+        database_id: 'db-1',
+        filters: { property: 'Priority', select: { equals: 'High' } }
+      })
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data_source_id: 'ds-linked-target',
+          filter: {
+            and: [
+              { property: 'Status', status: { equals: 'In Progress' } },
+              { property: 'Priority', select: { equals: 'High' } }
+            ]
+          }
+        })
+      )
+    })
+
+    it('should inherit view sorts when user sorts are omitted', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse({ data_sources: [] }))
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'v-1',
+            data_source_id: 'ds-linked-target',
+            sorts: [{ property: 'Date', direction: 'ascending' }]
+          }
+        ]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+
+      await databases(notion, {
+        action: 'query',
+        database_id: 'db-1'
+      })
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data_source_id: 'ds-linked-target',
+          sorts: [{ property: 'Date', direction: 'ascending' }]
+        })
+      )
+    })
+
+    it('omits sorts parameter when viewSorts is null to prevent Notion 400 validation error', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse({ data_sources: [] }))
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'v-no-sorts',
+            data_source_id: 'ds-no-sorts',
+            sorts: null
+          }
+        ]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+
+      await databases(notion, {
+        action: 'query',
+        database_id: 'db-1'
+      })
+
+      const lastCall = mockNotion.dataSources.query.mock.calls[0][0]
+      expect(lastCall.sorts).toBeUndefined()
+    })
+
+    it('should override view sorts when user provides custom sorts', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse({ data_sources: [] }))
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: [
+          {
+            id: 'v-1',
+            data_source_id: 'ds-linked-target',
+            sorts: [{ property: 'Date', direction: 'ascending' }]
+          }
+        ]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+
+      await databases(notion, {
+        action: 'query',
+        database_id: 'db-1',
+        sorts: [{ property: 'Priority', direction: 'descending' }]
+      })
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data_source_id: 'ds-linked-target',
+          sorts: [{ property: 'Priority', direction: 'descending' }]
+        })
+      )
+    })
+
+    it('should penetrate to specific view when view_id is provided', async () => {
+      mockNotion.databases.retrieve.mockResolvedValueOnce(makeDbRetrieveResponse({ data_sources: [] }))
+      mockNotion.views.list.mockResolvedValueOnce({
+        results: [
+          { id: 'v-default', data_source_id: 'ds-default' },
+          {
+            id: 'v-custom',
+            data_source_id: 'ds-custom',
+            filter: { property: 'Done', checkbox: { equals: true } }
+          }
+        ]
+      })
+      mockNotion.dataSources.query.mockResolvedValueOnce({
+        results: [],
+        next_cursor: null,
+        has_more: false
+      })
+
+      await databases(notion, {
+        action: 'query',
+        database_id: 'db-1',
+        view_id: 'v-custom'
+      })
+
+      expect(mockNotion.dataSources.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data_source_id: 'ds-custom',
+          filter: { property: 'Done', checkbox: { equals: true } }
+        })
       )
     })
 

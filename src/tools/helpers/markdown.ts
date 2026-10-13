@@ -609,7 +609,9 @@ const BLOCK_HANDLERS: Record<string, BlockHandler> = {
     lines.push(`[${block.child_page.title}](${block.id})`)
   },
   child_database: (block, lines) => {
-    lines.push(`[${block.child_database.title}](${block.id})`)
+    const rawTitle = block.child_database?.title?.trim()
+    const title = !rawTitle || rawTitle.toLowerCase() === 'untitled' ? '内嵌数据库视图' : rawTitle
+    lines.push(`> 📌 **内嵌视图**：[${title}](${block.id})`)
   }
 }
 

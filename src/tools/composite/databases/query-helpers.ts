@@ -57,6 +57,27 @@ export async function resolveDatabaseFilter(notion: Client, dataSourceId: string
 }
 
 /**
+ * Combine view-level filter and user-provided filter using AND composition.
+ */
+export function combineDatabaseFilters(viewFilter?: any, userFilter?: any): any {
+  const hasViewFilter = viewFilter && typeof viewFilter === 'object' && Object.keys(viewFilter).length > 0
+  const hasUserFilter = userFilter && typeof userFilter === 'object' && Object.keys(userFilter).length > 0
+
+  if (hasViewFilter && hasUserFilter) {
+    const viewAnd = Array.isArray(viewFilter.and) ? viewFilter.and : [viewFilter]
+    const userAnd = Array.isArray(userFilter.and) ? userFilter.and : [userFilter]
+    return { and: [...viewAnd, ...userAnd] }
+  }
+  if (hasUserFilter) {
+    return userFilter
+  }
+  if (hasViewFilter) {
+    return viewFilter
+  }
+  return undefined
+}
+
+/**
  * Format raw Notion page results into AI-friendly property objects
  */
 export function formatDatabaseResults(results: any[]): Record<string, any>[] {

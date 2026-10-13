@@ -19,6 +19,7 @@ import { NotionTokenStore } from '../auth/notion-token-store.js'
 import { createMCPServer } from '../create-server.js'
 import { resolveCredentialState, setState, setSubjectTokenResolver } from '../credential-state.js'
 import { NotionMCPError } from '../tools/helpers/errors.js'
+import { resilientFetch } from '../tools/helpers/resilient-fetch.js'
 
 const SERVER_NAME = 'better-notion-mcp'
 
@@ -75,7 +76,7 @@ export async function startHttp(): Promise<void> {
         'Re-authorize via the Notion OAuth flow on /authorize.'
       )
     }
-    return new Client({ auth: token, notionVersion: '2025-09-03' })
+    return new Client({ auth: token, notionVersion: '2025-09-03', fetch: resilientFetch })
   }
 
   const port = process.env.PORT ? Number.parseInt(process.env.PORT, 10) : 0

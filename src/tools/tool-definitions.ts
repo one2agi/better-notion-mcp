@@ -172,7 +172,7 @@ export const TOOLS = [
   {
     name: 'databases',
     description:
-      'Database schema, query, views (table, board, calendar, timeline, gallery, list, form, chart), and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search)\n- aggregate (database_id, aggregations[{type,property,alias}]): count/sum/avg/min/max/unique_count\n- group_by (database_id, group_by{property}, aggregations?): group rows by a property, compute per-group stats (defaults to count)\n- create_page (database_id, pages[{properties, content?, template?}] | page_properties/properties, content?, template?)\n- update_page (page_id+page_properties | page_ids+page_properties | pages[{page_id/id, properties}] -> database_id)\n- delete_page (database_id, page_ids | pages)\n- create_data_source / update_data_source / update_database / list_templates\n- create_view (database_id, name, type -> chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, anonymous_submissions, submission_permissions, quick_filters, configuration, filters, sorts, placement, position): supports table, board, calendar, timeline, gallery, list, form, chart\n- list_views (database_id -> limit)\n- get_view (view_id)\n- update_view (view_id -> name, type, chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, quick_filters, configuration, filters, sorts)\n- delete_view (view_id)\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
+      'Database schema, query, views (table, board, calendar, timeline, gallery, list, form, chart), and bulk row operations.\n\nActions (required params -> optional):\n- create (parent_id -> title, properties, is_inline, icon, cover)\n- get (database_id)\n- query (database_id -> filters, sorts, limit, search, view_id)\n- aggregate (database_id, aggregations[{type,property,alias}]): count/sum/avg/min/max/unique_count\n- group_by (database_id, group_by{property}, aggregations?): group rows by a property, compute per-group stats (defaults to count)\n- create_page (database_id, pages[{properties, content?, template?}] | page_properties/properties, content?, template?)\n- update_page (page_id+page_properties | page_ids+page_properties | pages[{page_id/id, properties}] -> database_id)\n- delete_page (database_id, page_ids | pages)\n- create_data_source / update_data_source / update_database / list_templates\n- create_view (database_id, name, type -> chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, anonymous_submissions, submission_permissions, quick_filters, configuration, filters, sorts, placement, position): supports table, board, calendar, timeline, gallery, list, form, chart\n- list_views (database_id -> limit)\n- get_view (view_id)\n- update_view (view_id -> name, type, chart_type, x_axis, y_axis, stack_by, target, hide_empty_groups, is_form_closed, quick_filters, configuration, filters, sorts)\n- delete_view (view_id)\n\nUse `pages` instead for single page CRUD. Accepts both database_id (from URL) and data_source_id (from workspace search) -- auto-resolved.',
     annotations: {
       title: 'Databases',
       readOnlyHint: false,
@@ -294,7 +294,10 @@ export const TOOLS = [
           type: 'string',
           description: 'Template UUID to apply for create_page (alternative to template)'
         },
-        view_id: { type: 'string', description: 'View ID (for get_view, update_view, delete_view)' },
+        view_id: {
+          type: 'string',
+          description: 'View ID (for get_view, update_view, delete_view, or query to inherit view filter/sorts)'
+        },
         name: { type: 'string', description: 'View name (for create_view, update_view)' },
         type: {
           type: 'string',
@@ -465,7 +468,7 @@ export const TOOLS = [
   {
     name: 'workspace',
     description:
-      'Search workspace and get workspace info.\n\nActions (required params -> optional):\n- info: bot user identity, type, and bot owner info\n- search (-> query, filter.object="page"|"data_source", parent_id, sort, limit): find pages/databases shared with integration',
+      'Search workspace and get workspace info.\n\nActions (required params -> optional):\n- info: bot user identity, type, and bot owner info\n- search (-> query, filter.object="page"|"data_source"|"database", parent_id, sort, limit): find pages/databases shared with integration (returns resolved parent.title and truncation status)',
     annotations: {
       title: 'Workspace',
       readOnlyHint: true,
@@ -490,8 +493,8 @@ export const TOOLS = [
           properties: {
             object: {
               type: 'string',
-              enum: ['page', 'data_source'],
-              description: 'Filter by type: page or data_source (database)'
+              enum: ['page', 'data_source', 'database'],
+              description: 'Filter by type: page, data_source, or database'
             }
           }
         },

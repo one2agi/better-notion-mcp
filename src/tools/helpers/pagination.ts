@@ -22,18 +22,27 @@ export interface PaginationOptions {
   limit?: number // Max items to fetch (0 = unlimited)
 }
 
+export interface PaginatedResultWithMetadata<T> {
+  results: T[]
+  hasMore: boolean
+  nextCursor: string | null
+  totalFetched: number
+}
+
 /**
- * Fetch all pages automatically
+ * Fetch all pages automatically with pagination metadata
  */
-export async function autoPaginate<T>(
+export async function autoPaginateWithMetadata<T>(
   fetchFn: (cursor?: string, pageSize?: number) => Promise<PaginatedResponse<T>>,
   options: PaginationOptions = {}
-): Promise<T[]> {
+): Promise<PaginatedResultWithMetadata<T>> {
   const { maxPages = 0, pageSize = 100, limit = 0 } = options
   const effectiveMax = maxPages > 0 ? Math.min(maxPages, MAX_PAGES_SAFETY) : MAX_PAGES_SAFETY
   const allResults: T[] = []
   let cursor: string | null = null
   let pageCount = 0
+  let lastHasMore = false
+  let lastNextCursor: string | null = null
 
   do {
     // Adjust page size if a limit is set and we are close to it
@@ -47,6 +56,8 @@ export async function autoPaginate<T>(
     const response = await fetchFn(cursor || undefined, currentPageSize)
     allResults.push(...response.results)
     cursor = response.next_cursor
+    lastHasMore = response.has_more ?? cursor !== null
+    lastNextCursor = response.next_cursor
     pageCount++
 
     // Stop if limit reached
@@ -60,7 +71,26 @@ export async function autoPaginate<T>(
     }
   } while (cursor !== null)
 
-  return limit > 0 ? allResults.slice(0, limit) : allResults
+  const results = limit > 0 ? allResults.slice(0, limit) : allResults
+  const hasMore = allResults.length > results.length || (cursor !== null ? true : lastHasMore)
+
+  return {
+    results,
+    hasMore,
+    nextCursor: hasMore ? (lastNextCursor ?? cursor) : null,
+    totalFetched: results.length
+  }
+}
+
+/**
+ * Fetch all pages automatically
+ */
+export async function autoPaginate<T>(
+  fetchFn: (cursor?: string, pageSize?: number) => Promise<PaginatedResponse<T>>,
+  options: PaginationOptions = {}
+): Promise<T[]> {
+  const { results } = await autoPaginateWithMetadata(fetchFn, options)
+  return results
 }
 
 /** Block types that need children fetched for proper markdown rendering */

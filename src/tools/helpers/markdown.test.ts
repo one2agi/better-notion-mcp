@@ -1740,11 +1740,25 @@ describe('blocksToMarkdown', () => {
       expect(blocksToMarkdown(blocks)).toBe('[My Sub Page](page-123)')
     })
 
-    it('should render child_database as link', () => {
+    it('should render child_database as semantic card blockquote', () => {
       const blocks: NotionBlock[] = [
         { object: 'block', type: 'child_database', id: 'db-456', child_database: { title: 'Tasks DB' } }
       ]
-      expect(blocksToMarkdown(blocks)).toBe('[Tasks DB](db-456)')
+      expect(blocksToMarkdown(blocks)).toBe('> 📌 **内嵌视图**：[Tasks DB](db-456)')
+    })
+
+    it('should fall back to default title when child_database title is missing or whitespace', () => {
+      const blocks: NotionBlock[] = [
+        { object: 'block', type: 'child_database', id: 'db-empty', child_database: { title: '   ' } }
+      ]
+      expect(blocksToMarkdown(blocks)).toBe('> 📌 **内嵌视图**：[内嵌数据库视图](db-empty)')
+    })
+
+    it('should fall back to default title when child_database title is Untitled (case-insensitive)', () => {
+      const blocks: NotionBlock[] = [
+        { object: 'block', type: 'child_database', id: 'db-untitled', child_database: { title: 'Untitled' } }
+      ]
+      expect(blocksToMarkdown(blocks)).toBe('> 📌 **内嵌视图**：[内嵌数据库视图](db-untitled)')
     })
   })
 

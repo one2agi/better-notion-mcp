@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   autoPaginate,
+  autoPaginateWithMetadata,
   ConcurrencyQueue,
   fetchChildrenRecursive,
   populateDeepChildren,
   processBatches
-} from './pagination'
+} from './pagination.js'
 
 describe('autoPaginate', () => {
   it('should return results from a single page', async () => {
@@ -343,5 +344,96 @@ describe('autoPaginate with limit', () => {
 
     expect(results).toEqual([1, 2])
     expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('autoPaginateWithMetadata', () => {
+  it('should return results and metadata from a single page', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce({
+      results: [1, 2, 3],
+      next_cursor: null,
+      has_more: false
+    })
+
+    const metadata = await autoPaginateWithMetadata(fetchFn)
+
+    expect(metadata).toEqual({
+      results: [1, 2, 3],
+      hasMore: false,
+      nextCursor: null,
+      totalFetched: 3
+    })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect(fetchFn).toHaveBeenCalledWith(undefined, 100)
+  })
+
+  it('should indicate hasMore: true when stopped by maxPages', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce({
+        results: ['a', 'b'],
+        next_cursor: 'cursor-1',
+        has_more: true
+      })
+      .mockResolvedValueOnce({
+        results: ['c', 'd'],
+        next_cursor: 'cursor-2',
+        has_more: true
+      })
+
+    const metadata = await autoPaginateWithMetadata(fetchFn, { maxPages: 2 })
+
+    expect(metadata).toEqual({
+      results: ['a', 'b', 'c', 'd'],
+      hasMore: true,
+      nextCursor: 'cursor-2',
+      totalFetched: 4
+    })
+    expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+
+  it('should indicate hasMore: true when stopped by limit', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce({
+      results: [1, 2],
+      next_cursor: 'cursor-1',
+      has_more: true
+    })
+
+    const metadata = await autoPaginateWithMetadata(fetchFn, { limit: 2 })
+
+    expect(metadata).toEqual({
+      results: [1, 2],
+      hasMore: true,
+      nextCursor: 'cursor-1',
+      totalFetched: 2
+    })
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('should have 100% equivalence with autoPaginate results', async () => {
+    const mockFactory = () =>
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          results: ['x', 'y'],
+          next_cursor: 'cur-1',
+          has_more: true
+        })
+        .mockResolvedValueOnce({
+          results: ['z'],
+          next_cursor: null,
+          has_more: false
+        })
+
+    const fetch1 = mockFactory()
+    const fetch2 = mockFactory()
+
+    const rawResults = await autoPaginate(fetch1)
+    const withMeta = await autoPaginateWithMetadata(fetch2)
+
+    expect(withMeta.results).toEqual(rawResults)
+    expect(withMeta.totalFetched).toBe(rawResults.length)
+    expect(withMeta.hasMore).toBe(false)
+    expect(withMeta.nextCursor).toBeNull()
   })
 })

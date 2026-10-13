@@ -306,7 +306,11 @@ describe('startHttp', () => {
     await subjectContext.run({ sub: 'user1' }, () => {
       const client = factory()
       expect(client).toBeDefined()
-      expect(Client).toHaveBeenCalledWith({ auth: 'test-token', notionVersion: '2025-09-03' })
+      expect(Client).toHaveBeenCalledWith({
+        auth: 'test-token',
+        notionVersion: '2025-09-03',
+        fetch: expect.any(Function)
+      })
     })
 
     // 2. Verify runHttpServer options

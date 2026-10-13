@@ -1,3 +1,5 @@
+import { isTransientNetworkError } from './resilient-fetch.js'
+
 /**
  * Custom error class for Notion MCP operations
  */
@@ -138,11 +140,11 @@ function stripSensitiveFields(obj: any, seen = new WeakSet()): void {
  */
 function mapNetworkError(error: any): NotionMCPError | null {
   if (!error || typeof error !== 'object') return null
-  if (error.message?.includes('ECONNREFUSED') || error.message?.includes('ENOTFOUND')) {
+  if (isTransientNetworkError(error)) {
     return new NotionMCPError(
-      'Cannot connect to Notion API',
+      'Cannot connect to Notion API (network connection failed)',
       'NETWORK_ERROR',
-      'Check your internet connection and try again'
+      'Check your internet connection and proxy settings, then try again'
     )
   }
   return null
@@ -276,8 +278,8 @@ export function enhanceError(error: any, context?: { tool?: string }): NotionMCP
   // Explicitly strip sensitive fields recursively
   stripSensitiveFields(error)
 
-  // Chain of responsibility: Notion -> Network -> Generic
-  return mapNotionError(error, context) || mapNetworkError(error) || mapGenericError(error)
+  // Chain of responsibility: Network -> Notion -> Generic
+  return mapNetworkError(error) || mapNotionError(error, context) || mapGenericError(error)
 }
 
 /**

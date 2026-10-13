@@ -174,6 +174,30 @@ describe('enhanceError', () => {
       expect(result.code).toBe('NETWORK_ERROR')
       expect(result.message).toContain('Cannot connect')
     })
+
+    it('should handle TypeError fetch failed', () => {
+      const result = enhanceError(new TypeError('fetch failed'))
+
+      expect(result.code).toBe('NETWORK_ERROR')
+      expect(result.message).toContain('Cannot connect')
+      expect(result.suggestion).toContain('internet connection')
+    })
+
+    it('should handle ETIMEDOUT error code and cause', () => {
+      const errWithCode = enhanceError({ code: 'ETIMEDOUT', message: 'connection timed out' })
+      expect(errWithCode.code).toBe('NETWORK_ERROR')
+      expect(errWithCode.message).toContain('Cannot connect')
+
+      const errWithCause = enhanceError({ message: 'fetch failed', cause: { code: 'ETIMEDOUT' } })
+      expect(errWithCause.code).toBe('NETWORK_ERROR')
+      expect(errWithCause.message).toContain('Cannot connect')
+    })
+
+    it('should handle ECONNRESET error code and message', () => {
+      const err = enhanceError({ code: 'ECONNRESET', message: 'read ECONNRESET' })
+      expect(err.code).toBe('NETWORK_ERROR')
+      expect(err.message).toContain('Cannot connect')
+    })
   })
 
   describe('Generic errors', () => {

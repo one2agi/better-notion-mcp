@@ -15,6 +15,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { Client } from '@notionhq/client'
 import { getNotionToken, resolveCredentialState } from './credential-state.js'
+import { resilientFetch } from './tools/helpers/resilient-fetch.js'
 import { registerTools } from './tools/registry.js'
 
 const SERVER_NAME = 'better-notion-mcp'
@@ -113,7 +114,7 @@ Documentation: https://mcp.n24q02m.com/servers/better-notion-mcp/
     if (!token) {
       throw new Error('Notion integration token not configured. Set NOTION_TOKEN env var or run the relay setup form.')
     }
-    return new Client({ auth: token, notionVersion: '2025-09-03' })
+    return new Client({ auth: token, notionVersion: '2025-09-03', fetch: resilientFetch })
   }
 
   registerTools(server, notionClientFactory)

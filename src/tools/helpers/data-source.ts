@@ -5,8 +5,20 @@ import { normalizeId } from './id.js'
 /** 5 minutes TTL for cached schemas and resolved IDs */
 const SCHEMA_CACHE_TTL = 5 * 60 * 1000
 
+/** Resolved data source metadata including optional view cascade */
+export interface ResolvedDataSource {
+  databaseId: string
+  dataSourceId: string
+  viewId?: string
+  viewFilter?: any
+  viewSorts?: any
+  isLinkedView?: boolean
+}
+
+export type CachedResolvedDataSource = ResolvedDataSource & { expiresAt: number }
+
 /** Cache for database/data_source ID resolution */
-export const resolutionCache = new Map<string, { databaseId: string; dataSourceId: string; expiresAt: number }>()
+export const resolutionCache = new Map<string, CachedResolvedDataSource>()
 
 /** Cache for data source schema (properties) */
 export const schemaCache = new Map<string, { properties: any; expiresAt: number }>()
@@ -22,32 +34,123 @@ export function clearDataSourceCache(): void {
 
 /**
  * Smart ID resolution: accepts both database container ID and data_source ID.
- * Tries database_id first; if NOT_FOUND, tries as data_source_id.
- * Returns both IDs for downstream operations.
+ * Tries database_id first; if container has no data_sources, cascades into linked view resolution.
+ * If NOT_FOUND, tries as data_source_id.
+ * Returns ResolvedDataSource for downstream operations.
+ *
+ * Maps to upstream Notion API endpoints:
+ * - GET /v1/databases/{id} (Database container retrieval)
+ * - GET /v1/views (View listing and cascading resolution)
+ * - GET /v1/views/{id} (Specific view retrieval)
+ * - GET /v1/data_sources/{id} (Data source retrieval)
  */
 export async function resolveDataSourceId(
   notion: Client,
-  id: string
-): Promise<{ databaseId: string; dataSourceId: string }> {
+  id: string,
+  options?: { viewId?: string }
+): Promise<ResolvedDataSource> {
   const normalized = normalizeId(id)
+  const targetViewId = options?.viewId ? normalizeId(options.viewId) : undefined
+  const cacheKey = targetViewId ? `${normalized}:${targetViewId}` : normalized
 
-  const cached = resolutionCache.get(normalized)
+  const cached = resolutionCache.get(cacheKey)
   if (cached && Date.now() < cached.expiresAt) {
-    return { databaseId: cached.databaseId, dataSourceId: cached.dataSourceId }
+    return {
+      databaseId: cached.databaseId,
+      dataSourceId: cached.dataSourceId,
+      viewId: cached.viewId,
+      viewFilter: cached.viewFilter,
+      viewSorts: cached.viewSorts,
+      isLinkedView: cached.isLinkedView
+    }
   }
 
   // Try as database container first
   try {
     const database: any = await notion.databases.retrieve({ database_id: normalized })
+
+    // If a specific view was requested, resolve that view's details (works for both entity databases and linked views)
+    if (targetViewId) {
+      if (typeof (notion as any).views?.retrieve === 'function') {
+        try {
+          const view: any = await (notion as any).views.retrieve({ view_id: targetViewId })
+          if (view?.data_source_id) {
+            const result: ResolvedDataSource = {
+              databaseId: database.id || normalized,
+              dataSourceId: view.data_source_id,
+              viewId: view.id,
+              viewFilter: view.filter,
+              viewSorts: view.sorts,
+              isLinkedView: database.data_sources?.length === 0
+            }
+            resolutionCache.set(cacheKey, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
+            return result
+          }
+        } catch (viewError: any) {
+          if (viewError instanceof NotionMCPError) throw viewError
+          if (viewError.code === 'object_not_found') {
+            throw new NotionMCPError(
+              `View "${options?.viewId}" not found`,
+              'NOT_FOUND',
+              'The specified view_id could not be found. Use databases.list_views to see available views.'
+            )
+          }
+        }
+      }
+    }
+
     if (database.data_sources?.length > 0) {
-      const result = { databaseId: database.id, dataSourceId: database.data_sources[0].id }
-      resolutionCache.set(normalized, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
+      const result: ResolvedDataSource = {
+        databaseId: database.id,
+        dataSourceId: database.data_sources[0].id
+      }
+      resolutionCache.set(cacheKey, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
       return result
     }
+
+    // Database container has no data_sources; attempt linked view cascading penetration via views.list
+    if (typeof (notion as any).views?.list === 'function') {
+      try {
+        const viewsResponse: any = await (notion as any).views.list({
+          database_id: normalized,
+          page_size: 10
+        })
+        const views = viewsResponse?.results || []
+        const targetView = targetViewId ? views.find((v: any) => normalizeId(v.id) === targetViewId) : views[0]
+
+        if (targetView) {
+          let fullView = targetView
+          if (!fullView.data_source_id && typeof (notion as any).views?.retrieve === 'function') {
+            try {
+              fullView = await (notion as any).views.retrieve({ view_id: normalizeId(targetView.id) })
+            } catch (retrieveError: any) {
+              if (retrieveError instanceof NotionMCPError) throw retrieveError
+            }
+          }
+
+          if (fullView?.data_source_id) {
+            const result: ResolvedDataSource = {
+              databaseId: database.id || normalized,
+              dataSourceId: fullView.data_source_id,
+              viewId: fullView.id,
+              viewFilter: fullView.filter,
+              viewSorts: fullView.sorts,
+              isLinkedView: true
+            }
+            resolutionCache.set(cacheKey, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
+            return result
+          }
+        }
+      } catch (viewError: any) {
+        if (viewError instanceof NotionMCPError) throw viewError
+        // Fall through to read-only guidance error
+      }
+    }
+
     throw new NotionMCPError(
       'Database has no data sources',
       'VALIDATION_ERROR',
-      'This database container has no data sources yet. Use create_data_source to add one.'
+      'This database container has no data sources or accessible linked views. Check integration permissions on the underlying source database, or query the source database directly via its parent database ID or relation.'
     )
   } catch (error: any) {
     if (error instanceof NotionMCPError) throw error
@@ -56,11 +159,11 @@ export async function resolveDataSourceId(
     if (error.code === 'object_not_found') {
       try {
         const ds: any = await notion.dataSources.retrieve({ data_source_id: normalized })
-        const result = {
+        const result: ResolvedDataSource = {
           databaseId: ds.parent?.database_id || normalized,
           dataSourceId: ds.id
         }
-        resolutionCache.set(normalized, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
+        resolutionCache.set(cacheKey, { ...result, expiresAt: Date.now() + SCHEMA_CACHE_TTL })
         return result
       } catch {
         throw new NotionMCPError(

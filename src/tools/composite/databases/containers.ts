@@ -13,7 +13,12 @@ import { parseMaybeJSON } from '../../helpers/json-input.js'
 import { autoPaginate } from '../../helpers/pagination.js'
 import { buildSchemaMap } from '../../helpers/properties.js'
 import * as RichText from '../../helpers/richtext.js'
-import { formatDatabaseResults, getSmartSearchFilter, resolveDatabaseFilter } from './query-helpers.js'
+import {
+  combineDatabaseFilters,
+  formatDatabaseResults,
+  getSmartSearchFilter,
+  resolveDatabaseFilter
+} from './query-helpers.js'
 import type {
   CreateDatabaseResponse,
   CreateDataSourceResponse,
@@ -245,19 +250,30 @@ export async function queryDatabase(notion: Client, input: DatabasesInput): Prom
     )
   }
 
-  // Smart resolve: accepts both database_id and data_source_id
-  const { databaseId, dataSourceId } = await resolveDataSourceId(notion, input.database_id)
+  // Smart resolve: accepts both database_id (including Linked View) and data_source_id
+  const resolved = await resolveDataSourceId(notion, input.database_id, {
+    viewId: input.view_id
+  })
+  const { databaseId, dataSourceId, viewFilter, viewSorts } = resolved
 
-  let filter = await resolveDatabaseFilter(notion, dataSourceId, input.filters)
+  const rawUserFilter = input.filters !== undefined ? input.filters : input.filter
+  let userFilter = await resolveDatabaseFilter(notion, dataSourceId, rawUserFilter)
 
   // Smart search across text properties
-  if (input.search && !filter) {
-    filter = await getSmartSearchFilter(notion, dataSourceId, input.search)
+  if (input.search && !userFilter) {
+    userFilter = await getSmartSearchFilter(notion, dataSourceId, input.search)
   }
+
+  const filter = combineDatabaseFilters(viewFilter, userFilter)
+
+  const userSorts = parseMaybeJSON(input.sorts, 'sorts')
+  const sorts = userSorts !== undefined && userSorts !== null ? userSorts : viewSorts
 
   const queryParams: any = { data_source_id: dataSourceId }
   if (filter) queryParams.filter = filter
-  queryParams.sorts = parseMaybeJSON(input.sorts, 'sorts')
+  if (Array.isArray(sorts) && sorts.length > 0) {
+    queryParams.sorts = sorts
+  }
 
   // Fetch with pagination
   const allResults = await autoPaginate(async (cursor) => {

@@ -238,7 +238,8 @@ describe('main.ts', () => {
       const { Client } = await import('@notionhq/client')
       expect(Client).toHaveBeenCalledWith({
         auth: 'ntn_test_token',
-        notionVersion: '2025-09-03'
+        notionVersion: '2025-09-03',
+        fetch: expect.any(Function)
       })
     })
 
