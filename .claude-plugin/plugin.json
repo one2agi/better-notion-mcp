@@ -1,7 +1,7 @@
 {
   "name": "better-notion-mcp",
   "description": "Markdown-first Notion API integration — 10 tools (8 composite + 2 infra), 53 actions",
-  "version": "3.7.2",
+  "version": "3.8.0",
   "userConfig": {
     "NOTION_TOKEN": {
       "type": "string",
